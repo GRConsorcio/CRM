@@ -206,6 +206,17 @@ tr:hover td{background:rgba(255,255,255,.015)}
 <body>
 
 <!-- AUTH -->
+<div id="setup-warning" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9998;align-items:center;justify-content:center">
+  <div style="background:#1a0a0a;border:2px solid var(--red);border-radius:14px;padding:32px 36px;max-width:480px;text-align:center">
+    <div style="font-size:36px;margin-bottom:14px">⚠️</div>
+    <div style="font-size:18px;font-weight:900;color:var(--red);margin-bottom:10px">Setup necessário</div>
+    <div style="font-size:13px;color:var(--muted2);line-height:1.7;margin-bottom:20px">
+      As tabelas do CRM ainda não foram criadas no Supabase.<br>
+      Acesse o <strong style="color:var(--gold2)">Supabase → SQL Editor</strong> e execute o arquivo <strong style="color:var(--gold2)">crm-setup-completo.sql</strong> antes de continuar.
+    </div>
+    <button onclick="location.reload()" style="background:var(--gold);border:none;color:#0a0a0a;border-radius:8px;padding:10px 24px;font-size:13px;font-weight:700;cursor:pointer">Tentar novamente após setup</button>
+  </div>
+</div>
 <div id="auth-screen">
   <div class="auth-box">
     <div class="auth-logo">GR</div>
@@ -618,7 +629,14 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
       setupRealtime();
     } catch(e){
       console.error('Init error:',e);
-      toast('Erro ao carregar dados: '+e.message,'err');
+      if(e?.message?.includes('não existe')||e?.message?.includes('does not exist')){
+        document.getElementById('auth-screen').style.display='none';
+        document.getElementById('setup-warning').style.display='flex';
+      } else {
+        toast('Erro: '+(e?.message||e),'err');
+        document.getElementById('auth-screen').style.display='flex';
+        document.getElementById('a-err').textContent='Erro ao carregar: '+(e?.message||'verifique o console F12');
+      }
     }
   } else {
     CU=null;CUProfile=null;
@@ -629,8 +647,12 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
 async function ensureProfile(){
   const name=CU.user_metadata?.full_name||CU.email.split('@')[0];
   const{data,error}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
+  if(error&&error.message?.includes('does not exist')){
+    throw new Error('Tabela crm_users não existe. Execute o crm-setup-completo.sql no Supabase SQL Editor.');
+  }
   if(!data){
-    await sb.from('crm_users').insert({user_id:CU.id,name,email:CU.email,role:'vendedor'});
+    const{error:ie}=await sb.from('crm_users').insert({user_id:CU.id,name,email:CU.email,role:'vendedor'});
+    if(ie) console.warn('Insert user error:',ie.message);
     const{data:d2}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
     CUProfile=d2||{user_id:CU.id,name,email:CU.email,role:'vendedor'};
   } else {
@@ -645,23 +667,30 @@ async function ensureProfile(){
 
 async function loadAll(){
   const isAdm=isAdminOrCoord();
+  const safe=async(q)=>{try{const r=await q;return r;}catch(e){console.warn('Query error:',e);return{data:[]};}};
   const [lu,lh,lt,lv,ld]=await Promise.all([
-    sb.from('crm_users').select('*').eq('ativo',true),
-    sb.from('crm_historico').select('*').order('created_at',{ascending:false}),
-    sb.from('crm_tarefas').select('*').order('prazo',{ascending:true}),
-    sb.from('crm_vendas').select('*').order('created_at',{ascending:false}),
-    sb.from('crm_documentos').select('*').order('created_at',{ascending:false}),
+    safe(sb.from('crm_users').select('*').eq('ativo',true)),
+    safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false})),
+    safe(sb.from('crm_tarefas').select('*').order('prazo',{ascending:true})),
+    safe(sb.from('crm_vendas').select('*').order('created_at',{ascending:false})),
+    safe(sb.from('crm_documentos').select('*').order('created_at',{ascending:false})),
   ]);
   const leadsQ=isAdm
     ?sb.from('crm_leads').select('*').order('created_at',{ascending:false})
     :sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
-  const{data:ll}=await leadsQ;
+  const{data:ll,error:le}=await leadsQ;
+  if(le) console.warn('Leads query error:',le.message);
   allLeads=ll||[];
   allUsers=lu.data||[];
   allHist=lh.data||[];
   allTasks=lt.data||[];
   allVendas=lv.data||[];
   allDocs=ld.data||[];
+  // Warn if tables missing
+  if(lu.error?.message?.includes('does not exist')){
+    toast('⚠️ Tabelas não encontradas. Execute o SQL de setup no Supabase.','err');
+    throw new Error('Tabelas não criadas. Execute o crm-setup-completo.sql no Supabase.');
+  }
   populateSelects();
 }
 
