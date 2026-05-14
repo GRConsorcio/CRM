@@ -633,7 +633,6 @@ const {createClient}=supabase;
 const sb=createClient(SUPA_URL,SUPA_KEY);
 
 let CU=null,CUProfile=null;
-// _appInitialized stored in sessionStorage to survive GitHub Pages redirects
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let pendingFiles=[];
@@ -671,7 +670,6 @@ async function doLogout(){
     if(realtimeChannel) sb.removeChannel(realtimeChannel);
     await sb.auth.signOut({scope:'local'});
   } catch(e){}
-  sessionStorage.removeItem('_crm_init');
   // Clear all Supabase session keys from localStorage
   Object.keys(localStorage).forEach(k=>{
     if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k);
@@ -682,19 +680,20 @@ async function doLogout(){
 
 /* ═══ INIT ═══ */
 sb.auth.onAuthStateChange(async(ev,session)=>{
-  // Block the INITIAL_SESSION that fires immediately after logout redirect
+  // Ignore events that don't require re-initialization
+  if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED') return;
+  // Ignore INITIAL_SESSION right after logout redirect
   if(new URLSearchParams(location.search).get('logout')&&ev==='INITIAL_SESSION') return;
-  // Skip non-login events that fire AFTER app is already loaded
-  if(sessionStorage.getItem('_crm_init')==='1' && ev!=='SIGNED_OUT') return;
+
   if(session?.user){
+    // Already initialized for this user — skip
+    if(CU&&CU.id===session.user.id&&CUProfile) return;
     CU=session.user;
-    sessionStorage.setItem('_crm_init','1');
     document.getElementById('auth-screen').style.display='none';
     try{
-      // Global timeout: if init hangs more than 12s, show error
       const initTimeout=setTimeout(()=>{
-        toast('Tempo limite excedido. Verifique sua conexão e recarregue.','err');
-      },12000);
+        toast('Conexão lenta. Tente recarregar a página.','err');
+      },15000);
       await ensureProfile();
       await loadAll();
       clearTimeout(initTimeout);
@@ -704,17 +703,15 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
     } catch(e){
       console.error('Init error:',e);
       if(e?.message?.includes('não existe')||e?.message?.includes('does not exist')){
-        document.getElementById('auth-screen').style.display='none';
         document.getElementById('setup-warning').style.display='flex';
       } else {
         toast('Erro ao carregar: '+(e?.message||e),'err');
         document.getElementById('auth-screen').style.display='flex';
-        document.getElementById('a-err').textContent='Erro: '+(e?.message||'verifique o console F12');
+        document.getElementById('a-err').textContent='Erro: '+(e?.message||'tente novamente');
       }
     }
   } else {
-    _appInitialized=false;
-    CU=null;CUProfile=null;
+    CU=null; CUProfile=null;
     document.getElementById('auth-screen').style.display='flex';
   }
 });
