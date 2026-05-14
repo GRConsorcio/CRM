@@ -186,6 +186,18 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .ei{font-size:34px;margin-bottom:10px}
 .back-btn{display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:7px;padding:6px 12px;font-size:11.5px;cursor:pointer;font-family:inherit;margin-bottom:14px;transition:all .13s}
 .back-btn:hover{border-color:var(--gold-dim);color:var(--gold2)}
+.cor-opt{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .13s;flex-shrink:0}
+.cor-opt.selected{border-color:#fff;transform:scale(1.2)}
+.equipe-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;transition:all .15s}
+.equipe-card:hover{border-color:var(--gold-dim);transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.equipe-card-bar{height:4px}
+.equipe-card-body{padding:16px}
+.equipe-card-name{font-size:15px;font-weight:900;margin-bottom:4px}
+.equipe-card-desc{font-size:11.5px;color:var(--muted2);margin-bottom:12px}
+.equipe-card-meta{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted2)}
+.membro-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #191919}
+.membro-row:last-child{border-bottom:none}
+.membro-av{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#0a0a0a;flex-shrink:0}
 
 /* PROGRESS */
 .progress-bar{height:4px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden}
@@ -397,6 +409,21 @@ tr:hover td{background:rgba(255,255,255,.015)}
       </div>
     </div>
   </div>
+  <!-- EQUIPES -->
+  <div class="page" id="page-equipes">
+    <div class="filter-bar">
+      <input class="inp" id="eq-srch" placeholder="🔍 Buscar equipe..." oninput="renderEquipes()">
+      <button class="btn-primary" onclick="openModal('equipe')">+ Nova Equipe</button>
+    </div>
+    <div id="equipes-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px"></div>
+  </div>
+
+  <!-- EQUIPE DETALHE -->
+  <div class="page" id="page-equipe-detail">
+    <button class="back-btn" onclick="nav('equipes',null);renderNav()">← Voltar às Equipes</button>
+    <div id="equipe-detail-wrap"></div>
+  </div>
+
 </div>
 
 <!-- ═══ MODALS ═══ -->
@@ -560,6 +587,43 @@ tr:hover td{background:rgba(255,255,255,.015)}
 </div>
 
 <!-- Notify -->
+<!-- Modal Equipe -->
+<div class="modal-bg" id="modal-equipe">
+  <div class="modal">
+    <div class="modal-title" id="modal-equipe-ttl">Nova Equipe</div>
+    <div class="fld"><label>Nome da equipe *</label><input class="inp" id="eq-nome" placeholder="Ex: Equipe Sul"></div>
+    <div class="fld"><label>Descrição</label><input class="inp" id="eq-desc" placeholder="Ex: Vendedores da região sul"></div>
+    <div class="fld"><label>Cor</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px" id="eq-cores">
+        <div class="cor-opt selected" data-cor="#c9a84c" style="background:#c9a84c" onclick="selectCor(this)"></div>
+        <div class="cor-opt" data-cor="#60a5fa" style="background:#60a5fa" onclick="selectCor(this)"></div>
+        <div class="cor-opt" data-cor="#4ade80" style="background:#4ade80" onclick="selectCor(this)"></div>
+        <div class="cor-opt" data-cor="#f87171" style="background:#f87171" onclick="selectCor(this)"></div>
+        <div class="cor-opt" data-cor="#a78bfa" style="background:#a78bfa" onclick="selectCor(this)"></div>
+        <div class="cor-opt" data-cor="#fb923c" style="background:#fb923c" onclick="selectCor(this)"></div>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('equipe')">Cancelar</button>
+      <button class="btn-save" onclick="saveEquipe()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Add Membro -->
+<div class="modal-bg" id="modal-add-membro">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-title">Adicionar Membro</div>
+    <div class="fld"><label>Usuário</label>
+      <select class="inp" id="membro-user-sel"></select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('add-membro')">Cancelar</button>
+      <button class="btn-save" onclick="addMembro()">Adicionar</button>
+    </div>
+  </div>
+</div>
+
 <div class="notify" id="notify"></div>
 
 <script>
@@ -618,27 +682,24 @@ async function doLogout(){
 
 /* ═══ INIT ═══ */
 sb.auth.onAuthStateChange(async(ev,session)=>{
-  // Block after-logout INITIAL_SESSION
+  // Block the INITIAL_SESSION that fires immediately after logout redirect
   if(new URLSearchParams(location.search).get('logout')&&ev==='INITIAL_SESSION') return;
-  // Only init on true sign-in events — ignore TOKEN_REFRESHED, USER_UPDATED, etc.
-  const initEvents=['INITIAL_SESSION','SIGNED_IN'];
+  // Skip non-login events that fire AFTER app is already loaded
+  if(_appInitialized && ev!=='SIGNED_OUT') return;
   if(session?.user){
     CU=session.user;
-    // Already initialized: just keep CU updated, don't re-render
-    if(_appInitialized){
-      if(!initEvents.includes(ev)) return; // TOKEN_REFRESHED etc → skip
-      // SIGNED_IN after INITIAL_SESSION on reload → skip if already initialized
-      return;
-    }
     _appInitialized=true;
     document.getElementById('auth-screen').style.display='none';
     try{
+      // Global timeout: if init hangs more than 12s, show error
+      const initTimeout=setTimeout(()=>{
+        toast('Tempo limite excedido. Verifique sua conexão e recarregue.','err');
+      },12000);
       await ensureProfile();
       await loadAll();
+      clearTimeout(initTimeout);
       renderNav();
-      // Always render dashboard on load, then also render whichever page is active
       renderDashboard();
-      reRenderCurrent();
       setupRealtime();
     } catch(e){
       console.error('Init error:',e);
@@ -646,12 +707,13 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
         document.getElementById('auth-screen').style.display='none';
         document.getElementById('setup-warning').style.display='flex';
       } else {
-        toast('Erro: '+(e?.message||e),'err');
+        toast('Erro ao carregar: '+(e?.message||e),'err');
         document.getElementById('auth-screen').style.display='flex';
-        document.getElementById('a-err').textContent='Erro ao carregar: '+(e?.message||'verifique o console F12');
+        document.getElementById('a-err').textContent='Erro: '+(e?.message||'verifique o console F12');
       }
     }
   } else {
+    _appInitialized=false;
     CU=null;CUProfile=null;
     document.getElementById('auth-screen').style.display='flex';
   }
@@ -680,7 +742,11 @@ async function ensureProfile(){
 
 async function loadAll(){
   const isAdm=isAdminOrCoord();
-  const safe=async(q)=>{try{const r=await q;return r;}catch(e){console.warn('Query error:',e);return{data:[]};}};
+  const safe=async(q)=>{try{
+    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000));
+    const r=await Promise.race([q,tOut]);
+    return r;
+  }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
   const [lu,lh,lt,lv,ld]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
     safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false})),
@@ -704,6 +770,8 @@ async function loadAll(){
     toast('⚠️ Tabelas não encontradas. Execute o SQL de setup no Supabase.','err');
     throw new Error('Tabelas não criadas. Execute o crm-setup-completo.sql no Supabase.');
   }
+  // Load equipes (non-blocking)
+  loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
   populateSelects();
 }
 
@@ -746,14 +814,18 @@ function renderNav(){
   }
   html+=`<div class="nav-sect">Agenda</div>
     <div class="nav-item" onclick="nav('tarefas',this)" title="Tarefas"><span class="nav-icon">✅</span><span class="nav-label">Tarefas</span></div>`;
+  if(admin){
+    html+=`<div class="nav-sect">Gestão</div>
+      <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">🏅</span><span class="nav-label">Equipes</span></div>`;
+  }
   if(adm){
     html+=`<div class="nav-sect">Administração</div>
-      <div class="nav-item" onclick="nav('equipe',this)" title="Equipe"><span class="nav-icon">🛡️</span><span class="nav-label">Equipe</span></div>`;
+      <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">🛡️</span><span class="nav-label">Usuários</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
 }
 
-const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Equipe','lead-detail':'Detalhe do Lead'};
+const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead'};
 function nav(page,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
@@ -767,6 +839,7 @@ function nav(page,el){
   if(page==='distribuicao') renderDistribuicao();
   if(page==='tarefas') renderTarefas();
   if(page==='equipe') renderEquipe();
+  if(page==='equipes') renderEquipes();
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 
@@ -1154,6 +1227,7 @@ function openModal(type){
     const semVend=allLeads.filter(l=>!l.responsavel_id);
     sel('dm-lead',semVend.map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
   }
+  if(type==='equipe') openModal_equipe();
   document.getElementById('modal-'+type).classList.add('on');
 }
 function closeModal(type){document.getElementById('modal-'+type).classList.remove('on');}
@@ -1427,6 +1501,7 @@ function toast(msg,type='ok'){
 let realtimeChannel = null;
 
 function setupRealtime(){
+  try{
   // Remove existing channel if any
   if(realtimeChannel){
     sb.removeChannel(realtimeChannel);
@@ -1463,9 +1538,10 @@ function setupRealtime(){
       } else if(status==='CLOSED'||status==='CHANNEL_ERROR'){
         console.warn('⚠️ Realtime desconectado, reconectando...');
         setRealtimeIndicator(false);
-        setTimeout(setupRealtime, 3000);
+        setTimeout(setupRealtime, 5000);
       }
     });
+  }catch(e){console.warn('Realtime setup error:',e.message);}
 }
 
 function setRealtimeIndicator(on){
@@ -1543,7 +1619,225 @@ function reRenderCurrent(){
   else if(document.getElementById('page-meus-leads').classList.contains('on')) renderMeusLeads();
   else if(document.getElementById('page-funil').classList.contains('on')) renderFunil();
   else if(document.getElementById('page-distribuicao').classList.contains('on')) renderDistribuicao();
-  else renderDashboard(); // fallback: se nenhuma página ativa, renderiza o dashboard
+}
+
+
+/* ═══ EQUIPES ═══ */
+let allEquipes=[];
+let allMembroEquipes=[];
+let detailEquipeId=null;
+let editEquipeId=null;
+let corSelecionada='#c9a84c';
+
+async function loadEquipes(){
+  try{
+    const [eq,mb]=await Promise.all([
+      sb.from('crm_equipes').select('*').order('created_at',{ascending:false}),
+      sb.from('crm_equipe_membros').select('*'),
+    ]);
+    allEquipes=eq.data||[];
+    allMembroEquipes=mb.data||[];
+  } catch(e){
+    console.warn('Equipes tables not ready:',e.message);
+    allEquipes=[];allMembroEquipes=[];
+  }
+}
+
+function selectCor(el){
+  document.querySelectorAll('.cor-opt').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+  corSelecionada=el.dataset.cor;
+}
+
+function renderEquipes(){
+  const q=(document.getElementById('eq-srch')?.value||'').toLowerCase();
+  const f=allEquipes.filter(e=>!q||e.nome.toLowerCase().includes(q));
+  const grid=document.getElementById('equipes-grid');
+  if(!grid)return;
+  if(f.length===0){
+    grid.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="ei">🏅</div>Nenhuma equipe criada ainda</div>';
+    return;
+  }
+  grid.innerHTML=f.map(eq=>{
+    const membros=allMembroEquipes.filter(m=>m.equipe_id===eq.id);
+    const leads=allLeads.filter(l=>membros.some(m=>m.user_id===l.responsavel_id)).length;
+    const fechados=allLeads.filter(l=>l.status==='Fechado'&&membros.some(m=>m.user_id===l.responsavel_id)).length;
+    return`<div class="equipe-card" onclick="openEquipeDetail('${eq.id}')">
+      <div class="equipe-card-bar" style="background:${eq.cor||'var(--gold)'}"></div>
+      <div class="equipe-card-body">
+        <div class="equipe-card-name" style="color:${eq.cor||'var(--gold2)'}">${eq.nome}</div>
+        <div class="equipe-card-desc">${eq.descricao||'Sem descrição'}</div>
+        <div class="equipe-card-meta">
+          <span>👥 ${membros.length} membro${membros.length!==1?'s':''}</span>
+          <span>📋 ${leads} lead${leads!==1?'s':''}</span>
+          <span style="color:var(--green)">✅ ${fechados}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function openEquipeDetail(id){
+  detailEquipeId=id;
+  const eq=allEquipes.find(e=>e.id===id);
+  if(!eq)return;
+  const membros=allMembroEquipes.filter(m=>m.equipe_id===id);
+  const membrosUsers=membros.map(m=>allUsers.find(u=>u.user_id===m.user_id)).filter(Boolean);
+  const leads=allLeads.filter(l=>membros.some(m=>m.user_id===l.responsavel_id));
+  const fechados=leads.filter(l=>l.status==='Fechado').length;
+
+  document.getElementById('equipe-detail-wrap').innerHTML=`
+    <div class="panel">
+      <div style="display:flex;align-items:center;gap:14px;padding:18px 20px;border-bottom:1px solid var(--border)">
+        <div style="width:46px;height:46px;border-radius:12px;background:${eq.cor||'var(--gold)'};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#0a0a0a">${eq.nome[0].toUpperCase()}</div>
+        <div style="flex:1">
+          <div style="font-size:18px;font-weight:900;color:${eq.cor||'var(--gold2)'}">${eq.nome}</div>
+          <div style="font-size:11.5px;color:var(--muted2);margin-top:2px">${eq.descricao||'—'}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="act" onclick="editEquipe('${eq.id}')">✏️ Editar</button>
+          <button class="act red" onclick="delEquipe('${eq.id}')">🗑️</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid var(--border)">
+        <div style="padding:14px 20px;border-right:1px solid var(--border)">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:4px">Membros</div>
+          <div style="font-size:22px;font-weight:900;color:${eq.cor||'var(--gold2)'}">${membros.length}</div>
+        </div>
+        <div style="padding:14px 20px;border-right:1px solid var(--border)">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:4px">Total Leads</div>
+          <div style="font-size:22px;font-weight:900">${leads.length}</div>
+        </div>
+        <div style="padding:14px 20px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:4px">Fechamentos</div>
+          <div style="font-size:22px;font-weight:900;color:var(--green)">${fechados}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head">
+        <div class="panel-title">👥 Membros</div>
+        <button class="btn-sm" onclick="openAddMembro('${eq.id}')">+ Adicionar</button>
+      </div>
+      <div class="panel-body">
+        ${membrosUsers.length===0
+          ?'<div class="empty"><div class="ei">👥</div>Nenhum membro ainda</div>'
+          :membrosUsers.map(u=>{
+            const uLeads=allLeads.filter(l=>l.responsavel_id===u.user_id).length;
+            const uFechs=allLeads.filter(l=>l.responsavel_id===u.user_id&&l.status==='Fechado').length;
+            const mb=membros.find(m=>m.user_id===u.user_id);
+            return`<div class="membro-row">
+              <div class="membro-av" style="background:${eq.cor||'var(--gold)'}">${u.name[0].toUpperCase()}</div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:700">${u.name}</div>
+                <div style="font-size:10.5px;color:var(--muted2)">${u.role} · ${uLeads} leads · ${uFechs} fechados</div>
+              </div>
+              <button class="act red" onclick="removeMembro('${mb?.id}','${id}')">✕</button>
+            </div>`;
+          }).join('')}
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:0">
+      <div class="panel-head"><div class="panel-title">📋 Leads da Equipe</div></div>
+      <div class="tbl-wrap">
+        <table><thead><tr><th>Nome</th><th>Interesse</th><th>Status</th><th>Vendedor</th></tr></thead>
+        <tbody>
+          ${leads.length===0
+            ?'<tr><td colspan="4"><div class="empty"><div class="ei">📋</div>Nenhum lead</div></td></tr>'
+            :leads.map(l=>{
+              const u=allUsers.find(u=>u.user_id===l.responsavel_id);
+              return`<tr>
+                <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','equipe-detail')">${l.nome}</td>
+                <td>${l.interesse||'—'}</td><td>${sBadge(l.status)}</td>
+                <td style="font-size:11.5px">${u?.name||'—'}</td>
+              </tr>`;
+            }).join('')}
+        </tbody></table>
+      </div>
+    </div>
+  `;
+  nav('equipe-detail',null);
+}
+
+function openAddMembro(equipeId){
+  detailEquipeId=equipeId;
+  const membros=allMembroEquipes.filter(m=>m.equipe_id===equipeId).map(m=>m.user_id);
+  const disponiveis=allUsers.filter(u=>!membros.includes(u.user_id));
+  sel('membro-user-sel',disponiveis.map(u=>`<option value="${u.user_id}">${u.name} (${u.role})</option>`).join(''));
+  openModal('add-membro');
+}
+
+async function addMembro(){
+  const userId=v('membro-user-sel');
+  if(!userId){toast('Selecione um usuário','err');return;}
+  const{error}=await sb.from('crm_equipe_membros').insert({equipe_id:detailEquipeId,user_id:userId,created_at:new Date().toISOString()});
+  if(error){toast('Erro: '+error.message,'err');return;}
+  const{data}=await sb.from('crm_equipe_membros').select('*');
+  allMembroEquipes=data||[];
+  closeModal('add-membro');
+  toast('Membro adicionado!','ok');
+  openEquipeDetail(detailEquipeId);
+}
+
+async function removeMembro(membroId,equipeId){
+  if(!confirm('Remover membro da equipe?'))return;
+  await sb.from('crm_equipe_membros').delete().eq('id',membroId);
+  allMembroEquipes=allMembroEquipes.filter(m=>m.id!==membroId);
+  toast('Membro removido','ok');
+  openEquipeDetail(equipeId);
+}
+
+function openModal_equipe(){
+  editEquipeId=null;
+  document.getElementById('modal-equipe-ttl').textContent='Nova Equipe';
+  sv('eq-nome','');sv('eq-desc','');
+  corSelecionada='#c9a84c';
+  document.querySelectorAll('.cor-opt').forEach((c,i)=>c.classList.toggle('selected',i===0));
+}
+
+async function saveEquipe(){
+  const nome=v('eq-nome');
+  if(!nome){toast('Informe o nome da equipe','err');return;}
+  const payload={nome,descricao:v('eq-desc')||null,cor:corSelecionada,criado_por:CU.id};
+  if(editEquipeId){
+    await sb.from('crm_equipes').update(payload).eq('id',editEquipeId);
+    const i=allEquipes.findIndex(e=>e.id===editEquipeId);
+    if(i>-1) Object.assign(allEquipes[i],payload);
+    toast('Equipe atualizada!','ok');
+  } else {
+    const{data,error}=await sb.from('crm_equipes').insert({...payload,created_at:new Date().toISOString()}).select().maybeSingle();
+    if(error){toast('Erro: '+error.message,'err');return;}
+    if(data) allEquipes.unshift(data);
+    toast('Equipe criada!','ok');
+  }
+  editEquipeId=null;
+  closeModal('equipe');
+  renderEquipes();
+}
+
+function editEquipe(id){
+  const eq=allEquipes.find(e=>e.id===id);if(!eq)return;
+  editEquipeId=id;
+  document.getElementById('modal-equipe-ttl').textContent='Editar Equipe';
+  sv('eq-nome',eq.nome);sv('eq-desc',eq.descricao||'');
+  corSelecionada=eq.cor||'#c9a84c';
+  document.querySelectorAll('.cor-opt').forEach(c=>{
+    c.classList.toggle('selected',c.dataset.cor===corSelecionada);
+  });
+  openModal('equipe');
+}
+
+async function delEquipe(id){
+  if(!confirm('Remover equipe e todos os membros?'))return;
+  await sb.from('crm_equipe_membros').delete().eq('equipe_id',id);
+  await sb.from('crm_equipes').delete().eq('id',id);
+  allEquipes=allEquipes.filter(e=>e.id!==id);
+  allMembroEquipes=allMembroEquipes.filter(m=>m.equipe_id!==id);
+  toast('Equipe removida','ok');
+  nav('equipes',null);
+  renderEquipes();
 }
 
 // Close modals on bg click
