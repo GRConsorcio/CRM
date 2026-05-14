@@ -583,7 +583,8 @@ async function doAuth(){
     if(!name){err.textContent='Informe seu nome.';return;}
     const{error}=await sb.auth.signUp({email,password:pass,options:{data:{full_name:name}}});
     if(error){err.textContent=error.message;return;}
-    err.style.color='var(--green)';err.textContent='Cadastro realizado! Verifique o e-mail se necessário.';
+    err.style.color='var(--green)';err.textContent='Cadastro realizado! Se necessário, verifique seu e-mail para confirmar.';
+    setTimeout(()=>{setAuthMode('login');},3000);
   } else {
     const{error}=await sb.auth.signInWithPassword({email,password:pass});
     if(error){err.textContent='E-mail ou senha incorretos.';return;}
@@ -596,10 +597,15 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
   if(session?.user){
     CU=session.user;
     document.getElementById('auth-screen').style.display='none';
-    await ensureProfile();
-    await loadAll();
-    renderNav();
-    renderDashboard();
+    try{
+      await ensureProfile();
+      await loadAll();
+      renderNav();
+      renderDashboard();
+    } catch(e){
+      console.error('Init error:',e);
+      toast('Erro ao carregar dados: '+e.message,'err');
+    }
   } else {
     document.getElementById('auth-screen').style.display='flex';
   }
@@ -607,11 +613,11 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
 
 async function ensureProfile(){
   const name=CU.user_metadata?.full_name||CU.email.split('@')[0];
-  const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).single();
+  const{data,error}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
   if(!data){
     await sb.from('crm_users').insert({user_id:CU.id,name,email:CU.email,role:'vendedor'});
-    const{data:d2}=await sb.from('crm_users').select('*').eq('user_id',CU.id).single();
-    CUProfile=d2;
+    const{data:d2}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
+    CUProfile=d2||{user_id:CU.id,name,email:CU.email,role:'vendedor'};
   } else {
     CUProfile=data;
   }
@@ -623,7 +629,7 @@ async function ensureProfile(){
 }
 
 async function loadAll(){
-  const isAdmin=isAdminOrCoord();
+  const isAdm=isAdminOrCoord();
   const [lu,lh,lt,lv,ld]=await Promise.all([
     sb.from('crm_users').select('*').eq('ativo',true),
     sb.from('crm_historico').select('*').order('created_at',{ascending:false}),
@@ -631,7 +637,7 @@ async function loadAll(){
     sb.from('crm_vendas').select('*').order('created_at',{ascending:false}),
     sb.from('crm_documentos').select('*').order('created_at',{ascending:false}),
   ]);
-  const leadsQ=isAdmin
+  const leadsQ=isAdm
     ?sb.from('crm_leads').select('*').order('created_at',{ascending:false})
     :sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
   const{data:ll}=await leadsQ;
@@ -645,6 +651,7 @@ async function loadAll(){
 }
 
 function isAdminOrCoord(){return CUProfile?.role==='admin'||CUProfile?.role==='coordenador';}
+
 function isAdmin(){return CUProfile?.role==='admin';}
 
 function populateSelects(){
@@ -981,7 +988,7 @@ function renderDistribuicao(){
 async function quickDist(leadId){
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
-  const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).single();
+  const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   const idx=(dc?.ultimo_vendedor_idx||0)%vends.length;
   const vend=vends[idx];
   await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString()}).eq('id',leadId);
@@ -997,7 +1004,7 @@ async function distAutoAll(){
   if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
-  const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).single();
+  const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
     const vend=vends[idx%vends.length];
@@ -1110,7 +1117,7 @@ async function saveLead(){
     if(i>-1) Object.assign(allLeads[i],payload);
   } else {
     payload.created_at=new Date().toISOString();
-    const{data}=await sb.from('crm_leads').insert(payload).select().single();
+    const{data}=await sb.from('crm_leads').insert(payload).select().maybeSingle();
     if(data) allLeads.unshift(data);
   }
   closeModal('lead');
@@ -1148,7 +1155,7 @@ async function delLead(id){
 async function saveHist(){
   const desc=document.getElementById('h-desc').value.trim();
   if(!desc){toast('Informe a descrição','err');return;}
-  const{data}=await sb.from('crm_historico').insert({lead_id:detailLeadId,user_id:CU.id,tipo:v('h-tipo'),descricao:desc,created_at:new Date().toISOString()}).select().single();
+  const{data}=await sb.from('crm_historico').insert({lead_id:detailLeadId,user_id:CU.id,tipo:v('h-tipo'),descricao:desc,created_at:new Date().toISOString()}).select().maybeSingle();
   if(data) allHist.unshift(data);
   document.getElementById('h-desc').value='';
   closeModal('hist');
@@ -1169,7 +1176,7 @@ async function saveTarefa(){
     lead_id:v('ta-lead')||null,responsavel_id:v('ta-resp')||null,
     descricao:desc,prazo:v('ta-prazo')||null,concluida:false,
     user_id:CU.id,created_at:new Date().toISOString()
-  }).select().single();
+  }).select().maybeSingle();
   if(data) allTasks.push(data);
   closeModal('tarefa');toast('Tarefa criada!','ok');
   if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
@@ -1220,7 +1227,7 @@ async function saveVenda(){
     observacoes:v('v-obs')||null,
     status_venda:'Pendente',created_at:new Date().toISOString()
   };
-  const{data:vd,error}=await sb.from('crm_vendas').insert(payload).select().single();
+  const{data:vd,error}=await sb.from('crm_vendas').insert(payload).select().maybeSingle();
   if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
   allVendas.unshift(vd);
 
@@ -1296,7 +1303,7 @@ async function distAuto(){
   const qtd=parseInt(v('da-qtd'))||semVend.length;
   semVend=semVend.slice(0,qtd);
   if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
-  const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).single();
+  const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
     const vend=vends[idx%vends.length];
