@@ -633,7 +633,7 @@ const {createClient}=supabase;
 const sb=createClient(SUPA_URL,SUPA_KEY);
 
 let CU=null,CUProfile=null;
-let _appInitialized=false; // guard: init once per session
+// _appInitialized stored in sessionStorage to survive GitHub Pages redirects
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let pendingFiles=[];
@@ -671,7 +671,7 @@ async function doLogout(){
     if(realtimeChannel) sb.removeChannel(realtimeChannel);
     await sb.auth.signOut({scope:'local'});
   } catch(e){}
-  _appInitialized=false;
+  sessionStorage.removeItem('_crm_init');
   // Clear all Supabase session keys from localStorage
   Object.keys(localStorage).forEach(k=>{
     if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k);
@@ -685,10 +685,10 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
   // Block the INITIAL_SESSION that fires immediately after logout redirect
   if(new URLSearchParams(location.search).get('logout')&&ev==='INITIAL_SESSION') return;
   // Skip non-login events that fire AFTER app is already loaded
-  if(_appInitialized && ev!=='SIGNED_OUT') return;
+  if(sessionStorage.getItem('_crm_init')==='1' && ev!=='SIGNED_OUT') return;
   if(session?.user){
     CU=session.user;
-    _appInitialized=true;
+    sessionStorage.setItem('_crm_init','1');
     document.getElementById('auth-screen').style.display='none';
     try{
       // Global timeout: if init hangs more than 12s, show error
@@ -747,19 +747,18 @@ async function loadAll(){
     const r=await Promise.race([q,tOut]);
     return r;
   }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
-  const [lu,lh,lt,lv,ld]=await Promise.all([
+  const leadsQ=isAdm
+    ?sb.from('crm_leads').select('*').order('created_at',{ascending:false})
+    :sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+  const [lu,lh,lt,lv,ld,ll]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
     safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false})),
     safe(sb.from('crm_tarefas').select('*').order('prazo',{ascending:true})),
     safe(sb.from('crm_vendas').select('*').order('created_at',{ascending:false})),
     safe(sb.from('crm_documentos').select('*').order('created_at',{ascending:false})),
+    safe(leadsQ),
   ]);
-  const leadsQ=isAdm
-    ?sb.from('crm_leads').select('*').order('created_at',{ascending:false})
-    :sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
-  const{data:ll,error:le}=await leadsQ;
-  if(le) console.warn('Leads query error:',le.message);
-  allLeads=ll||[];
+  allLeads=ll.data||[];
   allUsers=lu.data||[];
   allHist=lh.data||[];
   allTasks=lt.data||[];
