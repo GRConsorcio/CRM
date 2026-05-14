@@ -569,6 +569,7 @@ const {createClient}=supabase;
 const sb=createClient(SUPA_URL,SUPA_KEY);
 
 let CU=null,CUProfile=null;
+let _appInitialized=false; // guard: init once per session
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let pendingFiles=[];
@@ -606,6 +607,7 @@ async function doLogout(){
     if(realtimeChannel) sb.removeChannel(realtimeChannel);
     await sb.auth.signOut({scope:'local'});
   } catch(e){}
+  _appInitialized=false;
   // Clear all Supabase session keys from localStorage
   Object.keys(localStorage).forEach(k=>{
     if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k);
@@ -616,16 +618,25 @@ async function doLogout(){
 
 /* ═══ INIT ═══ */
 sb.auth.onAuthStateChange(async(ev,session)=>{
-  // Ignore INITIAL_SESSION event right after logout redirect
+  // Block after-logout INITIAL_SESSION
   if(new URLSearchParams(location.search).get('logout')&&ev==='INITIAL_SESSION') return;
+  // Only init on true sign-in events — ignore TOKEN_REFRESHED, USER_UPDATED, etc.
+  const initEvents=['INITIAL_SESSION','SIGNED_IN'];
   if(session?.user){
     CU=session.user;
+    // Already initialized: just keep CU updated, don't re-render
+    if(_appInitialized){
+      if(!initEvents.includes(ev)) return; // TOKEN_REFRESHED etc → skip
+      // SIGNED_IN after INITIAL_SESSION on reload → skip if already initialized
+      return;
+    }
+    _appInitialized=true;
     document.getElementById('auth-screen').style.display='none';
     try{
       await ensureProfile();
       await loadAll();
       renderNav();
-      renderDashboard();
+      reRenderCurrent(); // FIX 2: render current page, not always dashboard
       setupRealtime();
     } catch(e){
       console.error('Init error:',e);
@@ -667,8 +678,7 @@ async function ensureProfile(){
 
 async function loadAll(){
   const isAdm=isAdminOrCoord();
-  const safe=async(q)=>{try{const r=await q;if(r.error&&r.error.message?.includes('does not exist'))throw new Error(r.error.message);return r;}catch(e){console.warn('Query error:',e);if(e?.message?.includes('does not exist'))throw e;return{data:[]};}};
-
+  const safe=async(q)=>{try{const r=await q;return r;}catch(e){console.warn('Query error:',e);return{data:[]};}};
   const [lu,lh,lt,lv,ld]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
     safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false})),
@@ -687,6 +697,11 @@ async function loadAll(){
   allTasks=lt.data||[];
   allVendas=lv.data||[];
   allDocs=ld.data||[];
+  // Warn if tables missing
+  if(lu.error?.message?.includes('does not exist')){
+    toast('⚠️ Tabelas não encontradas. Execute o SQL de setup no Supabase.','err');
+    throw new Error('Tabelas não criadas. Execute o crm-setup-completo.sql no Supabase.');
+  }
   populateSelects();
 }
 
@@ -870,7 +885,7 @@ async function openDetail(id,from){
         <div class="detail-meta">${lead.origem||'—'} · ${sBadge(lead.status)}</div>
       </div>
       <div style="display:flex;gap:8px">
-        ${canEdit?`<button class="act green" onclick="vendaLeadId='${id}';openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
+        ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
         ${canEdit?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
       </div>
     </div>
@@ -1032,11 +1047,7 @@ async function quickDist(leadId){
   const idx=(dc?.ultimo_vendedor_idx||0)%vends.length;
   const vend=vends[idx];
   await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString()}).eq('id',leadId);
-  if(dc?.id){
-    await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()}).eq('id',dc.id);
-  } else {
-    await sb.from('crm_distribuicao').insert({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()});
-  }
+  await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()}).eq('id',dc.id);
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1){allLeads[i].responsavel_id=vend.user_id;}
   toast(`Lead atribuído a ${vend.name}!`,'ok');
@@ -1057,11 +1068,7 @@ async function distAutoAll(){
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
     idx++;
   }
-  if(dc?.id){
-    await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
-  } else {
-    await sb.from('crm_distribuicao').insert({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()});
-  }
+  await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
   toast(`${semVend.length} lead(s) distribuídos!`,'ok');
   renderDistribuicao();
 }
@@ -1161,18 +1168,29 @@ async function saveLead(){
   };
   if(editLeadId){
     await sb.from('crm_leads').update(payload).eq('id',editLeadId);
+    // Update local immediately for snappy UX; realtime will confirm
     const i=allLeads.findIndex(l=>l.id===editLeadId);
     if(i>-1) Object.assign(allLeads[i],payload);
+    closeModal('lead');
+    toast('Lead atualizado!','ok');
+    editLeadId=null;
+    renderLeads();
+    if(isAdminOrCoord()) populateSelects();
   } else {
+    // INSERT: don't add to local array — realtime syncLead() handles it
+    // This prevents duplicates (local insert + realtime event = 2 entries)
     payload.created_at=new Date().toISOString();
-    const{data}=await sb.from('crm_leads').insert(payload).select().maybeSingle();
-    if(data) allLeads.unshift(data);
+    const{data,error}=await sb.from('crm_leads').insert(payload).select().maybeSingle();
+    if(error){toast('Erro ao salvar lead: '+error.message,'err');return;}
+    // Fallback: if realtime is not connected, add manually
+    if(data&&!realtimeChannel){
+      if(!allLeads.find(l=>l.id===data.id)) allLeads.unshift(data);
+    }
+    closeModal('lead');
+    toast('Lead criado!','ok');
+    editLeadId=null;
+    if(isAdminOrCoord()) populateSelects();
   }
-  closeModal('lead');
-  toast(editLeadId?'Lead atualizado!':'Lead criado!','ok');
-  editLeadId=null;
-  renderLeads();
-  if(isAdminOrCoord()) populateSelects();
 }
 
 function editLead(id){
@@ -1360,11 +1378,7 @@ async function distAuto(){
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
     idx++;
   }
-  if(dc?.id){
-    await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
-  } else {
-    await sb.from('crm_distribuicao').insert({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()});
-  }
+  await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
   closeModal('dist-auto');
   toast(`${semVend.length} lead(s) distribuídos!`,'ok');
   renderDistribuicao();
@@ -1413,9 +1427,8 @@ function setupRealtime(){
 
   realtimeChannel = sb.channel('crm-realtime')
     .on('postgres_changes',{event:'*',schema:'public',table:'crm_leads'},async(payload)=>{
-      await syncLead(payload);
-      reRenderCurrent();
-      showRealtimeToast('leads');
+      await syncLead(payload); // syncLead handles INSERT render internally
+      if(payload.eventType!=='INSERT') reRenderCurrent(); // UPDATE/DELETE: re-render
     })
     .on('postgres_changes',{event:'*',schema:'public',table:'crm_historico'},async(payload)=>{
       await syncHist(payload);
@@ -1463,10 +1476,19 @@ function showRealtimeToast(table){
 async function syncLead(payload){
   const {eventType,new:n,old:o}=payload;
   if(eventType==='INSERT'){
-    // Only add if admin or it's assigned to current user
+    // Only add if admin/coord or assigned to current user
     if(isAdminOrCoord()||n.responsavel_id===CU.id){
-      if(!allLeads.find(l=>l.id===n.id)) allLeads.unshift(n);
+      if(!allLeads.find(l=>l.id===n.id)){
+        allLeads.unshift(n);
+        // Render inline without waiting for reRenderCurrent caller
+        if(document.getElementById('page-leads').classList.contains('on')) renderLeads();
+        else if(document.getElementById('page-meus-leads').classList.contains('on')) renderMeusLeads();
+        else if(document.getElementById('page-funil').classList.contains('on')) renderFunil();
+        else if(document.getElementById('page-distribuicao').classList.contains('on')) renderDistribuicao();
+      }
     }
+    populateSelects();
+    return; // already rendered above, skip reRenderCurrent caller
   } else if(eventType==='UPDATE'){
     const idx=allLeads.findIndex(l=>l.id===n.id);
     if(idx>-1){
