@@ -1181,15 +1181,20 @@ async function saveLead(){
     // This prevents duplicates (local insert + realtime event = 2 entries)
     payload.created_at=new Date().toISOString();
     const{data,error}=await sb.from('crm_leads').insert(payload).select().maybeSingle();
-    if(error){toast('Erro ao salvar lead: '+error.message,'err');return;}
-    // Fallback: if realtime is not connected, add manually
-    if(data&&!realtimeChannel){
+    if(error){
+      console.error('saveLead error:',error);
+      toast('Erro ao salvar: '+error.message,'err');
+      return;
+    }
+    // Always add locally — realtime deduplicates via id check
+    if(data){
       if(!allLeads.find(l=>l.id===data.id)) allLeads.unshift(data);
     }
     closeModal('lead');
     toast('Lead criado!','ok');
     editLeadId=null;
-    if(isAdminOrCoord()) populateSelects();
+    renderLeads();
+    populateSelects();
   }
 }
 
@@ -1221,7 +1226,8 @@ async function delLead(id){
 async function saveHist(){
   const desc=document.getElementById('h-desc').value.trim();
   if(!desc){toast('Informe a descrição','err');return;}
-  const{data}=await sb.from('crm_historico').insert({lead_id:detailLeadId,user_id:CU.id,tipo:v('h-tipo'),descricao:desc,created_at:new Date().toISOString()}).select().maybeSingle();
+  const{data,error:he}=await sb.from('crm_historico').insert({lead_id:detailLeadId,user_id:CU.id,tipo:v('h-tipo'),descricao:desc,created_at:new Date().toISOString()}).select().maybeSingle();
+  if(he){toast('Erro ao salvar contato: '+he.message,'err');return;}
   if(data) allHist.unshift(data);
   document.getElementById('h-desc').value='';
   closeModal('hist');
