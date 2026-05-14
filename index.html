@@ -661,8 +661,28 @@ async function doAuth(){
     err.style.color='var(--green)';err.textContent='Cadastro realizado! Se necessário, verifique seu e-mail para confirmar.';
     setTimeout(()=>{setAuthMode('login');},3000);
   } else {
-    const{error}=await sb.auth.signInWithPassword({email,password:pass});
+    const btn=document.getElementById('a-btn');
+    btn.textContent='Entrando...';btn.disabled=true;
+    const{data,error}=await sb.auth.signInWithPassword({email,password:pass});
+    btn.textContent='Entrar';btn.disabled=false;
     if(error){err.textContent='E-mail ou senha incorretos.';return;}
+    // Manually trigger init if onAuthStateChange doesn't fire (stale state)
+    if(data?.user&&(!CU||!CUProfile)){
+      CU=data.user;
+      document.getElementById('auth-screen').style.display='none';
+      try{
+        await ensureProfile();
+        await loadAll();
+        renderNav();
+        renderDashboard();
+        setupRealtime();
+      } catch(e){
+        toast('Erro ao carregar: '+(e?.message||e),'err');
+      }
+    } else if(data?.user&&CU&&CUProfile){
+      // Already loaded — just hide auth screen
+      document.getElementById('auth-screen').style.display='none';
+    }
   }
 }
 async function doLogout(){
