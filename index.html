@@ -590,10 +590,23 @@ async function doAuth(){
     if(error){err.textContent='E-mail ou senha incorretos.';return;}
   }
 }
-async function doLogout(){await sb.auth.signOut();location.reload();}
+async function doLogout(){
+  try{
+    if(realtimeChannel) sb.removeChannel(realtimeChannel);
+    await sb.auth.signOut({scope:'local'});
+  } catch(e){}
+  // Clear all Supabase session keys from localStorage
+  Object.keys(localStorage).forEach(k=>{
+    if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k);
+  });
+  // Force full page reload without cache
+  window.location.href=window.location.pathname+'?logout='+Date.now();
+}
 
 /* ═══ INIT ═══ */
 sb.auth.onAuthStateChange(async(ev,session)=>{
+  // Ignore INITIAL_SESSION event right after logout redirect
+  if(new URLSearchParams(location.search).get('logout')&&ev==='INITIAL_SESSION') return;
   if(session?.user){
     CU=session.user;
     document.getElementById('auth-screen').style.display='none';
@@ -602,11 +615,13 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
       await loadAll();
       renderNav();
       renderDashboard();
+      setupRealtime();
     } catch(e){
       console.error('Init error:',e);
       toast('Erro ao carregar dados: '+e.message,'err');
     }
   } else {
+    CU=null;CUProfile=null;
     document.getElementById('auth-screen').style.display='flex';
   }
 });
@@ -1346,6 +1361,121 @@ function toast(msg,type='ok'){
   const n=document.getElementById('notify');
   n.textContent=msg;n.className=`notify ${type} show`;
   setTimeout(()=>n.classList.remove('show'),3000);
+}
+
+
+/* ═══ REALTIME SUBSCRIPTIONS ═══ */
+let realtimeChannel = null;
+
+function setupRealtime(){
+  // Remove existing channel if any
+  if(realtimeChannel){
+    sb.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+
+  realtimeChannel = sb.channel('crm-realtime')
+    .on('postgres_changes',{event:'*',schema:'public',table:'crm_leads'},async(payload)=>{
+      await syncLead(payload);
+      reRenderCurrent();
+      showRealtimeToast('leads');
+    })
+    .on('postgres_changes',{event:'*',schema:'public',table:'crm_historico'},async(payload)=>{
+      await syncHist(payload);
+      if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
+    })
+    .on('postgres_changes',{event:'*',schema:'public',table:'crm_tarefas'},async(payload)=>{
+      await syncTask(payload);
+      if(document.getElementById('page-tarefas').classList.contains('on')) renderTarefas();
+      if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
+    })
+    .on('postgres_changes',{event:'*',schema:'public',table:'crm_vendas'},async(payload)=>{
+      await syncVenda(payload);
+    })
+    .on('postgres_changes',{event:'*',schema:'public',table:'crm_users'},async(payload)=>{
+      const{data}=await sb.from('crm_users').select('*').eq('ativo',true);
+      allUsers=data||[];
+      populateSelects();
+      if(document.getElementById('page-equipe').classList.contains('on')) renderEquipe();
+    })
+    .subscribe((status)=>{
+      if(status==='SUBSCRIBED'){
+        console.log('✅ Realtime conectado');
+        setRealtimeIndicator(true);
+      } else if(status==='CLOSED'||status==='CHANNEL_ERROR'){
+        console.warn('⚠️ Realtime desconectado, reconectando...');
+        setRealtimeIndicator(false);
+        setTimeout(setupRealtime, 3000);
+      }
+    });
+}
+
+function setRealtimeIndicator(on){
+  const p=document.querySelector('.pulse');
+  if(p) p.style.background=on?'var(--green)':'var(--red)';
+}
+
+let realtimeToastTimer=null;
+function showRealtimeToast(table){
+  // Don't show toast for changes made by current user (avoid double notification)
+  if(realtimeToastTimer) return;
+  realtimeToastTimer=setTimeout(()=>{realtimeToastTimer=null;},2000);
+}
+
+/* Sync helpers — update local arrays without full reload */
+async function syncLead(payload){
+  const {eventType,new:n,old:o}=payload;
+  if(eventType==='INSERT'){
+    // Only add if admin or it's assigned to current user
+    if(isAdminOrCoord()||n.responsavel_id===CU.id){
+      if(!allLeads.find(l=>l.id===n.id)) allLeads.unshift(n);
+    }
+  } else if(eventType==='UPDATE'){
+    const idx=allLeads.findIndex(l=>l.id===n.id);
+    if(idx>-1){
+      // Vendedor: remove from local if unassigned from them
+      if(!isAdminOrCoord()&&n.responsavel_id!==CU.id){
+        allLeads.splice(idx,1);
+      } else {
+        Object.assign(allLeads[idx],n);
+      }
+    } else if(isAdminOrCoord()||(n.responsavel_id===CU.id)){
+      // Newly assigned to this user
+      allLeads.unshift(n);
+      if(!isAdminOrCoord()) toast(`🎯 Novo lead atribuído: ${n.nome}`,'ok');
+    }
+  } else if(eventType==='DELETE'){
+    allLeads=allLeads.filter(l=>l.id!==o.id);
+  }
+  populateSelects();
+}
+
+async function syncHist(payload){
+  const {eventType,new:n,old:o}=payload;
+  if(eventType==='INSERT'&&!allHist.find(h=>h.id===n.id)) allHist.unshift(n);
+  else if(eventType==='DELETE') allHist=allHist.filter(h=>h.id!==o.id);
+}
+
+async function syncTask(payload){
+  const {eventType,new:n,old:o}=payload;
+  if(eventType==='INSERT'&&!allTasks.find(t=>t.id===n.id)) allTasks.push(n);
+  else if(eventType==='UPDATE'){const i=allTasks.findIndex(t=>t.id===n.id);if(i>-1)Object.assign(allTasks[i],n);}
+  else if(eventType==='DELETE') allTasks=allTasks.filter(t=>t.id!==o.id);
+}
+
+async function syncVenda(payload){
+  const {eventType,new:n,old:o}=payload;
+  if(eventType==='INSERT'&&!allVendas.find(v=>v.id===n.id)) allVendas.unshift(n);
+  else if(eventType==='UPDATE'){const i=allVendas.findIndex(v=>v.id===n.id);if(i>-1)Object.assign(allVendas[i],n);}
+  else if(eventType==='DELETE') allVendas=allVendas.filter(v=>v.id!==o.id);
+}
+
+function reRenderCurrent(){
+  if(document.getElementById('page-dashboard').classList.contains('on')) renderDashboard();
+  else if(document.getElementById('page-leads').classList.contains('on')) renderLeads();
+  else if(document.getElementById('page-meus-leads').classList.contains('on')) renderMeusLeads();
+  else if(document.getElementById('page-funil').classList.contains('on')) renderFunil();
+  else if(document.getElementById('page-distribuicao').classList.contains('on')) renderDistribuicao();
 }
 
 // Close modals on bg click
