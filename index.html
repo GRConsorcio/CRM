@@ -667,7 +667,8 @@ async function ensureProfile(){
 
 async function loadAll(){
   const isAdm=isAdminOrCoord();
-  const safe=async(q)=>{try{const r=await q;return r;}catch(e){console.warn('Query error:',e);return{data:[]};}};
+  const safe=async(q)=>{try{const r=await q;if(r.error&&r.error.message?.includes('does not exist'))throw new Error(r.error.message);return r;}catch(e){console.warn('Query error:',e);if(e?.message?.includes('does not exist'))throw e;return{data:[]};}};
+
   const [lu,lh,lt,lv,ld]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
     safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false})),
@@ -686,11 +687,6 @@ async function loadAll(){
   allTasks=lt.data||[];
   allVendas=lv.data||[];
   allDocs=ld.data||[];
-  // Warn if tables missing
-  if(lu.error?.message?.includes('does not exist')){
-    toast('⚠️ Tabelas não encontradas. Execute o SQL de setup no Supabase.','err');
-    throw new Error('Tabelas não criadas. Execute o crm-setup-completo.sql no Supabase.');
-  }
   populateSelects();
 }
 
@@ -874,7 +870,7 @@ async function openDetail(id,from){
         <div class="detail-meta">${lead.origem||'—'} · ${sBadge(lead.status)}</div>
       </div>
       <div style="display:flex;gap:8px">
-        ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
+        ${canEdit?`<button class="act green" onclick="vendaLeadId='${id}';openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
         ${canEdit?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
       </div>
     </div>
@@ -1036,7 +1032,11 @@ async function quickDist(leadId){
   const idx=(dc?.ultimo_vendedor_idx||0)%vends.length;
   const vend=vends[idx];
   await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString()}).eq('id',leadId);
-  await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()}).eq('id',dc.id);
+  if(dc?.id){
+    await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()}).eq('id',dc.id);
+  } else {
+    await sb.from('crm_distribuicao').insert({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()});
+  }
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1){allLeads[i].responsavel_id=vend.user_id;}
   toast(`Lead atribuído a ${vend.name}!`,'ok');
@@ -1057,7 +1057,11 @@ async function distAutoAll(){
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
     idx++;
   }
-  await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
+  if(dc?.id){
+    await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
+  } else {
+    await sb.from('crm_distribuicao').insert({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()});
+  }
   toast(`${semVend.length} lead(s) distribuídos!`,'ok');
   renderDistribuicao();
 }
@@ -1356,7 +1360,11 @@ async function distAuto(){
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
     idx++;
   }
-  await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
+  if(dc?.id){
+    await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
+  } else {
+    await sb.from('crm_distribuicao').insert({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()});
+  }
   closeModal('dist-auto');
   toast(`${semVend.length} lead(s) distribuídos!`,'ok');
   renderDistribuicao();
