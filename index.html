@@ -323,7 +323,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <option value="">Todos os vendedores</option>
       </select>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
-      ${isAdmin()?'<button class="btn-primary" onclick="openModal('lead')">+ Novo Lead</button>':''}
+      <span id="new-lead-btn-wrap"></span>
     </div>
     <div id="leads-action-bar" style="display:none;background:var(--surface2);border:1px solid var(--border-gold);border-radius:10px;padding:10px 14px;margin-bottom:12px;gap:10px;align-items:center;flex-wrap:wrap">
       <span id="leads-sel-count" style="font-size:12.5px;font-weight:700;color:var(--gold2);min-width:80px">0 selecionados</span>
@@ -444,7 +444,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
   <div class="page" id="page-equipes">
     <div class="filter-bar">
       <input class="inp" id="eq-srch" placeholder="🔍 Buscar equipe..." oninput="renderEquipes()">
-      <button class="btn-primary" onclick="openModal('equipe')">+ Nova Equipe</button>
+      <span id="new-equipe-btn"></span>
     </div>
     <div id="equipes-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px"></div>
   </div>
@@ -2987,11 +2987,22 @@ function selectCor(el){
 
 function renderEquipes(){
   const q=(document.getElementById('eq-srch')?.value||'').toLowerCase();
-  const f=allEquipes.filter(e=>!q||e.nome.toLowerCase().includes(q));
+  // Vendedor e supervisor: só vê equipes que pertence
+  let visibleEquipes;
+  if(isAdmin()||isCoordenador()){
+    visibleEquipes=allEquipes;
+  } else {
+    const myEquipeIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
+    visibleEquipes=allEquipes.filter(e=>myEquipeIds.includes(e.id));
+  }
+  const f=visibleEquipes.filter(e=>!q||e.nome.toLowerCase().includes(q));
   const grid=document.getElementById('equipes-grid');
   if(!grid)return;
+  // Show/hide new equipe button
+  const nebtn=document.getElementById('new-equipe-btn');
+  if(nebtn) nebtn.innerHTML=isAdmin()?'<button class="btn-primary" onclick="openModal(\'equipe\')">+ Nova Equipe</button>':'';
   if(f.length===0){
-    grid.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="ei">🏅</div>Nenhuma equipe criada ainda</div>';
+    grid.innerHTML='';
     return;
   }
   grid.innerHTML=f.map(eq=>{
