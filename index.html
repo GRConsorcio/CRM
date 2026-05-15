@@ -2388,7 +2388,7 @@ async function openEquipeDetail(id){
                 <div style="font-size:10.5px;color:var(--muted2)">${u.role} · ${uLeads} leads · ${uFechs} fechados</div>
               </div>
               <div style="display:flex;gap:6px;align-items:center">
-                ${isAdmin()?`<button class="act" onclick="setMemboCargo('${mb?.id}','${id}','${isCoord?'membro':'coordenador}')" title="${isCoord?'Remover coordenador':'Tornar coordenador'}" style="${isCoord?'border-color:var(--gold-dim);color:var(--gold-dim)':''}">
+                ${isAdmin()?`<button class="act" onclick="setMemboCargo(&quot;${mb?.id}&quot;,&quot;${id}&quot;,&quot;${isCoord?'membro':'coordenador'}&quot;)" title="${isCoord?'Remover coordenador':'Tornar coordenador'}" style="${isCoord?'border-color:var(--gold-dim);color:var(--gold-dim)':''}">
                   ${isCoord?'👑 Remover Coord':'👑 Coord'}
                 </button>`:''}
                 <button class="act red" onclick="removeMembro('${mb?.id}','${id}')">✕</button>
