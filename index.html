@@ -1501,24 +1501,29 @@ function renderFunil(){
       ${ls.length===0?'<div style="font-size:11px;color:var(--muted);text-align:center;padding:10px 0">Vazio</div>':''}
       ${ls.map(l=>{
         const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
-        return`<div class="funil-card"
-          draggable="true"
-          data-lead-id="${l.id}"
-          ondragstart="onDragStart(event,'${l.id}')"
-          ondragend="onDragEnd(event)"
-          onclick="openDetail('${l.id}','${isAdmin?'leads':'meus-leads'}')"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s;position:relative"
+        return`<div class="funil-card" draggable="${_massMode?'false':'true'}"
+          data-lead-id="${l.id}" id="funil-card-${l.id}"
+          ondragstart="onDragStart(event,'${l.id}')" ondragend="onDragEnd(event)"
+          onclick="${_massMode?'toggleMassCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\''+( isAdmin?'leads':'meus-leads')+'\')'}"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s;cursor:pointer"
           onmouseover="this.style.borderColor='var(--gold-dim)'"
-          onmouseout="this.style.borderColor='var(--border)'">
-          <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
-          <div style="font-size:10.5px;color:var(--muted2);margin-bottom:6px">${l.interesse||'—'}</div>
-          ${resp?`<div style="font-size:9.5px;color:var(--muted);margin-bottom:6px">👤 ${resp.name}</div>`:''}
-          <div style="display:flex;gap:3px;flex-wrap:wrap">
-            ${STAGES.filter(x=>x!==s).map(x=>`<button onclick="event.stopPropagation();moveStage('${l.id}','${x}')"
-              style="background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:4px;padding:2px 5px;font-size:9px;cursor:pointer;font-family:inherit;transition:all .13s"
-              onmouseover="this.style.color='${SCOL[x]}';this.style.borderColor='${SCOL[x]}'"
-              onmouseout="this.style.color='var(--muted2)';this.style.borderColor='var(--border)'">${x}</button>`).join('')}
+          onmouseout="this.style.borderColor=document.querySelector('.mass-chk[data-id=\'${l.id}\']')?.checked?'var(--gold)':'var(--border)'">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" class="mass-chk" data-id="${l.id}"
+              style="accent-color:var(--gold);width:16px;height:16px;flex-shrink:0;display:${_massMode?'block':'none'}"
+              onclick="event.stopPropagation()" onchange="updateMassCount();updateCardStyle('${l.id}')">
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
+              <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
+              ${resp?`<div style="font-size:9.5px;color:var(--muted)">👤 ${resp.name}</div>`:''}
+            </div>
           </div>
+          ${_massMode?'':
+            `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:8px">
+              ${STAGES.filter(x=>x!==s).map(x=>`<button onclick="event.stopPropagation();moveStage('${l.id}','${x}')"
+                style="background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:4px;padding:2px 5px;font-size:9px;cursor:pointer;font-family:inherit"
+                onmouseover="this.style.color='${SCOL[x]}'" onmouseout="this.style.color='var(--muted2)'">${x}</button>`).join('')}
+            </div>`}
         </div>`;
       }).join('')}
     </div>`;
@@ -2151,12 +2156,39 @@ function handleCSV(file){
   if(!file) return;
   const reader=new FileReader();
   reader.onload=e=>{
-    const text=e.target.result;
+    let text=e.target.result;
+    // Fix common encoding issues from Brazilian CSV files
     parseCSV(text);
   };
-  reader.readAsText(file,'UTF-8');
+  // Try UTF-8 first
+  const readerLatin=new FileReader();
+  readerLatin.onload=e=>{
+    const latin=e.target.result;
+    // Check if has replacement chars — if so, use latin1 version
+    if(latin.includes('\uFFFD')||/[\x80-\x9F]/.test(latin)){
+      reader.readAsText(file,'ISO-8859-1');
+    } else {
+      parseCSV(latin);
+    }
+  };
+  readerLatin.onerror=()=>{ reader.readAsText(file,'ISO-8859-1'); };
+  reader.onload=e=>parseCSV(e.target.result);
+  readerLatin.readAsText(file,'UTF-8');
 }
 
+function fixEncoding(str){
+  // Fix common broken chars from CSV encoding issues
+  if(!str) return str;
+  return str
+    .replace(/�/g,'')
+    .replace(/Ã£/g,'ã').replace(/Ã¡/g,'á').replace(/Ã©/g,'é')
+    .replace(/Ã­/g,'í').replace(/Ã³/g,'ó').replace(/Ãº/g,'ú')
+    .replace(/Ã/g,'Ã').replace(/Ã§/g,'ç').replace(/Ã/g,'Ç')
+    .replace(/Ã/g,'Ã').replace(/Ãµ/g,'õ').replace(/Ã¢/g,'â')
+    .replace(/Ãª/g,'ê').replace(/Ã®/g,'î').replace(/Ã´/g,'ô')
+    .replace(/Ã»/g,'û').replace(/Ã/g,'À').replace(/Ã/g,'Â')
+    .replace(/â€œ/g,'"').replace(/â€/g,'"').replace(/â€™/g,"'");
+}
 function parseCSV(text){
   const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());
   if(lines.length<2){toast('CSV precisa ter cabeçalho + pelo menos 1 linha','err');return;}
@@ -2183,11 +2215,11 @@ function parseCSV(text){
     const nome=colMap.nome>=0?cols[colMap.nome]:'';
     if(!nome){erros.push(`Linha ${i+2}: nome vazio`);return;}
     csvParsedLeads.push({
-      nome,
-      telefone:colMap.telefone>=0?cols[colMap.telefone]||null:null,
-      email:colMap.email>=0?cols[colMap.email]||null:null,
-      interesse:colMap.interesse>=0?cols[colMap.interesse]||null:null,
-      origem:colMap.origem>=0?cols[colMap.origem]||'CSV':'CSV',
+      nome:fixEncoding(nome),
+      telefone:colMap.telefone>=0?fixEncoding(cols[colMap.telefone])||null:null,
+      email:colMap.email>=0?fixEncoding(cols[colMap.email])||null:null,
+      interesse:colMap.interesse>=0?fixEncoding(cols[colMap.interesse])||null:null,
+      origem:colMap.origem>=0?fixEncoding(cols[colMap.origem])||'CSV':'CSV',
     });
   });
 
@@ -2232,9 +2264,9 @@ async function importBulk(){
     const parts=line.split('|').map(p=>p.trim());
     if(!parts[0]) return null;
     return{
-      nome:parts[0],
-      telefone:parts[1]||null,
-      interesse:parts[2]||null,
+      nome:fixEncoding(parts[0]),
+      telefone:fixEncoding(parts[1])||null,
+      interesse:fixEncoding(parts[2])||null,
       origem:'Lista',
       responsavel_id:respId||null,
     };
@@ -2607,6 +2639,7 @@ function toggleMassMode(){
   }
   // Re-render to show/hide checkboxes
   if(_massVendedorId) openFunilVendedor(_massVendedorId);
+  else if(document.getElementById('page-funil')?.classList.contains('on')) renderFunil();
 }
 
 function massSelectAll(sel){
@@ -2910,8 +2943,8 @@ function renderEquipes(){
   }
   grid.innerHTML=f.map(eq=>{
     const membros=allMembroEquipes.filter(m=>m.equipe_id===eq.id);
-    const leads=allLeads.filter(l=>membros.some(m=>m.user_id===l.responsavel_id)).length;
-    const fechados=allLeads.filter(l=>l.status==='Fechado'&&membros.some(m=>m.user_id===l.responsavel_id)).length;
+    const leads=allLeads.filter(l=>l.equipe_id===eq.id||membros.some(m=>m.user_id===l.responsavel_id)).length;
+    const fechados=allLeads.filter(l=>l.status==='Fechado'&&(l.equipe_id===eq.id||membros.some(m=>m.user_id===l.responsavel_id))).length;
     return`<div class="equipe-card" onclick="openEquipeDetail('${eq.id}')">
       <div class="equipe-card-bar" style="background:${eq.cor||'var(--gold)'}"></div>
       <div class="equipe-card-body">
@@ -2933,7 +2966,8 @@ async function openEquipeDetail(id){
   if(!eq)return;
   const membros=allMembroEquipes.filter(m=>m.equipe_id===id);
   const membrosUsers=membros.map(m=>allUsers.find(u=>u.user_id===m.user_id)).filter(Boolean);
-  const leads=allLeads.filter(l=>membros.some(m=>m.user_id===l.responsavel_id));
+  // Leads: either assigned to a member OR sent directly to the equipe
+  const leads=allLeads.filter(l=>l.equipe_id===id||membros.some(m=>m.user_id===l.responsavel_id));
   const fechados=leads.filter(l=>l.status==='Fechado').length;
 
   document.getElementById('equipe-detail-wrap').innerHTML=`
