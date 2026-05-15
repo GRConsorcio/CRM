@@ -1455,10 +1455,17 @@ async function openDetail(id,from){
           </div>
         </div>`).join('')}
       </div>`:''}
-      ${isAdminOrCoord()?`<div style="display:flex;gap:8px;margin-top:12px">
+      ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px">
         <button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">✅ Aprovar</button>
         <button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">❌ Cancelar</button>
       </div>`:''}
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">📝 Anotações da Venda</div>
+        <textarea id="venda-notas-${venda.id}" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:12.5px;font-family:inherit;outline:none;resize:vertical;min-height:80px"
+          placeholder="Adicione anotações sobre esta venda..."
+          onblur="saveVendaNotas('${venda.id}',this.value)">${venda.observacoes||''}</textarea>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px">Salvo automaticamente ao sair do campo</div>
+      </div>
     </div>`;
   }
 
@@ -1721,9 +1728,37 @@ function openModal(type){
     vendaLeadId=detailLeadId;
     const lead=allLeads.find(l=>l.id===detailLeadId);
     document.getElementById('venda-lead-nome').textContent=lead?.nome||'—';
-    ['v-cpf','v-grupo','v-cota','v-obs','v-credito','v-parcela'].forEach(id=>document.getElementById(id).value='');
-    document.getElementById('v-nasc').value='';
-    document.getElementById('v-venc').value='';
+    const existingVenda=allVendas.find(v=>v.lead_id===detailLeadId);
+    if(existingVenda){
+      // Pre-fill with existing data
+      sv('v-cpf',existingVenda.cpf||'');
+      sv('v-nasc',existingVenda.data_nascimento||'');
+      sv('v-grupo',existingVenda.grupo||'');
+      sv('v-cota',existingVenda.cota||'');
+      sv('v-venc',existingVenda.data_vencimento||'');
+      sv('v-credito',existingVenda.valor_credito||'');
+      sv('v-parcela',existingVenda.parcela||'');
+      sv('v-obs',existingVenda.observacoes||'');
+      // Update button label
+      document.querySelector('#modal-venda .btn-save').textContent='Atualizar Venda';
+      // Check if user can edit: admin, coordenador, supervisor only
+      const canEditVenda=isAdmin()||isCoordenador()||isSupervisor();
+      document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el) el.disabled=!canEditVenda;
+      });
+    } else {
+      ['v-cpf','v-grupo','v-cota','v-obs','v-credito','v-parcela'].forEach(id=>document.getElementById(id).value='');
+      document.getElementById('v-nasc').value='';
+      document.getElementById('v-venc').value='';
+      document.querySelector('#modal-venda .btn-save').textContent='Salvar Venda';
+      document.querySelector('#modal-venda .btn-save').style.display='';
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el) el.disabled=false;
+      });
+    }
     pendingFiles=[];
     document.getElementById('files-preview').innerHTML='';
   }
@@ -1886,9 +1921,20 @@ async function saveVenda(){
     observacoes:v('v-obs')||null,
     status_venda:'Pendente',created_at:new Date().toISOString()
   };
-  const{data:vd,error}=await sb.from('crm_vendas').insert(payload).select().maybeSingle();
-  if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
-  allVendas.unshift(vd);
+  const existingV=allVendas.find(v=>v.lead_id===vendaLeadId);
+  let vd;
+  if(existingV){
+    const{data:upd,error}=await sb.from('crm_vendas').update(payload).eq('id',existingV.id).select().maybeSingle();
+    if(error){toast('Erro ao atualizar venda: '+error.message,'err');return;}
+    vd=upd||existingV;
+    const vi=allVendas.findIndex(v=>v.id===existingV.id);
+    if(vi>-1) Object.assign(allVendas[vi],payload);
+  } else {
+    const{data:ins,error}=await sb.from('crm_vendas').insert(payload).select().maybeSingle();
+    if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
+    vd=ins;
+    if(vd) allVendas.unshift(vd);
+  }
 
   // Upload docs
   for(const file of pendingFiles){
@@ -1916,11 +1962,22 @@ async function saveVenda(){
   openDetail(vendaLeadId,fromPage);
 }
 
+
+async function saveVendaNotas(vendaId, notas){
+  const{error}=await sb.from('crm_vendas').update({observacoes:notas}).eq('id',vendaId);
+  if(!error){
+    const i=allVendas.findIndex(v=>v.id===vendaId);
+    if(i>-1) allVendas[i].observacoes=notas;
+    saveCache();
+  }
+}
 async function updateVendaStatus(id,status){
-  await sb.from('crm_vendas').update({status_venda:status}).eq('id',id);
+  const{error}=await sb.from('crm_vendas').update({status_venda:status}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
   const i=allVendas.findIndex(v=>v.id===id);
   if(i>-1) allVendas[i].status_venda=status;
-  toast(`Venda ${status.toLowerCase()}!`,'ok');
+  saveCache();
+  toast('Venda '+status.toLowerCase()+'!','ok');
   openDetail(detailLeadId,fromPage);
 }
 
@@ -3050,9 +3107,9 @@ async function openEquipeDetail(id){
           <div style="font-size:11.5px;color:var(--muted2);margin-top:2px">${eq.descricao||'—'}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="act" onclick="editEquipe('${eq.id}')">✏️ Editar</button>
+          ${isAdmin()?`<button class="act" onclick="editEquipe('${eq.id}')">✏️ Editar</button>`:''}
           <button class="act" onclick="openRecolher('${eq.id}')" style="border-color:var(--orange);color:var(--orange)">↩️ Recolher Leads</button>
-          <button class="act red" onclick="delEquipe('${eq.id}')">🗑️</button>
+          ${isAdmin()?`<button class="act red" onclick="delEquipe('${eq.id}')">🗑️</button>`:''}
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid var(--border)">
@@ -3074,7 +3131,7 @@ async function openEquipeDetail(id){
     <div class="panel" style="margin-top:16px">
       <div class="panel-head">
         <div class="panel-title">👥 Membros</div>
-        <button class="btn-sm" onclick="openAddMembro('${eq.id}')">+ Adicionar</button>
+        ${isAdmin()?`<button class="btn-sm" onclick="openAddMembro('${eq.id}')">+ Adicionar</button>`:''}
       </div>
       <div class="panel-body">
         ${membrosUsers.length===0
@@ -3101,7 +3158,7 @@ async function openEquipeDetail(id){
               '</div>'+
               '<div style="display:flex;gap:6px;align-items:center">'+
                 adminBtn+
-                '<button class="act red" onclick="removeMembro(\''+mb?.id+'\',\''+id+'\')">✕</button>'+
+                (isAdmin()?'<button class="act red" onclick="removeMembro(\''+mb?.id+'\',\''+id+'\')">✕</button>':'')+
               '</div>'+
             '</div>';
           }).join('')}
