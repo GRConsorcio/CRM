@@ -597,15 +597,17 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <select id="funis-vend-sel" class="inp" style="max-width:240px" onchange="openFunilVendedor(this.value)">
         <option value="">Selecione um vendedor...</option>
       </select>
-      <div id="mass-action-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
-        <span id="mass-count" style="font-size:12px;color:var(--muted2)"></span>
-        <button class="btn-sm" onclick="massSelectAll(true)">Selecionar todos</button>
-        <button class="btn-sm" onclick="massSelectAll(false)">Desmarcar</button>
-        <select id="mass-transfer-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
-          <option value="">Transferir para...</option>
+      <div id="mass-action-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--border-gold);border-radius:10px;padding:10px 14px">
+        <span id="mass-count" style="font-size:12.5px;font-weight:700;color:var(--gold2);min-width:100px">0 selecionados</span>
+        <button class="btn-sm" onclick="massSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Todos</button>
+        <button class="btn-sm" onclick="massSelectAll(false)">☐ Nenhum</button>
+        <div style="width:1px;height:20px;background:var(--border)"></div>
+        <select id="mass-transfer-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;flex:1;min-width:140px">
+          <option value="">Transferir para vendedor...</option>
         </select>
-        <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2)" onclick="massTransfer()">↗ Transferir</button>
-        <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="massRemove()">✕ Remover vendedor</button>
+        <button class="btn-sm" style="border-color:var(--gold);color:var(--gold2)" onclick="massTransfer()">↗ Transferir</button>
+        <div style="width:1px;height:20px;background:var(--border)"></div>
+        <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="massRemove()">✕ Retirar vendedor</button>
       </div>
       <button class="btn-sm" id="mass-toggle-btn" style="display:none" onclick="toggleMassMode()">☑ Seleção em massa</button>
     </div>
@@ -2550,25 +2552,45 @@ let _massMode=false;
 let _massVendedorId=null;
 let _leadsMassMode=false;
 
+
+function toggleMassCard(e,leadId){
+  e.stopPropagation();
+  const chk=document.querySelector('.mass-chk[data-id="'+leadId+'"]');
+  if(chk){ chk.checked=!chk.checked; updateMassCount(); updateCardStyle(leadId); }
+}
+function updateCardStyle(leadId){
+  const card=document.getElementById('funil-card-'+leadId);
+  const chk=document.querySelector('.mass-chk[data-id="'+leadId+'"]');
+  if(card&&chk) card.style.borderColor=chk.checked?'var(--gold)':'var(--border)';
+}
 function toggleMassMode(){
   _massMode=!_massMode;
   const bar=document.getElementById('mass-action-bar');
   const btn=document.getElementById('mass-toggle-btn');
   if(bar) bar.style.display=_massMode?'flex':'none';
-  if(btn) btn.style.background=_massMode?'var(--gold-glow)':'';
-  // Re-render funil with/without checkboxes
+  if(btn){
+    btn.textContent=_massMode?'☑ Desativar seleção':'☑ Seleção em massa';
+    btn.style.background=_massMode?'rgba(201,168,76,0.15)':'';
+    btn.style.borderColor=_massMode?'var(--gold)':'';
+    btn.style.color=_massMode?'var(--gold2)':'';
+  }
+  // Re-render to show/hide checkboxes
   if(_massVendedorId) openFunilVendedor(_massVendedorId);
 }
 
 function massSelectAll(sel){
-  document.querySelectorAll('.mass-chk').forEach(c=>{c.checked=sel;});
+  document.querySelectorAll('.mass-chk').forEach(c=>{
+    c.checked=sel;
+    updateCardStyle(c.dataset.id);
+  });
   updateMassCount();
 }
 
 function updateMassCount(){
+  const total=document.querySelectorAll('.mass-chk').length;
   const n=document.querySelectorAll('.mass-chk:checked').length;
   const el=document.getElementById('mass-count');
-  if(el) el.textContent=n?n+' selecionado'+(n!==1?'s':''):'';
+  if(el) el.textContent=n+' de '+total+' selecionado'+(n!==1?'s':'');
 }
 
 async function massTransfer(){
