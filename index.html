@@ -338,6 +338,8 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <option value="">Enviar para equipe...</option>
       </select>
       <button class="btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="leadsMassEnviarEquipe()">🏅 Enviar</button>
+      ${isAdmin()?`<div style="width:1px;height:20px;background:var(--border)"></div>
+      <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">🗑️ Apagar</button>`:''}
       <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="closeLeadsMass()">✕ Fechar</button>
     </div>
     <div class="panel">
@@ -1334,7 +1336,7 @@ function renderLeads(){
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
         <td><div style="display:flex;gap:5px">
           <button class="act" onclick="editLead('${l.id}')">✏️</button>
-          <button class="act red" onclick="delLead('${l.id}')">🗑️</button>
+          ${isAdmin()?`<button class="act red" onclick="delLead('${l.id}')">🗑️</button>`:''}
         </div></td>
       </tr>`;
     }).join('');
@@ -1390,6 +1392,7 @@ async function openDetail(id,from){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
         ${canEdit?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
+        ${isAdmin()?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >🗑️ Apagar</button>`:''}
         ${isAdminOrCoord()&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">🏅 Enviar p/ Equipe</button>`:''}
         ${isAdminOrCoord()&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">↩️ Recolher</button>`:''}
       </div>
@@ -2724,6 +2727,30 @@ function updateLeadsMassCount(){
     else if(checked===0) all.checked=false;
   }
 }
+async function leadsMassDelete(){
+  const ids=[...document.querySelectorAll('.lead-chk:checked')].map(c=>c.dataset.id);
+  if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
+  if(!confirm(`Apagar ${ids.length} lead${ids.length!==1?'s':''}? Esta ação não pode ser desfeita.`))return;
+  // Delete in batches
+  for(let i=0;i<ids.length;i+=50){
+    const batch=ids.slice(i,i+50);
+    await sb.from('crm_historico').delete().in('lead_id',batch);
+    await sb.from('crm_tarefas').delete().in('lead_id',batch);
+    await sb.from('crm_documentos').delete().in('lead_id',batch);
+    await sb.from('crm_vendas').delete().in('lead_id',batch);
+    await sb.from('crm_leads').delete().in('id',batch);
+    batch.forEach(id=>{
+      allLeads=allLeads.filter(l=>l.id!==id);
+      allHist=allHist.filter(h=>h.lead_id!==id);
+      allTasks=allTasks.filter(t=>t.lead_id!==id);
+      allVendas=allVendas.filter(v=>v.lead_id!==id);
+    });
+  }
+  saveCache();populateSelects();
+  closeLeadsMass();
+  toast(ids.length+' lead'+(ids.length!==1?'s':'')+' apagado'+(ids.length!==1?'s':'')+'!','ok');
+}
+
 async function leadsMassTransfer(){
   const ids=[...document.querySelectorAll('.lead-chk:checked')].map(c=>c.dataset.id);
   const respId=document.getElementById('leads-mass-resp')?.value;
