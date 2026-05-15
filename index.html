@@ -210,6 +210,13 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .funil-card{cursor:grab}
 .funil-card.dragging{opacity:0.4;cursor:grabbing}
 .funil-card:active{cursor:grabbing}
+/* Funil scroll */
+#funil-grid,#coord-funil-grid,#meu-funil-grid{
+  scrollbar-width:thin;scrollbar-color:var(--gold-dim) var(--surface2);
+}
+#funil-grid::-webkit-scrollbar,#coord-funil-grid::-webkit-scrollbar,#meu-funil-grid::-webkit-scrollbar{height:5px}
+#funil-grid::-webkit-scrollbar-track,#coord-funil-grid::-webkit-scrollbar-track,#meu-funil-grid::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px}
+#funil-grid::-webkit-scrollbar-thumb,#coord-funil-grid::-webkit-scrollbar-thumb,#meu-funil-grid::-webkit-scrollbar-thumb{background:var(--gold-dim);border-radius:3px}
 .membro-av{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#0a0a0a;flex-shrink:0}
 
 /* PROGRESS */
@@ -389,7 +396,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 
   <!-- FUNIL (admin/coord) -->
   <div class="page" id="page-funil">
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px" id="funil-grid"></div>
+    <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;min-height:200px" id="funil-grid"></div>
   </div>
 
   <!-- DISTRIBUIÇÃO (admin/coord) -->
@@ -567,7 +574,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         Seleção em massa
       </label>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px" id="coord-funil-grid"></div>
+    <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;min-height:200px" id="coord-funil-grid"></div>
   </div>
 
   <!-- COORD: DISTRIBUIÇÃO DA EQUIPE -->
@@ -590,7 +597,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 
   <!-- MEU FUNIL (vendedor) -->
   <div class="page" id="page-meu-funil">
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px" id="meu-funil-grid"></div>
+    <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;min-height:200px" id="meu-funil-grid"></div>
   </div>
 
   <!-- FUNIS DA EQUIPE (admin/coord) -->
@@ -1512,7 +1519,7 @@ function renderFunil(){
     // Vendedor só vê os próprios leads; admin vê todos
     const ls=allLeads.filter(l=>l.status===s&&(isAdmin||l.responsavel_id===CU.id));
     return`<div class="funil-col-wrap" data-stage="${s}"
-      style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:120px;transition:all .15s"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:120px;min-width:220px;flex:1;transition:all .15s"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
       ondragleave="this.classList.remove('drag-over')"
       ondrop="onDropStage(event,'${s}')">
@@ -2365,7 +2372,7 @@ function renderMeuFunil(){
   document.getElementById('meu-funil-grid').innerHTML=STAGES.map(s=>{
     const ls=leads.filter(l=>l.status===s);
     return`<div class="funil-col-wrap" data-stage="${s}"
-      style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:120px;transition:all .15s"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:120px;min-width:220px;flex:1;transition:all .15s"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
       ondragleave="this.classList.remove('drag-over')"
       ondrop="onDropMeuFunil(event,'${s}')">
@@ -2510,7 +2517,7 @@ function renderCoordFunil(){
   if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
   document.getElementById('coord-funil-grid').innerHTML=STAGES.map(s=>{
     const ls=leads.filter(l=>l.status===s);
-    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:100px;transition:all .15s"
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:100px;min-width:220px;flex:1;transition:all .15s"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
       ondragleave="this.classList.remove('drag-over')"
       ondrop="cfOnDrop(event,'${s}')">
@@ -2845,10 +2852,10 @@ function openFunilVendedor(userId){
         <div style="font-size:11px;color:var(--muted2)">${leads.length} lead${leads.length!==1?'s':''} · ${leads.filter(l=>l.status==='Fechado').length} fechado${leads.filter(l=>l.status==='Fechado').length!==1?'s':''}</div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+    <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px">
       ${STAGES.map(s=>{
         const ls=leads.filter(l=>l.status===s);
-        return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:80px">
+        return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:80px;min-width:200px;flex:1">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${SCOL[s]};margin-bottom:10px">
             ${s} <span style="color:var(--muted2)">(${ls.length})</span>
           </div>
