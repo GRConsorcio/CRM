@@ -1006,20 +1006,24 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
 
 async function ensureProfile(){
   const name=CU.user_metadata?.full_name||CU.email.split('@')[0];
-  // Use cached profile for instant load on repeat visits
   const cacheKey='crm_profile_'+CU.id;
+  // Always try cache first for instant load
   const cached=sessionStorage.getItem(cacheKey);
   if(cached){
     try{
-      CUProfile=JSON.parse(cached);
-      console.log('Profile from cache, role:',CUProfile.role);
-      // Refresh in background
-      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle()
-        .then(({data})=>{ if(data){ CUProfile=data; sessionStorage.setItem(cacheKey,JSON.stringify(data)); }});
-      return;
+      const p=JSON.parse(cached);
+      if(p&&p.role&&p.user_id===CU.id){
+        CUProfile=p;
+        console.log('Profile from cache, role:',CUProfile.role);
+        // Refresh silently in background
+        sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle()
+          .then(({data})=>{ if(data){ CUProfile=data; try{sessionStorage.setItem(cacheKey,JSON.stringify(data));}catch(e){} }})
+          .catch(()=>{});
+        return;
+      }
     } catch(e){ sessionStorage.removeItem(cacheKey); }
   }
-  // Timeout de 4s para evitar travar na primeira conexão
+  // No cache — fetch from DB with 12s timeout
   const withTimeout=(promise,ms)=>Promise.race([
     promise,
     new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_profile')),ms))
@@ -1027,14 +1031,41 @@ async function ensureProfile(){
   let data,error;
   try{
     const r=await withTimeout(
-      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),4000
+      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),12000
     );
     data=r.data; error=r.error;
   } catch(e){
     if(e.message==='timeout_profile'){
-      // Timeout: usa perfil em cache ou fallback e continua
       console.warn('ensureProfile timeout — usando fallback');
+      // Check sessionStorage cache first
+      const cacheKey='crm_profile_'+CU.id;
+      const cached=sessionStorage.getItem(cacheKey);
+      if(cached){
+        try{ CUProfile=JSON.parse(cached); console.log('Profile from cache:',CUProfile.role); return; }
+        catch(ce){ sessionStorage.removeItem(cacheKey); }
+      }
+      // Use temporary profile and retry in background
       CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
+      // Retry after 3s — when it succeeds, re-initialize with correct role
+      setTimeout(async()=>{
+        try{
+          const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
+          if(data&&data.role!==CUProfile.role){
+            console.log('Profile retry OK, role:',data.role);
+            CUProfile=data;
+            sessionStorage.setItem(cacheKey,JSON.stringify(data));
+            // Re-init with correct role
+            await loadAll();
+            saveCache();
+            renderNav();
+            renderDashboard();
+            toast('Perfil carregado: '+data.role,'ok');
+          } else if(data){
+            CUProfile=data;
+            sessionStorage.setItem(cacheKey,JSON.stringify(data));
+          }
+        } catch(re){ console.warn('Profile retry failed:',re.message); }
+      },3000);
       return;
     }
     throw e;
@@ -1049,7 +1080,7 @@ async function ensureProfile(){
     CUProfile=d2||{user_id:CU.id,name,email:CU.email,role:'vendedor'};
   } else {
     CUProfile=data;
-    sessionStorage.setItem('crm_profile_'+CU.id,JSON.stringify(data));
+    try{ sessionStorage.setItem('crm_profile_'+CU.id,JSON.stringify(data)); }catch(e){}
   }
   const initials=CUProfile.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
   document.getElementById('sb-name').textContent=CUProfile.name;
