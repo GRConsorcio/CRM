@@ -338,8 +338,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <option value="">Enviar para equipe...</option>
       </select>
       <button class="btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="leadsMassEnviarEquipe()">🏅 Enviar</button>
-      ${isAdmin()?`<div style="width:1px;height:20px;background:var(--border)"></div>
-      <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">🗑️ Apagar</button>`:''}
+      <div id="mass-delete-btn-wrap"></div>
       <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="closeLeadsMass()">✕ Fechar</button>
     </div>
     <div class="panel">
@@ -2696,6 +2695,11 @@ function openLeadsMass(){
   const hd=document.getElementById('l-chk-head');
   if(hd) hd.style.display='table-cell';
   document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='table-cell');
+  // Show delete button only for admin
+  const delWrap=document.getElementById('mass-delete-btn-wrap');
+  if(delWrap) delWrap.innerHTML=isAdmin()
+    ?'<div style="width:1px;height:20px;background:var(--border);display:inline-block;margin:0 2px;vertical-align:middle"></div><button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">🗑️ Apagar</button>'
+    :'';
   updateLeadsMassCount();
 }
 function closeLeadsMass(){
