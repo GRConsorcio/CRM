@@ -666,23 +666,8 @@ async function doAuth(){
     const{data,error}=await sb.auth.signInWithPassword({email,password:pass});
     btn.textContent='Entrar';btn.disabled=false;
     if(error){err.textContent='E-mail ou senha incorretos.';return;}
-    // Manually trigger init if onAuthStateChange doesn't fire (stale state)
-    if(data?.user&&(!CU||!CUProfile)){
-      CU=data.user;
-      document.getElementById('auth-screen').style.display='none';
-      try{
-        await ensureProfile();
-        await loadAll();
-        renderNav();
-        renderDashboard();
-        setupRealtime();
-      } catch(e){
-        toast('Erro ao carregar: '+(e?.message||e),'err');
-      }
-    } else if(data?.user&&CU&&CUProfile){
-      // Already loaded — just hide auth screen
-      document.getElementById('auth-screen').style.display='none';
-    }
+    // initApp handles deduplication via CU+CUProfile check
+    if(data?.user) await initApp(data.user);
   }
 }
 async function doLogout(){
@@ -699,41 +684,50 @@ async function doLogout(){
 }
 
 /* ═══ INIT ═══ */
-sb.auth.onAuthStateChange(async(ev,session)=>{
-  // Ignore events that don't require re-initialization
-  if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED') return;
-  // Ignore INITIAL_SESSION right after logout redirect
-  if(new URLSearchParams(location.search).get('logout')&&ev==='INITIAL_SESSION') return;
-
-  if(session?.user){
-    // Already initialized for this user — skip
-    if(CU&&CU.id===session.user.id&&CUProfile) return;
-    CU=session.user;
-    document.getElementById('auth-screen').style.display='none';
-    try{
-      const initTimeout=setTimeout(()=>{
-        toast('Conexão lenta. Tente recarregar a página.','err');
-      },15000);
-      await ensureProfile();
-      await loadAll();
-      clearTimeout(initTimeout);
-      renderNav();
-      renderDashboard();
-      setupRealtime();
-    } catch(e){
-      console.error('Init error:',e);
-      if(e?.message?.includes('não existe')||e?.message?.includes('does not exist')){
-        document.getElementById('setup-warning').style.display='flex';
-      } else {
-        toast('Erro ao carregar: '+(e?.message||e),'err');
-        document.getElementById('auth-screen').style.display='flex';
-        document.getElementById('a-err').textContent='Erro: '+(e?.message||'tente novamente');
-      }
+/* ═══ INICIALIZAÇÃO DO APP ═══ */
+async function initApp(user){
+  if(CU&&CU.id===user.id&&CUProfile) return; // já inicializado
+  CU=user;
+  document.getElementById('auth-screen').style.display='none';
+  try{
+    const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),10000);
+    await ensureProfile();
+    await loadAll();
+    clearTimeout(t);
+    renderNav();
+    renderDashboard();
+    setupRealtime();
+  } catch(e){
+    console.error('initApp error:',e);
+    if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
+      document.getElementById('setup-warning').style.display='flex';
+    } else {
+      toast('Erro: '+(e?.message||e),'err');
+      document.getElementById('auth-screen').style.display='flex';
+      document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
     }
-  } else {
-    CU=null; CUProfile=null;
-    document.getElementById('auth-screen').style.display='flex';
   }
+}
+
+/* Verificação ativa de sessão no carregamento — não depende de eventos */
+(async()=>{
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    if(session?.user) await initApp(session.user);
+  } catch(e){ console.warn('getSession error:',e.message); }
+})();
+
+/* Listener para login/logout em tempo real */
+sb.auth.onAuthStateChange(async(ev,session)=>{
+  if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED') return;
+  if(new URLSearchParams(location.search).get('logout')&&ev==='INITIAL_SESSION') return;
+  if(ev==='SIGNED_OUT'){
+    CU=null; CUProfile=null;
+    if(realtimeChannel){ sb.removeChannel(realtimeChannel); realtimeChannel=null; }
+    document.getElementById('auth-screen').style.display='flex';
+    return;
+  }
+  if(session?.user) await initApp(session.user);
 });
 
 async function ensureProfile(){
