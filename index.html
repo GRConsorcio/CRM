@@ -261,6 +261,10 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <input class="inp" id="a-email" type="email" placeholder="E-mail">
     <input class="inp" id="a-pass" type="password" placeholder="Senha" onkeydown="if(event.key==='Enter')doAuth()">
     <div id="a-name-wrap" style="display:none"><input class="inp" id="a-name" placeholder="Seu nome completo"></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted2);margin-bottom:10px;cursor:pointer;text-align:left">
+      <input type="checkbox" id="a-remember" checked style="accent-color:var(--gold);width:15px;height:15px">
+      Permanecer conectado
+    </label>
     <button class="btn-gold" onclick="doAuth()" id="a-btn">Entrar</button>
     <div class="auth-err" id="a-err"></div>
   </div>
@@ -955,9 +959,16 @@ async function doAuth(){
   } else {
     const btn=document.getElementById('a-btn');
     btn.textContent='Entrando...';btn.disabled=true;
+    const remember=document.getElementById('a-remember')?.checked!==false;
     const{data,error}=await sb.auth.signInWithPassword({email,password:pass});
     btn.textContent='Entrar';btn.disabled=false;
     if(error){err.textContent='E-mail ou senha incorretos.';return;}
+    // If not remember — clear session on tab close
+    if(!remember){
+      sessionStorage.setItem('crm_no_persist','1');
+    } else {
+      sessionStorage.removeItem('crm_no_persist');
+    }
     // initApp handles deduplication via CU+CUProfile check
     if(data?.user) await initApp(data.user);
   }
@@ -1036,12 +1047,27 @@ async function initApp(user){
 /* Verificação ativa de sessão no carregamento — não depende de eventos */
 (async()=>{
   try{
-    // Pre-warm: fire a lightweight query in parallel with getSession
-    // so Supabase connection is ready when we need it
-    // Pre-warm connection (fire and forget)
     sb.from('crm_users').select('id').limit(1).maybeSingle().then(()=>{}).catch(()=>{});
     const{data:{session}}=await sb.auth.getSession();
-    if(session?.user) await initApp(session.user);
+    if(session?.user){
+      // Check global force-logout flag (admin can push this to sign everyone out)
+      try{
+        const{data:cfg}=await sb.from('crm_config').select('valor').eq('chave','force_logout_at').maybeSingle();
+        if(cfg?.valor){
+          const logoutAt=new Date(cfg.valor);
+          const loginAt=session.user.last_sign_in_at?new Date(session.user.last_sign_in_at):null;
+          if(loginAt&&loginAt<logoutAt){
+            console.log('Force logout triggered');
+            await sb.auth.signOut({scope:'local'});
+            Object.keys(localStorage).forEach(k=>{if(k.startsWith('sb-'))localStorage.removeItem(k);});
+            Object.keys(sessionStorage).forEach(k=>{if(k.startsWith('crm_'))sessionStorage.removeItem(k);});
+            document.getElementById('auth-screen').style.display='flex';
+            return;
+          }
+        }
+      } catch(fe){ console.warn('Config check skipped:',fe.message); }
+      await initApp(session.user);
+    }
   } catch(e){ console.warn('getSession error:',e.message); }
 })();
 
@@ -1267,6 +1293,8 @@ function renderNav(){
       <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">🛡️</span><span class="nav-label">Usuários</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
+  const flBtn=document.getElementById('sb-force-logout');
+  if(flBtn) flBtn.style.display=isAdmin()?'':'none';
 }
 
 const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil'};
@@ -3099,14 +3127,26 @@ async function confirmarEnviarEquipe(){
 }
 
 
+
+async function forceLogoutAll(){
+  if(!isAdmin()) return;
+  if(!confirm('Deslogar TODOS os usuários? Eles precisarão fazer login novamente.')) return;
+  const now=new Date().toISOString();
+  // Upsert config flag
+  const{error}=await sb.from('crm_config').upsert({chave:'force_logout_at',valor:now},{onConflict:'chave'});
+  if(error){
+    toast('Erro: '+error.message,'err');return;
+  }
+  toast('Todos os usuários serão deslogados no próximo acesso!','ok');
+}
 async function recolherTudoParaMim(){
   if(!isAdmin()){toast('Apenas admin pode recolher todos os leads','err');return;}
-  if(!confirm('Recolher TODOS os leads para você? Todos os vendedores perderão seus leads.'))return;
-  const{error}=await sb.from('crm_leads').update({responsavel_id:CU.id,equipe_id:null}).neq('responsavel_id',CU.id);
+  if(!confirm('Recolher TODOS os leads? Eles ficarão sem vendedor e aparecerão na Distribuição.'))return;
+  const{error}=await sb.from('crm_leads').update({responsavel_id:null,equipe_id:null,distribuido_em:null}).neq('id','00000000-0000-0000-0000-000000000000');
   if(error){toast('Erro: '+error.message,'err');return;}
-  allLeads.forEach(l=>{l.responsavel_id=CU.id;l.equipe_id=null;});
+  allLeads.forEach(l=>{l.responsavel_id=null;l.equipe_id=null;l.distribuido_em=null;});
   saveCache();populateSelects();renderLeads();
-  toast('Todos os leads recolhidos para você!','ok');
+  toast('Todos os leads recolhidos — prontos para distribuição!','ok');
 }
 async function recolherLead(leadId){
   const{error}=await sb.from('crm_leads').update({equipe_id:null}).eq('id',leadId);
