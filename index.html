@@ -199,6 +199,12 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .equipe-card-meta{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted2)}
 .membro-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #191919}
 .membro-row:last-child{border-bottom:none}
+.lead-chk-td{display:none}
+#l-chk-head{display:none}
+.mass-active .lead-chk-td{display:table-cell}
+.mass-active #l-chk-head{display:table-cell}
+#leads-action-bar{display:none}
+#leads-mass-btn{}
 .funil-col.drag-over{border-color:var(--gold);background:rgba(201,168,76,0.05)}
 .funil-card{cursor:grab}
 .funil-card.dragging{opacity:0.4;cursor:grabbing}
@@ -315,25 +321,25 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <select id="l-f-resp" onchange="renderLeads()">
         <option value="">Todos os vendedores</option>
       </select>
+      <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
       <button class="btn-primary" onclick="openModal('lead')">+ Novo Lead</button>
     </div>
-    <div id="leads-mass-bar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-      <span id="leads-mass-count" style="font-size:12px;color:var(--muted2)"></span>
-      <button class="btn-sm" onclick="leadsSelectAll(true)">Todos</button>
-      <button class="btn-sm" onclick="leadsSelectAll(false)">Nenhum</button>
-      <select id="leads-mass-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
-        <option value="">Transferir para...</option>
+    <div id="leads-action-bar" style="display:none;background:var(--surface2);border:1px solid var(--border-gold);border-radius:10px;padding:10px 14px;margin-bottom:12px;gap:10px;align-items:center;flex-wrap:wrap">
+      <span id="leads-sel-count" style="font-size:12.5px;font-weight:700;color:var(--gold2);min-width:80px">0 selecionados</span>
+      <button class="btn-sm" onclick="leadsSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Todos</button>
+      <button class="btn-sm" onclick="leadsSelectAll(false)">☐ Nenhum</button>
+      <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+      <select id="leads-mass-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;flex:1;min-width:140px">
+        <option value="">Transferir para vendedor...</option>
       </select>
-      <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2)" onclick="leadsMassTransfer()">↗ Transferir</button>
-      <select id="leads-mass-equipe" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
-        <option value="">Enviar p/ Equipe...</option>
+      <button class="btn-sm" style="border-color:var(--gold);color:var(--gold2)" onclick="leadsMassTransfer()">↗ Transferir</button>
+      <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+      <select id="leads-mass-equipe" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;flex:1;min-width:140px">
+        <option value="">Enviar para equipe...</option>
       </select>
       <button class="btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="leadsMassEnviarEquipe()">🏅 Enviar</button>
+      <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="closeLeadsMass()">✕ Fechar</button>
     </div>
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted2);margin-bottom:8px;cursor:pointer">
-      <input type="checkbox" id="leads-mass-toggle" onchange="toggleLeadsMassMode(this.checked)" style="accent-color:var(--gold)">
-      Seleção em massa
-    </label>
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title" id="l-title">Leads</div>
@@ -496,6 +502,86 @@ tr:hover td{background:rgba(255,255,255,.015)}
       </div>
       <div class="panel-body" id="import-log">
         <div class="empty"><div class="ei">📥</div>Nenhuma importação ainda</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COORD: LEADS DA EQUIPE -->
+  <div class="page" id="page-coord-leads">
+    <div class="filter-bar">
+      <input class="inp" id="cl-srch" placeholder="🔍 Buscar..." oninput="renderCoordLeads()">
+      <select id="cl-f-status" onchange="renderCoordLeads()">
+        <option value="">Todos os status</option>
+        <option>Novo</option><option>Contato</option><option>Proposta</option>
+        <option>Fechado</option><option>Perdido</option>
+      </select>
+      <select id="cl-f-vend" onchange="renderCoordLeads()">
+        <option value="">Todos os vendedores</option>
+      </select>
+    </div>
+    <div id="coord-mass-bar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <span id="coord-mass-count" style="font-size:12px;color:var(--muted2)"></span>
+      <button class="btn-sm" onclick="coordSelectAll(true)">Todos</button>
+      <button class="btn-sm" onclick="coordSelectAll(false)">Nenhum</button>
+      <select id="coord-mass-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+        <option value="">Transferir para...</option>
+      </select>
+      <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2)" onclick="coordMassTransfer()">↗ Transferir</button>
+      <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="coordMassRemover()">✕ Remover vendedor</button>
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted2);margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" id="coord-mass-toggle" onchange="toggleCoordMass(this.checked)" style="accent-color:var(--gold)">
+      Seleção em massa
+    </label>
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title" id="cl-title">Leads da Equipe</div></div>
+      <div class="tbl-wrap">
+        <table><thead><tr>
+          <th style="width:32px"></th><th>Nome</th><th>Telefone</th><th>Interesse</th>
+          <th>Status</th><th>Vendedor</th><th>Data</th><th></th>
+        </tr></thead>
+        <tbody id="cl-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- COORD: FUNIL DA EQUIPE -->
+  <div class="page" id="page-coord-funil">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <select id="cf-vend-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none" onchange="renderCoordFunil()">
+        <option value="">Todos os vendedores</option>
+      </select>
+      <div id="cf-mass-bar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn-sm" onclick="cfSelectAll(true)">Todos</button>
+        <button class="btn-sm" onclick="cfSelectAll(false)">Nenhum</button>
+        <span id="cf-mass-count" style="font-size:12px;color:var(--muted2)"></span>
+        <select id="cf-mass-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+          <option value="">Transferir para...</option>
+        </select>
+        <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2)" onclick="cfMassTransfer()">↗ Transferir</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted2);cursor:pointer">
+        <input type="checkbox" id="cf-mass-toggle" onchange="toggleCfMass(this.checked)" style="accent-color:var(--gold)">
+        Seleção em massa
+      </label>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px" id="coord-funil-grid"></div>
+  </div>
+
+  <!-- COORD: DISTRIBUIÇÃO DA EQUIPE -->
+  <div class="page" id="page-coord-dist">
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head"><div class="panel-title">👥 Vendedores da Equipe</div></div>
+      <div class="panel-body" id="coord-dist-vendedores"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">📋 Leads sem vendedor</div>
+        <button class="btn-sm" onclick="coordDistAutoAll()">⚡ Distribuir todos</button>
+      </div>
+      <div class="tbl-wrap">
+        <table><thead><tr><th>Nome</th><th>Telefone</th><th>Interesse</th><th>Data</th><th></th></tr></thead>
+        <tbody id="coord-dist-tbody"></tbody></table>
       </div>
     </div>
   </div>
@@ -896,11 +982,9 @@ async function initApp(user){
   try{
     // Pre-warm: fire a lightweight query in parallel with getSession
     // so Supabase connection is ready when we need it
-    const warmup=sb.from('crm_users').select('id').limit(1);
-    const[{data:{session}}]=await Promise.all([
-      sb.auth.getSession(),
-      warmup.catch(()=>{}) // ignore warmup errors
-    ]);
+    // Pre-warm connection (fire and forget)
+    sb.from('crm_users').select('id').limit(1).maybeSingle().then(()=>{}).catch(()=>{});
+    const{data:{session}}=await sb.auth.getSession();
     if(session?.user) await initApp(session.user);
   } catch(e){ console.warn('getSession error:',e.message); }
 })();
@@ -1056,14 +1140,20 @@ function renderNav(){
   let html='';
   html+=`<div class="nav-sect">Principal</div>
     <div class="nav-item on" onclick="nav('dashboard',this)" title="Dashboard"><span class="nav-icon">◆</span><span class="nav-label">Dashboard</span></div>`;
-  if(admin){
+  if(isAdm){
     html+=`<div class="nav-sect">Leads</div>
       <div class="nav-item" onclick="nav('leads',this)" title="Todos os Leads"><span class="nav-icon">👥</span><span class="nav-label">Todos os Leads</span></div>
       <div class="nav-item" onclick="nav('funil',this)" title="Funil"><span class="nav-icon">🎯</span><span class="nav-label">Funil de Vendas</span></div>
       <div class="nav-item" onclick="nav('distribuicao',this)" title="Distribuição"><span class="nav-icon">⚡</span><span class="nav-label">Distribuição</span></div>
-      ${isAdm?`<div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">📥</span><span class="nav-label">Importar Leads</span></div>`:''}
+      <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">📥</span><span class="nav-label">Importar Leads</span></div>
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">🔭</span><span class="nav-label">Funis da Equipe</span></div>`;
-  } else {
+  } else if(isCoord){
+    html+=`<div class="nav-sect">Minha Equipe</div>
+      <div class="nav-item" onclick="nav('coord-leads',this)" title="Leads da Equipe"><span class="nav-icon">👥</span><span class="nav-label">Leads da Equipe</span></div>
+      <div class="nav-item" onclick="nav('coord-funil',this)" title="Funil da Equipe"><span class="nav-icon">🎯</span><span class="nav-label">Funil da Equipe</span></div>
+      <div class="nav-item" onclick="nav('coord-dist',this)" title="Distribuição"><span class="nav-icon">⚡</span><span class="nav-label">Distribuição</span></div>
+      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funil por Vendedor"><span class="nav-icon">🔭</span><span class="nav-label">Funil por Vendedor</span></div>`;
+  } else if(!isCoord){
     html+=`<div class="nav-sect">Meus Leads</div>
       <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">👤</span><span class="nav-label">Meus Leads</span></div>
       <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">🎯</span><span class="nav-label">${isCoord?'Funil da Equipe':'Meu Funil'}</span></div>`;
@@ -1098,6 +1188,9 @@ function nav(page,el){
   if(page==='equipes') renderEquipes();
   if(page==='importar') renderImportar();
   if(page==='funis-equipe') renderFunisEquipe();
+  if(page==='coord-leads') renderCoordLeads();
+  if(page==='coord-funil') renderCoordFunil();
+  if(page==='coord-dist') renderCoordDist();
   if(page==='meu-funil') renderMeuFunil();
   if(page==='funil-vendedor') {/* rendered by openFunilVendedor */}
 }
@@ -1185,12 +1278,21 @@ function renderLeads(){
     return true;
   });
   document.getElementById('l-title').textContent=`Leads — ${f.length} registro${f.length!==1?'s':''}`;
+  // Restore checkboxes after tbody re-render
+  if(_leadsMassMode){
+    setTimeout(()=>{
+      document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='table-cell');
+      const hd=document.getElementById('l-chk-head');
+      if(hd) hd.style.display='table-cell';
+      updateLeadsMassCount();
+    },10);
+  }
   document.getElementById('l-tbody').innerHTML=f.length===0
     ?`<tr><td colspan="8"><div class="empty"><div class="ei">👥</div>Nenhum lead</div></td></tr>`
     :f.map(l=>{
       const u=allUsers.find(u=>u.user_id===l.responsavel_id);
       return`<tr>
-        <td style="width:32px"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" onchange="updateLeadsMassCount()"></td>
+        <td class="lead-chk-td" style="width:36px"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" onchange="updateLeadsMassCount()"></td>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td>${sBadge(l.status)}</td>
@@ -2224,9 +2326,229 @@ async function onDropMeuFunil(e,newStage){
 }
 
 
+
+/* ═══ COORDENADOR — HELPERS ═══ */
+function getCoordEquipes(){
+  return allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
+}
+function getCoordMembers(){
+  const eqs=getCoordEquipes();
+  return [...new Set(allMembroEquipes.filter(m=>eqs.includes(m.equipe_id)).map(m=>m.user_id))];
+}
+function getCoordLeads(){
+  const eqs=getCoordEquipes();
+  const mbs=getCoordMembers();
+  return allLeads.filter(l=>eqs.includes(l.equipe_id)||mbs.includes(l.responsavel_id));
+}
+
+/* ═══ COORD: LEADS DA EQUIPE ═══ */
+function renderCoordLeads(){
+  const q=(document.getElementById('cl-srch')?.value||'').toLowerCase();
+  const fs=document.getElementById('cl-f-status')?.value;
+  const fv=document.getElementById('cl-f-vend')?.value;
+  const mbs=getCoordMembers();
+  const vSel=document.getElementById('cl-f-vend');
+  if(vSel&&vSel.options.length<=1){
+    vSel.innerHTML='<option value="">Todos os vendedores</option>'+
+      allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  }
+  let leads=getCoordLeads();
+  if(q) leads=leads.filter(l=>l.nome.toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q));
+  if(fs) leads=leads.filter(l=>l.status===fs);
+  if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
+  document.getElementById('cl-title').textContent=`Leads da Equipe — ${leads.length}`;
+  document.getElementById('cl-tbody').innerHTML=leads.length===0
+    ?`<tr><td colspan="8"><div class="empty"><div class="ei">👥</div>Nenhum lead</div></td></tr>`
+    :leads.map(l=>{
+      const u=allUsers.find(u=>u.user_id===l.responsavel_id);
+      return`<tr>
+        <td><input type="checkbox" class="coord-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" onchange="updateCoordMassCount()"></td>
+        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','coord-leads')">${l.nome}</td>
+        <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
+        <td>${sBadge(l.status)}</td>
+        <td style="font-size:11.5px">${u?.name||'<span style="color:var(--orange)">Sem vendedor</span>'}</td>
+        <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
+        <td><button class="act" onclick="openDetail('${l.id}','coord-leads')">Ver →</button></td>
+      </tr>`;
+    }).join('');
+}
+
+function toggleCoordMass(on){
+  const bar=document.getElementById('coord-mass-bar');
+  if(bar) bar.style.display=on?'flex':'none';
+  const mbs=getCoordMembers();
+  const rSel=document.getElementById('coord-mass-resp');
+  if(rSel) rSel.innerHTML='<option value="">Transferir para...</option>'+
+    allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  if(!on) document.querySelectorAll('.coord-chk').forEach(c=>{c.checked=false;});
+  updateCoordMassCount();
+}
+function coordSelectAll(sel){document.querySelectorAll('.coord-chk').forEach(c=>{c.checked=sel;});updateCoordMassCount();}
+function updateCoordMassCount(){
+  const n=document.querySelectorAll('.coord-chk:checked').length;
+  const el=document.getElementById('coord-mass-count');
+  if(el) el.textContent=n?n+' selecionado'+(n!==1?'s':''):'';
+}
+async function coordMassTransfer(){
+  const ids=[...document.querySelectorAll('.coord-chk:checked')].map(c=>c.dataset.id);
+  const respId=document.getElementById('coord-mass-resp')?.value;
+  if(!ids.length){toast('Selecione leads','err');return;}
+  if(!respId){toast('Selecione um vendedor','err');return;}
+  await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString()}).in('id',ids);
+  ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
+  saveCache();renderCoordLeads();
+  toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
+}
+async function coordMassRemover(){
+  const ids=[...document.querySelectorAll('.coord-chk:checked')].map(c=>c.dataset.id);
+  if(!ids.length){toast('Selecione leads','err');return;}
+  if(!confirm('Remover vendedor de '+ids.length+' lead'+(ids.length!==1?'s':'')+'?'))return;
+  await sb.from('crm_leads').update({responsavel_id:null}).in('id',ids);
+  ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=null;});
+  saveCache();renderCoordLeads();
+  toast('Vendedor removido de '+ids.length+' lead'+(ids.length!==1?'s':''),'ok');
+}
+
+/* ═══ COORD: FUNIL DA EQUIPE ═══ */
+function renderCoordFunil(){
+  const fv=document.getElementById('cf-vend-filter')?.value;
+  const mbs=getCoordMembers();
+  const vSel=document.getElementById('cf-vend-filter');
+  if(vSel&&vSel.options.length<=1)
+    vSel.innerHTML='<option value="">Todos os vendedores</option>'+
+      allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  let leads=getCoordLeads();
+  if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
+  document.getElementById('coord-funil-grid').innerHTML=STAGES.map(s=>{
+    const ls=leads.filter(l=>l.status===s);
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:100px;transition:all .15s"
+      ondragover="event.preventDefault();this.classList.add('drag-over')"
+      ondragleave="this.classList.remove('drag-over')"
+      ondrop="cfOnDrop(event,'${s}')">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${SCOL[s]};margin-bottom:10px">${s} <span style="color:var(--muted2)">(${ls.length})</span></div>
+      ${ls.length===0?'<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Vazio</div>':''}
+      ${ls.map(l=>{
+        const u=allUsers.find(u=>u.user_id===l.responsavel_id);
+        return`<div class="funil-card" draggable="true"
+          ondragstart="onDragStart(event,'${l.id}')" ondragend="onDragEnd(event)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px;margin-bottom:7px;display:flex;align-items:center;gap:7px;transition:all .13s"
+          onmouseover="this.style.borderColor='var(--gold-dim)'" onmouseout="this.style.borderColor='var(--border)'">
+          ${_cfMassMode?`<input type="checkbox" class="cf-chk" data-id="${l.id}" style="accent-color:var(--gold);flex-shrink:0" onchange="updateCfCount()">`: ''}
+          <div style="flex:1;cursor:pointer" onclick="openDetail('${l.id}','coord-leads')">
+            <div style="font-size:11.5px;font-weight:700">${l.nome}</div>
+            <div style="font-size:9.5px;color:var(--muted2)">${u?.name||'—'} · ${l.interesse||'—'}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+async function cfOnDrop(e,newStage){
+  e.preventDefault();e.currentTarget.classList.remove('drag-over');
+  if(!_dragLeadId)return;
+  await moveStage(_dragLeadId,newStage);
+  renderCoordFunil();_dragLeadId=null;
+}
+function toggleCfMass(on){
+  _cfMassMode=on;
+  const bar=document.getElementById('cf-mass-bar');
+  if(bar) bar.style.display=on?'flex':'none';
+  const mbs=getCoordMembers();
+  const rSel=document.getElementById('cf-mass-resp');
+  if(rSel) rSel.innerHTML='<option value="">Transferir para...</option>'+
+    allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  renderCoordFunil();
+}
+function cfSelectAll(sel){document.querySelectorAll('.cf-chk').forEach(c=>{c.checked=sel;});updateCfCount();}
+function updateCfCount(){
+  const n=document.querySelectorAll('.cf-chk:checked').length;
+  const el=document.getElementById('cf-mass-count');
+  if(el) el.textContent=n?n+' selecionado'+(n!==1?'s':''):'';
+}
+async function cfMassTransfer(){
+  const ids=[...document.querySelectorAll('.cf-chk:checked')].map(c=>c.dataset.id);
+  const respId=document.getElementById('cf-mass-resp')?.value;
+  if(!ids.length){toast('Selecione leads','err');return;}
+  if(!respId){toast('Selecione um vendedor','err');return;}
+  await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString()}).in('id',ids);
+  ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
+  saveCache();renderCoordFunil();
+  toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
+}
+
+/* ═══ COORD: DISTRIBUIÇÃO DA EQUIPE ═══ */
+function renderCoordDist(){
+  const mbs=getCoordMembers();
+  const vends=allUsers.filter(u=>mbs.includes(u.user_id));
+  document.getElementById('coord-dist-vendedores').innerHTML=vends.length===0
+    ?'<div class="empty"><div class="ei">👥</div>Sem membros</div>'
+    :vends.map(u=>{
+      const count=allLeads.filter(l=>l.responsavel_id===u.user_id).length;
+      const fechs=allLeads.filter(l=>l.responsavel_id===u.user_id&&l.status==='Fechado').length;
+      return`<div class="dist-card">
+        <div class="dist-av">${u.name[0].toUpperCase()}</div>
+        <div class="dist-info">
+          <div class="dist-name">${u.name}</div>
+          <div class="dist-meta">${fechs} fechamento${fechs!==1?'s':''}</div>
+          <div class="progress-bar" style="width:120px"><div class="progress-fill" style="width:${count?Math.min(100,count*5):0}%"></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <div class="dist-count">${count}</div>
+          <button class="btn-sm" onclick="document.getElementById('funis-vend-sel').value='${u.user_id}';nav('funis-equipe',null);renderNav();openFunilVendedor('${u.user_id}')">Ver funil</button>
+        </div>
+      </div>`;
+    }).join('');
+
+  const eqs=getCoordEquipes();
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&(eqs.includes(l.equipe_id)||mbs.includes(l.responsavel_id)));
+  document.getElementById('coord-dist-tbody').innerHTML=semVend.length===0
+    ?`<tr><td colspan="5"><div class="empty"><div class="ei">✅</div>Todos têm vendedor</div></td></tr>`
+    :semVend.map(l=>`<tr>
+        <td style="font-weight:700">${l.nome}</td>
+        <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
+        <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
+        <td><button class="act" onclick="coordQuickDist('${l.id}')">👤 Atribuir</button></td>
+      </tr>`).join('');
+}
+
+async function coordQuickDist(leadId){
+  const mbs=getCoordMembers();
+  const vends=allUsers.filter(u=>mbs.includes(u.user_id)&&u.role==='vendedor');
+  if(!vends.length){toast('Sem vendedores na equipe','err');return;}
+  // Round-robin within equipe
+  const counts=vends.map(u=>({u,c:allLeads.filter(l=>l.responsavel_id===u.user_id).length}));
+  counts.sort((a,b)=>a.c-b.c);
+  const vend=counts[0].u;
+  await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString()}).eq('id',leadId);
+  const i=allLeads.findIndex(l=>l.id===leadId);
+  if(i>-1) allLeads[i].responsavel_id=vend.user_id;
+  saveCache();renderCoordDist();
+  toast('Lead atribuído a '+vend.name,'ok');
+}
+
+async function coordDistAutoAll(){
+  const mbs=getCoordMembers();
+  const vends=allUsers.filter(u=>mbs.includes(u.user_id)&&u.role==='vendedor');
+  if(!vends.length){toast('Sem vendedores','err');return;}
+  const eqs=getCoordEquipes();
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&eqs.includes(l.equipe_id));
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
+  let idx=0;
+  for(const lead of semVend){
+    const vend=vends[idx%vends.length];
+    await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString()}).eq('id',lead.id);
+    const i=allLeads.findIndex(l=>l.id===lead.id);
+    if(i>-1) allLeads[i].responsavel_id=vend.user_id;
+    idx++;
+  }
+  saveCache();renderCoordDist();
+  toast(semVend.length+' lead'+(semVend.length!==1?'s':'')+' distribuído'+(semVend.length!==1?'s':'')+'!','ok');
+}
+
 /* ═══ SELEÇÃO EM MASSA — FUNIL EQUIPE ═══ */
 let _massMode=false;
 let _massVendedorId=null;
+let _leadsMassMode=false;
 
 function toggleMassMode(){
   _massMode=!_massMode;
@@ -2275,34 +2597,51 @@ async function massRemove(){
 }
 
 /* ═══ SELEÇÃO EM MASSA — TODOS OS LEADS ═══ */
-function toggleLeadsMassMode(on){
-  const bar=document.getElementById('leads-mass-bar');
-  if(bar) bar.style.display=on?'flex':'none';
-  // Populate selects
+function openLeadsMass(){
+  _leadsMassMode=true;
+  document.getElementById('leads-action-bar').style.display='flex';
+  document.getElementById('leads-mass-btn').style.display='none';
   const vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
-  const rSel=document.getElementById('leads-mass-resp');
-  const eSel=document.getElementById('leads-mass-equipe');
-  if(rSel) rSel.innerHTML='<option value="">Transferir para...</option>'+vends.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
-  if(eSel) eSel.innerHTML='<option value="">Enviar p/ Equipe...</option>'+allEquipes.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
-  if(!on) document.querySelectorAll('.lead-chk').forEach(c=>{c.checked=false;});
+  document.getElementById('leads-mass-resp').innerHTML='<option value="">Transferir para vendedor...</option>'+vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
+  document.getElementById('leads-mass-equipe').innerHTML='<option value="">Enviar para equipe...</option>'+allEquipes.map(e=>'<option value="'+e.id+'">'+e.nome+'</option>').join('');
+  const hd=document.getElementById('l-chk-head');
+  if(hd) hd.style.display='table-cell';
+  document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='table-cell');
   updateLeadsMassCount();
 }
-
+function closeLeadsMass(){
+  _leadsMassMode=false;
+  document.getElementById('leads-action-bar').style.display='none';
+  document.getElementById('leads-mass-btn').style.display='';
+  const hd=document.getElementById('l-chk-head');
+  if(hd) hd.style.display='none';
+  document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='none');
+  document.querySelectorAll('.lead-chk').forEach(c=>c.checked=false);
+  updateLeadsMassCount();
+}
+function toggleLeadsMassMode(on){ if(on) openLeadsMass(); else closeLeadsMass(); }
 function leadsSelectAll(sel){
-  document.querySelectorAll('.lead-chk').forEach(c=>{c.checked=sel;});
+  document.querySelectorAll('.lead-chk').forEach(c=>c.checked=sel);
+  const all=document.getElementById('l-chk-all');
+  if(all) all.checked=sel;
   updateLeadsMassCount();
 }
-
 function updateLeadsMassCount(){
-  const n=document.querySelectorAll('.lead-chk:checked').length;
-  const el=document.getElementById('leads-mass-count');
-  if(el) el.textContent=n?n+' selecionado'+(n!==1?'s':''):'Nenhum selecionado';
+  const total=document.querySelectorAll('.lead-chk').length;
+  const checked=document.querySelectorAll('.lead-chk:checked').length;
+  const el=document.getElementById('leads-sel-count');
+  if(el) el.textContent=checked+' de '+total+' selecionado'+(checked!==1?'s':'');
+  const all=document.getElementById('l-chk-all');
+  if(all){
+    all.indeterminate=checked>0&&checked<total;
+    if(checked===total&&total>0) all.checked=true;
+    else if(checked===0) all.checked=false;
+  }
 }
-
 async function leadsMassTransfer(){
   const ids=[...document.querySelectorAll('.lead-chk:checked')].map(c=>c.dataset.id);
   const respId=document.getElementById('leads-mass-resp')?.value;
-  if(!ids.length){toast('Selecione leads','err');return;}
+  if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
   const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString()}).in('id',ids);
   if(error){toast('Erro: '+error.message,'err');return;}
@@ -2310,11 +2649,10 @@ async function leadsMassTransfer(){
   saveCache();populateSelects();renderLeads();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
 }
-
 async function leadsMassEnviarEquipe(){
   const ids=[...document.querySelectorAll('.lead-chk:checked')].map(c=>c.dataset.id);
   const equipeId=document.getElementById('leads-mass-equipe')?.value;
-  if(!ids.length){toast('Selecione leads','err');return;}
+  if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!equipeId){toast('Selecione uma equipe','err');return;}
   const{error}=await sb.from('crm_leads').update({equipe_id:equipeId,responsavel_id:null}).in('id',ids);
   if(error){toast('Erro: '+error.message,'err');return;}
