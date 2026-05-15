@@ -113,6 +113,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .b-fechado{background:#0a1f0a;color:var(--green)}
 .b-perdido{background:#1f0a0a;color:var(--red)}
 .b-admin{background:#1a1505;color:var(--gold2)}
+.b-gold{background:#1a1505;color:var(--gold2)}
 .b-coord{background:#0d1a2e;color:var(--blue)}
 .b-vend{background:#0a1f0a;color:var(--green)}
 .b-pend{background:#1a1505;color:var(--orange)}
@@ -322,7 +323,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <option value="">Todos os vendedores</option>
       </select>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
-      <button class="btn-primary" onclick="openModal('lead')">+ Novo Lead</button>
+      ${isAdmin()?'<button class="btn-primary" onclick="openModal('lead')">+ Novo Lead</button>':''}
     </div>
     <div id="leads-action-bar" style="display:none;background:var(--surface2);border:1px solid var(--border-gold);border-radius:10px;padding:10px 14px;margin-bottom:12px;gap:10px;align-items:center;flex-wrap:wrap">
       <span id="leads-sel-count" style="font-size:12.5px;font-weight:700;color:var(--gold2);min-width:80px">0 selecionados</span>
@@ -780,6 +781,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div class="fld"><label>Perfil</label>
       <select class="inp" id="role-select">
         <option value="vendedor">Vendedor</option>
+        <option value="supervisor">Supervisor</option>
         <option value="coordenador">Coordenador</option>
         <option value="admin">Admin</option>
       </select>
@@ -1085,7 +1087,8 @@ async function ensureProfile(){
   }
   const initials=CUProfile.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
   document.getElementById('sb-name').textContent=CUProfile.name;
-  document.getElementById('sb-role').textContent=CUProfile.role;
+  const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor'};
+  document.getElementById('sb-role').textContent=roleLabels[CUProfile.role]||CUProfile.role;
   document.getElementById('u-name').textContent=CUProfile.name;
   document.getElementById('u-av').textContent=initials;
 }
@@ -1097,9 +1100,10 @@ async function loadAll(){
     const r=await Promise.race([q,tOut]);
     return r;
   }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
-  const isCoordRole=CUProfile?.role==='coordenador';
+  const isCoordRole=CUProfile?.role==='supervisor'; // supervisor = restricted coord
   let leadsQ;
-  if(isAdm){
+  if(isAdm||isCoordenador()){
+    // Admin and Coordenador see all leads
     leadsQ=sb.from('crm_leads').select('*').order('created_at',{ascending:false});
   } else if(isCoordRole){
     // Coordinator: gets leads from their equipes (as coord member)
@@ -1145,7 +1149,9 @@ async function loadAll(){
   populateSelects();
 }
 
-function isAdminOrCoord(){return CUProfile?.role==='admin'||CUProfile?.role==='coordenador';}
+function isAdminOrCoord(){return CUProfile?.role==='admin'||CUProfile?.role==='coordenador'||CUProfile?.role==='supervisor';}
+function isSupervisor(){return CUProfile?.role==='supervisor';}
+function isCoordenador(){return CUProfile?.role==='coordenador';}
 
 function isAdmin(){return CUProfile?.role==='admin';}
 
@@ -1169,31 +1175,38 @@ function sel(id,html){const e=document.getElementById(id);if(e)e.innerHTML=html;
 /* ═══ NAV ═══ */
 function renderNav(){
   const isAdm=isAdmin();
-  const isCoord=CUProfile?.role==='coordenador';
-  const admin=isAdminOrCoord();
+  const isCoord=isCoordenador();
+  const isSup=isSupervisor();
+  const admin=isAdminOrCoord(); // admin + coord + supervisor
   let html='';
   html+=`<div class="nav-sect">Principal</div>
     <div class="nav-item on" onclick="nav('dashboard',this)" title="Dashboard"><span class="nav-icon">◆</span><span class="nav-label">Dashboard</span></div>`;
-  if(isAdm){
+
+  if(isAdm||isCoord){
+    // Admin + Coordenador: full access to all leads
     html+=`<div class="nav-sect">Leads</div>
       <div class="nav-item" onclick="nav('leads',this)" title="Todos os Leads"><span class="nav-icon">👥</span><span class="nav-label">Todos os Leads</span></div>
       <div class="nav-item" onclick="nav('funil',this)" title="Funil"><span class="nav-icon">🎯</span><span class="nav-label">Funil de Vendas</span></div>
       <div class="nav-item" onclick="nav('distribuicao',this)" title="Distribuição"><span class="nav-icon">⚡</span><span class="nav-label">Distribuição</span></div>
-      <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">📥</span><span class="nav-label">Importar Leads</span></div>
+      ${isAdm?`<div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">📥</span><span class="nav-label">Importar Leads</span></div>`:''}
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">🔭</span><span class="nav-label">Funis da Equipe</span></div>`;
-  } else if(isCoord){
+  } else if(isSup){
+    // Supervisor: own equipe only
     html+=`<div class="nav-sect">Minha Equipe</div>
       <div class="nav-item" onclick="nav('coord-leads',this)" title="Leads da Equipe"><span class="nav-icon">👥</span><span class="nav-label">Leads da Equipe</span></div>
       <div class="nav-item" onclick="nav('coord-funil',this)" title="Funil da Equipe"><span class="nav-icon">🎯</span><span class="nav-label">Funil da Equipe</span></div>
       <div class="nav-item" onclick="nav('coord-dist',this)" title="Distribuição"><span class="nav-icon">⚡</span><span class="nav-label">Distribuição</span></div>
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funil por Vendedor"><span class="nav-icon">🔭</span><span class="nav-label">Funil por Vendedor</span></div>`;
-  } else if(!isCoord){
+  } else {
+    // Vendedor: own leads only
     html+=`<div class="nav-sect">Meus Leads</div>
       <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">👤</span><span class="nav-label">Meus Leads</span></div>
-      <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">🎯</span><span class="nav-label">${isCoord?'Funil da Equipe':'Meu Funil'}</span></div>`;
+      <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">🎯</span><span class="nav-label">Meu Funil</span></div>`;
   }
+
   html+=`<div class="nav-sect">Agenda</div>
     <div class="nav-item" onclick="nav('tarefas',this)" title="Tarefas"><span class="nav-icon">✅</span><span class="nav-label">Tarefas</span></div>`;
+
   if(admin){
     html+=`<div class="nav-sect">Gestão</div>
       <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">🏅</span><span class="nav-label">Equipes</span></div>`;
@@ -1302,6 +1315,9 @@ function renderDashboard(){
 
 /* ═══ LEADS (admin) ═══ */
 function renderLeads(){
+  // Inject New Lead button for admin only
+  const nlw=document.getElementById('new-lead-btn-wrap');
+  if(nlw) nlw.innerHTML=isAdmin()?'<button class="btn-primary" onclick="openModal(\'lead\')">+ Novo Lead</button>':'';
   const q=(document.getElementById('l-srch')?.value||'').toLowerCase();
   const fs=document.getElementById('l-f-status')?.value;
   const fr=document.getElementById('l-f-resp')?.value;
@@ -1375,11 +1391,14 @@ async function openDetail(id,from){
   const venda=allVendas.find(v=>v.lead_id===id);
   const docs=allDocs.filter(d=>d.lead_id===id);
   const hoje=new Date().toISOString().slice(0,10);
-  // Coordinator can edit leads from their equipes
-  const coordEquipeIds=(CUProfile?.role==='coordenador')
-    ?allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id)
+  // canEditData: only admin can edit lead fields
+  const canEditData=isAdmin();
+  // canWork: can register contacts, tasks, close sale
+  const coordEquipeIds=(CUProfile?.role==='coordenador'||CUProfile?.role==='supervisor')
+    ?allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id)
     :[];
-  const canEdit=isAdminOrCoord()||lead.responsavel_id===CU.id||(coordEquipeIds.length&&coordEquipeIds.includes(lead.equipe_id));
+  const canWork=isAdminOrCoord()||lead.responsavel_id===CU.id||(coordEquipeIds.length&&coordEquipeIds.includes(lead.equipe_id));
+  const canEdit=canWork; // keep for backward compat
 
   let html=`<div class="panel">
     <div class="detail-header">
@@ -1390,7 +1409,7 @@ async function openDetail(id,from){
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
-        ${canEdit?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
+        ${canEditData?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
         ${isAdmin()?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >🗑️ Apagar</button>`:''}
         ${isAdminOrCoord()&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">🏅 Enviar p/ Equipe</button>`:''}
         ${isAdminOrCoord()&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">↩️ Recolher</button>`:''}
@@ -1485,8 +1504,8 @@ async function openDetail(id,from){
 function goBackLeads(){nav(fromPage,null);renderNav();}
 
 /* ═══ FUNIL ═══ */
-const STAGES=['Novo','Contato','Proposta','Fechado','Perdido'];
-const SCOL={Novo:'var(--blue)',Contato:'var(--purple)',Proposta:'var(--gold2)',Fechado:'var(--green)',Perdido:'var(--red)'};
+const STAGES=['Novo','Sem Contato','Contato','Proposta','Fechado','Perdido'];
+const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Contato':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
 function renderFunil(){
   const isAdmin=isAdminOrCoord();
   document.getElementById('funil-grid').innerHTML=STAGES.map(s=>{
@@ -1665,7 +1684,7 @@ function renderEquipe(){
     return`<tr>
       <td style="font-weight:700">${u.name}${u.user_id===CU.id?' <span style="font-size:10px;color:var(--muted2)">(você)</span>':''}</td>
       <td style="color:var(--muted2);font-size:12px">${u.email||'—'}</td>
-      <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-coord':'b-vend'}">${u.role}</span></td>
+      <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-gold':u.role==='supervisor'?'b-coord':'b-vend'}">${u.role}</span></td>
       <td>${leads}</td>
       <td style="color:var(--green)">${fechs}</td>
       <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${u.name}','${u.role}')">Perfil</button>`:'—'}</td>
@@ -2396,13 +2415,16 @@ async function onDropMeuFunil(e,newStage){
 
 /* ═══ COORDENADOR — HELPERS ═══ */
 function getCoordEquipes(){
+  if(isCoordenador()) return allEquipes.map(e=>e.id); // all equipes
   return allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
 }
 function getCoordMembers(){
+  if(isCoordenador()) return allUsers.filter(u=>u.role==='vendedor'||u.role==='supervisor').map(u=>u.user_id);
   const eqs=getCoordEquipes();
   return [...new Set(allMembroEquipes.filter(m=>eqs.includes(m.equipe_id)).map(m=>m.user_id))];
 }
 function getCoordLeads(){
+  if(isCoordenador()) return allLeads; // all leads
   const eqs=getCoordEquipes();
   const mbs=getCoordMembers();
   return allLeads.filter(l=>eqs.includes(l.equipe_id)||mbs.includes(l.responsavel_id));
@@ -2781,11 +2803,11 @@ async function leadsMassEnviarEquipe(){
 /* ═══ FUNIL POR VENDEDOR (admin/coord) ═══ */
 function renderFunisEquipe(){
   let vends;
-  if(isAdmin()){
-    // Admin sees all users
-    vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
+  if(isAdmin()||isCoordenador()){
+    // Admin + Coordenador: see all users
+    vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='supervisor');
   } else {
-    // Coordinator sees only members of their equipes
+    // Supervisor sees only members of their equipes
     const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
     const memberIds=[...new Set(allMembroEquipes.filter(m=>coordEquipes.includes(m.equipe_id)).map(m=>m.user_id))];
     vends=allUsers.filter(u=>memberIds.includes(u.user_id));
