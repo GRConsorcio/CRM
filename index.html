@@ -711,6 +711,11 @@ async function initApp(user){
     console.log('7. setupRealtime...');
     setupRealtime();
     console.log('8. App pronto!');
+    // Refresh profile silently após load bem-sucedido (corrige fallback de timeout)
+    if(CUProfile?.role==='vendedor'){
+      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle()
+        .then(({data})=>{ if(data&&data.role!==CUProfile.role){ CUProfile=data; renderNav(); renderDashboard(); }});
+    }
   } catch(e){
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
@@ -746,8 +751,27 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
 
 async function ensureProfile(){
   const name=CU.user_metadata?.full_name||CU.email.split('@')[0];
-  const{data,error}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
-  if(error&&error.message?.includes('does not exist')){
+  // Timeout de 6s para evitar travar na primeira conexão
+  const withTimeout=(promise,ms)=>Promise.race([
+    promise,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_profile')),ms))
+  ]);
+  let data,error;
+  try{
+    const r=await withTimeout(
+      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),6000
+    );
+    data=r.data; error=r.error;
+  } catch(e){
+    if(e.message==='timeout_profile'){
+      // Timeout: usa perfil em cache ou fallback e continua
+      console.warn('ensureProfile timeout — usando fallback');
+      CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
+      return;
+    }
+    throw e;
+  }
+  if(error?.message?.includes('does not exist')){
     throw new Error('Tabela crm_users não existe. Execute o crm-setup-completo.sql no Supabase SQL Editor.');
   }
   if(!data){
