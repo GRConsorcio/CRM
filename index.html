@@ -3141,20 +3141,32 @@ async function forceLogoutAll(){
 }
 async function recolherTudoParaMim(){
   if(!isAdmin()){toast('Apenas admin pode recolher todos os leads','err');return;}
-  if(!confirm('Recolher TODOS os leads? Eles ficarão sem vendedor e aparecerão na Distribuição.'))return;
-  const{error}=await sb.from('crm_leads').update({responsavel_id:null,equipe_id:null,distribuido_em:null}).neq('id','00000000-0000-0000-0000-000000000000');
+  if(!confirm('Recolher todos os leads (exceto Fechados)? Ficarão sem vendedor e aparecerão na Distribuição.'))return;
+  // Only recolher non-Fechado leads
+  const{error}=await sb.from('crm_leads')
+    .update({responsavel_id:null,equipe_id:null,distribuido_em:null})
+    .neq('status','Fechado');
   if(error){toast('Erro: '+error.message,'err');return;}
-  allLeads.forEach(l=>{l.responsavel_id=null;l.equipe_id=null;l.distribuido_em=null;});
+  allLeads.forEach(l=>{
+    if(l.status!=='Fechado'){
+      l.responsavel_id=null;
+      l.equipe_id=null;
+      l.distribuido_em=null;
+    }
+  });
   saveCache();populateSelects();renderLeads();
-  toast('Todos os leads recolhidos — prontos para distribuição!','ok');
+  const count=allLeads.filter(l=>l.status!=='Fechado').length;
+  toast(count+' lead'+(count!==1?'s':'')+' prontos para distribuição!','ok');
 }
 async function recolherLead(leadId){
-  const{error}=await sb.from('crm_leads').update({equipe_id:null}).eq('id',leadId);
+  const lead=allLeads.find(l=>l.id===leadId);
+  if(lead?.status==='Fechado'){toast('Lead fechado não pode ser recolhido','err');return;}
+  const{error}=await sb.from('crm_leads').update({equipe_id:null,responsavel_id:null,distribuido_em:null}).eq('id',leadId);
   if(error){toast('Erro: '+error.message,'err');return;}
   const i=allLeads.findIndex(l=>l.id===leadId);
-  if(i>-1) allLeads[i].equipe_id=null;
-  saveCache();
-  toast('Lead recolhido!','ok');
+  if(i>-1){allLeads[i].equipe_id=null;allLeads[i].responsavel_id=null;allLeads[i].distribuido_em=null;}
+  saveCache();populateSelects();
+  toast('Lead recolhido — aparecerá na Distribuição!','ok');
   openDetail(leadId,fromPage);
 }
 
