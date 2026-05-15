@@ -317,6 +317,23 @@ tr:hover td{background:rgba(255,255,255,.015)}
       </select>
       <button class="btn-primary" onclick="openModal('lead')">+ Novo Lead</button>
     </div>
+    <div id="leads-mass-bar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <span id="leads-mass-count" style="font-size:12px;color:var(--muted2)"></span>
+      <button class="btn-sm" onclick="leadsSelectAll(true)">Todos</button>
+      <button class="btn-sm" onclick="leadsSelectAll(false)">Nenhum</button>
+      <select id="leads-mass-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+        <option value="">Transferir para...</option>
+      </select>
+      <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2)" onclick="leadsMassTransfer()">↗ Transferir</button>
+      <select id="leads-mass-equipe" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+        <option value="">Enviar p/ Equipe...</option>
+      </select>
+      <button class="btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="leadsMassEnviarEquipe()">🏅 Enviar</button>
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted2);margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" id="leads-mass-toggle" onchange="toggleLeadsMassMode(this.checked)" style="accent-color:var(--gold)">
+      Seleção em massa
+    </label>
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title" id="l-title">Leads</div>
@@ -490,10 +507,21 @@ tr:hover td{background:rgba(255,255,255,.015)}
 
   <!-- FUNIS DA EQUIPE (admin/coord) -->
   <div class="page" id="page-funis-equipe">
-    <div style="margin-bottom:16px">
-      <select id="funis-vend-sel" class="inp" style="max-width:260px" onchange="openFunilVendedor(this.value)">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+      <select id="funis-vend-sel" class="inp" style="max-width:240px" onchange="openFunilVendedor(this.value)">
         <option value="">Selecione um vendedor...</option>
       </select>
+      <div id="mass-action-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
+        <span id="mass-count" style="font-size:12px;color:var(--muted2)"></span>
+        <button class="btn-sm" onclick="massSelectAll(true)">Selecionar todos</button>
+        <button class="btn-sm" onclick="massSelectAll(false)">Desmarcar</button>
+        <select id="mass-transfer-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+          <option value="">Transferir para...</option>
+        </select>
+        <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2)" onclick="massTransfer()">↗ Transferir</button>
+        <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="massRemove()">✕ Remover vendedor</button>
+      </div>
+      <button class="btn-sm" id="mass-toggle-btn" style="display:none" onclick="toggleMassMode()">☑ Seleção em massa</button>
     </div>
     <div id="funis-equipe-wrap">
       <div class="empty"><div class="ei">🔭</div>Selecione um vendedor para ver o funil dele</div>
@@ -951,9 +979,30 @@ async function loadAll(){
     const r=await Promise.race([q,tOut]);
     return r;
   }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
-  const leadsQ=isAdm
-    ?sb.from('crm_leads').select('*').order('created_at',{ascending:false})
-    :sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+  const isCoordRole=CUProfile?.role==='coordenador';
+  let leadsQ;
+  if(isAdm){
+    leadsQ=sb.from('crm_leads').select('*').order('created_at',{ascending:false});
+  } else if(isCoordRole){
+    // Coordinator: gets leads from their equipes (as coord member)
+    const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
+    const coordMembers=allMembroEquipes.filter(m=>coordEquipes.includes(m.equipe_id)).map(m=>m.user_id);
+    const uniqueMembers=[...new Set([...coordMembers,CU.id])];
+    if(coordEquipes.length>0){
+      leadsQ=sb.from('crm_leads').select('*')
+        .or('equipe_id.in.('+coordEquipes.join(',')+')')
+        .order('created_at',{ascending:false});
+    } else {
+      leadsQ=sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+    }
+  } else {
+    leadsQ=sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+  }
+  // Load equipe membros first so coordinator leadsQ can use it
+  if(!allMembroEquipes.length){
+    const{data:mb}=await sb.from('crm_equipe_membros').select('*');
+    allMembroEquipes=mb||[];
+  }
   const [lu,lh,lt,lv,ld,ll]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
     safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false})),
@@ -1001,8 +1050,9 @@ function sel(id,html){const e=document.getElementById(id);if(e)e.innerHTML=html;
 
 /* ═══ NAV ═══ */
 function renderNav(){
+  const isAdm=isAdmin();
+  const isCoord=CUProfile?.role==='coordenador';
   const admin=isAdminOrCoord();
-  const adm=isAdmin();
   let html='';
   html+=`<div class="nav-sect">Principal</div>
     <div class="nav-item on" onclick="nav('dashboard',this)" title="Dashboard"><span class="nav-icon">◆</span><span class="nav-label">Dashboard</span></div>`;
@@ -1011,12 +1061,12 @@ function renderNav(){
       <div class="nav-item" onclick="nav('leads',this)" title="Todos os Leads"><span class="nav-icon">👥</span><span class="nav-label">Todos os Leads</span></div>
       <div class="nav-item" onclick="nav('funil',this)" title="Funil"><span class="nav-icon">🎯</span><span class="nav-label">Funil de Vendas</span></div>
       <div class="nav-item" onclick="nav('distribuicao',this)" title="Distribuição"><span class="nav-icon">⚡</span><span class="nav-label">Distribuição</span></div>
-      <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">📥</span><span class="nav-label">Importar Leads</span></div>
+      ${isAdm?`<div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">📥</span><span class="nav-label">Importar Leads</span></div>`:''}
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">🔭</span><span class="nav-label">Funis da Equipe</span></div>`;
   } else {
     html+=`<div class="nav-sect">Meus Leads</div>
       <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">👤</span><span class="nav-label">Meus Leads</span></div>
-      <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">🎯</span><span class="nav-label">Meu Funil</span></div>`;
+      <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">🎯</span><span class="nav-label">${isCoord?'Funil da Equipe':'Meu Funil'}</span></div>`;
   }
   html+=`<div class="nav-sect">Agenda</div>
     <div class="nav-item" onclick="nav('tarefas',this)" title="Tarefas"><span class="nav-icon">✅</span><span class="nav-label">Tarefas</span></div>`;
@@ -1024,7 +1074,7 @@ function renderNav(){
     html+=`<div class="nav-sect">Gestão</div>
       <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">🏅</span><span class="nav-label">Equipes</span></div>`;
   }
-  if(adm){
+  if(isAdm){
     html+=`<div class="nav-sect">Administração</div>
       <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">🛡️</span><span class="nav-label">Usuários</span></div>`;
   }
@@ -1069,6 +1119,8 @@ function renderDashboard(){
     <div class="kpi"><div class="kpi-label">Conversão</div><div class="kpi-val" style="color:var(--gold2)">${total?Math.round(fechados/total*100):0}%</div></div>
     <div class="kpi"><div class="kpi-label">Tarefas Vencidas</div><div class="kpi-val" style="color:${vencidas?'var(--red)':'var(--text)'}">${vencidas}</div></div>`;
   if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)">${semVend}</div></div>`;
+  // Ranking panel: only for admin/coord
+  document.getElementById('dash-cols').style.display=isAdminOrCoord()?'':'none';
   document.getElementById('dash-kpis').innerHTML=kpis;
 
   // Ranking
@@ -1085,6 +1137,32 @@ function renderDashboard(){
       </div>`).join('');
 
   // Activity
+  // Activity: only admin. Coordinator sees equipe summary instead.
+  const actPanel=document.getElementById('dash-act');
+  const actPanelWrap=actPanel?.closest('.panel');
+  if(isAdmin()){
+    if(actPanelWrap) actPanelWrap.style.display='';
+  } else if(CUProfile?.role==='coordenador'){
+    if(actPanelWrap) actPanelWrap.style.display='';
+    // Show equipe summary for coordinator
+    const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
+    const equipeNames=coordEquipes.map(id=>allEquipes.find(e=>e.id===id)?.nome||'—').join(', ');
+    const memberIds=[...new Set(allMembroEquipes.filter(m=>coordEquipes.includes(m.equipe_id)).map(m=>m.user_id))];
+    const equipeLeads=allLeads.filter(l=>coordEquipes.includes(l.equipe_id)||memberIds.includes(l.responsavel_id));
+    actPanel.innerHTML=`<div style="font-size:11.5px;color:var(--muted2);margin-bottom:12px">Equipe${coordEquipes.length>1?'s':''}: <strong style="color:var(--gold2)">${equipeNames||'Nenhuma'}</strong></div>`+
+      (memberIds.length===0?'<div class="empty"><div class="ei">👥</div>Sem membros nas suas equipes</div>':
+      allUsers.filter(u=>memberIds.includes(u.user_id)).map(u=>{
+        const uLeads=allLeads.filter(l=>l.responsavel_id===u.user_id);
+        const uFechs=uLeads.filter(l=>l.status==='Fechado').length;
+        return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #191919">
+          <div style="width:30px;height:30px;border-radius:8px;background:var(--gold);color:#0a0a0a;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900">${u.name[0]}</div>
+          <div style="flex:1"><div style="font-size:12.5px;font-weight:700">${u.name}</div><div style="font-size:10.5px;color:var(--muted2)">${uLeads.length} leads · ${uFechs} fechados</div></div>
+          <button class="btn-sm" onclick="document.getElementById('funis-vend-sel').value='${u.user_id}';nav(document.querySelector('[title=\'Funis da Equipe\']'));openFunilVendedor('${u.user_id}')">Ver funil</button>
+        </div>`;
+      }).join(''));
+  } else {
+    if(actPanelWrap) actPanelWrap.style.display='none';
+  }
   document.getElementById('dash-act').innerHTML=allHist.slice(0,15).map(h=>{
     const lead=allLeads.find(l=>l.id===h.lead_id);
     const user=allUsers.find(u=>u.user_id===h.user_id);
@@ -1112,6 +1190,7 @@ function renderLeads(){
     :f.map(l=>{
       const u=allUsers.find(u=>u.user_id===l.responsavel_id);
       return`<tr>
+        <td style="width:32px"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" onchange="updateLeadsMassCount()"></td>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td>${sBadge(l.status)}</td>
@@ -1160,7 +1239,11 @@ async function openDetail(id,from){
   const venda=allVendas.find(v=>v.lead_id===id);
   const docs=allDocs.filter(d=>d.lead_id===id);
   const hoje=new Date().toISOString().slice(0,10);
-  const canEdit=isAdminOrCoord()||lead.responsavel_id===CU.id;
+  // Coordinator can edit leads from their equipes
+  const coordEquipeIds=(CUProfile?.role==='coordenador')
+    ?allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id)
+    :[];
+  const canEdit=isAdminOrCoord()||lead.responsavel_id===CU.id||(coordEquipeIds.length&&coordEquipeIds.includes(lead.equipe_id));
 
   let html=`<div class="panel">
     <div class="detail-header">
@@ -1328,7 +1411,9 @@ async function onDropStage(e,newStage){
 }
 
 async function moveStage(id,status){
-  await sb.from('crm_leads').update({status}).eq('id',id);
+  // Coordinator and admin can move any lead; vendedor only their own
+  const{error}=await sb.from('crm_leads').update({status}).eq('id',id);
+  if(error){toast('Sem permissão para mover este lead','err');return;}
   const idx=allLeads.findIndex(l=>l.id===id);
   if(idx>-1) allLeads[idx].status=status;
   await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'📝 Anotação',descricao:`Status → ${status}`,created_at:new Date().toISOString()});
@@ -2081,7 +2166,14 @@ async function importLeads(leads,fonte){
 
 
 function renderMeuFunil(){
-  const leads=allLeads.filter(l=>l.responsavel_id===CU.id);
+  // Coordinator sees all equipe leads; vendedor sees only their own
+  let leads;
+  if(CUProfile?.role==='coordenador'){
+    const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
+    leads=allLeads.filter(l=>coordEquipes.includes(l.equipe_id)||l.responsavel_id===CU.id);
+  } else {
+    leads=allLeads.filter(l=>l.responsavel_id===CU.id);
+  }
   document.getElementById('meu-funil-grid').innerHTML=STAGES.map(s=>{
     const ls=leads.filter(l=>l.status===s);
     return`<div class="funil-col-wrap" data-stage="${s}"
@@ -2131,9 +2223,118 @@ async function onDropMeuFunil(e,newStage){
   _dragLeadId=null;
 }
 
+
+/* ═══ SELEÇÃO EM MASSA — FUNIL EQUIPE ═══ */
+let _massMode=false;
+let _massVendedorId=null;
+
+function toggleMassMode(){
+  _massMode=!_massMode;
+  const bar=document.getElementById('mass-action-bar');
+  const btn=document.getElementById('mass-toggle-btn');
+  if(bar) bar.style.display=_massMode?'flex':'none';
+  if(btn) btn.style.background=_massMode?'var(--gold-glow)':'';
+  // Re-render funil with/without checkboxes
+  if(_massVendedorId) openFunilVendedor(_massVendedorId);
+}
+
+function massSelectAll(sel){
+  document.querySelectorAll('.mass-chk').forEach(c=>{c.checked=sel;});
+  updateMassCount();
+}
+
+function updateMassCount(){
+  const n=document.querySelectorAll('.mass-chk:checked').length;
+  const el=document.getElementById('mass-count');
+  if(el) el.textContent=n?n+' selecionado'+(n!==1?'s':''):'';
+}
+
+async function massTransfer(){
+  const ids=[...document.querySelectorAll('.mass-chk:checked')].map(c=>c.dataset.id);
+  const respId=document.getElementById('mass-transfer-resp')?.value;
+  if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
+  if(!respId){toast('Selecione um vendedor para transferir','err');return;}
+  const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString()}).in('id',ids);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
+  saveCache();populateSelects();
+  toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
+  if(_massVendedorId) openFunilVendedor(_massVendedorId);
+}
+
+async function massRemove(){
+  const ids=[...document.querySelectorAll('.mass-chk:checked')].map(c=>c.dataset.id);
+  if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
+  if(!confirm('Remover vendedor de '+ids.length+' lead'+(ids.length!==1?'s':'')+'?'))return;
+  const{error}=await sb.from('crm_leads').update({responsavel_id:null}).in('id',ids);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=null;});
+  saveCache();populateSelects();
+  toast(ids.length+' lead'+(ids.length!==1?'s':'')+' sem vendedor','ok');
+  if(_massVendedorId) openFunilVendedor(_massVendedorId);
+}
+
+/* ═══ SELEÇÃO EM MASSA — TODOS OS LEADS ═══ */
+function toggleLeadsMassMode(on){
+  const bar=document.getElementById('leads-mass-bar');
+  if(bar) bar.style.display=on?'flex':'none';
+  // Populate selects
+  const vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
+  const rSel=document.getElementById('leads-mass-resp');
+  const eSel=document.getElementById('leads-mass-equipe');
+  if(rSel) rSel.innerHTML='<option value="">Transferir para...</option>'+vends.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  if(eSel) eSel.innerHTML='<option value="">Enviar p/ Equipe...</option>'+allEquipes.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+  if(!on) document.querySelectorAll('.lead-chk').forEach(c=>{c.checked=false;});
+  updateLeadsMassCount();
+}
+
+function leadsSelectAll(sel){
+  document.querySelectorAll('.lead-chk').forEach(c=>{c.checked=sel;});
+  updateLeadsMassCount();
+}
+
+function updateLeadsMassCount(){
+  const n=document.querySelectorAll('.lead-chk:checked').length;
+  const el=document.getElementById('leads-mass-count');
+  if(el) el.textContent=n?n+' selecionado'+(n!==1?'s':''):'Nenhum selecionado';
+}
+
+async function leadsMassTransfer(){
+  const ids=[...document.querySelectorAll('.lead-chk:checked')].map(c=>c.dataset.id);
+  const respId=document.getElementById('leads-mass-resp')?.value;
+  if(!ids.length){toast('Selecione leads','err');return;}
+  if(!respId){toast('Selecione um vendedor','err');return;}
+  const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString()}).in('id',ids);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
+  saveCache();populateSelects();renderLeads();
+  toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
+}
+
+async function leadsMassEnviarEquipe(){
+  const ids=[...document.querySelectorAll('.lead-chk:checked')].map(c=>c.dataset.id);
+  const equipeId=document.getElementById('leads-mass-equipe')?.value;
+  if(!ids.length){toast('Selecione leads','err');return;}
+  if(!equipeId){toast('Selecione uma equipe','err');return;}
+  const{error}=await sb.from('crm_leads').update({equipe_id:equipeId,responsavel_id:null}).in('id',ids);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1){allLeads[i].equipe_id=equipeId;allLeads[i].responsavel_id=null;}});
+  saveCache();renderLeads();
+  toast(ids.length+' lead'+(ids.length!==1?'s':'')+' enviado'+(ids.length!==1?'s':'')+' para equipe!','ok');
+}
+
 /* ═══ FUNIL POR VENDEDOR (admin/coord) ═══ */
 function renderFunisEquipe(){
-  const vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
+  let vends;
+  if(isAdmin()){
+    // Admin sees all users
+    vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
+  } else {
+    // Coordinator sees only members of their equipes
+    const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
+    const memberIds=[...new Set(allMembroEquipes.filter(m=>coordEquipes.includes(m.equipe_id)).map(m=>m.user_id))];
+    vends=allUsers.filter(u=>memberIds.includes(u.user_id));
+  }
   const sel=document.getElementById('funis-vend-sel');
   if(sel){
     sel.innerHTML='<option value="">Selecione um vendedor...</option>'+
@@ -2145,10 +2346,19 @@ function renderFunisEquipe(){
 
 function openFunilVendedor(userId){
   if(!userId) return;
+  _massVendedorId=userId;
   const user=allUsers.find(u=>u.user_id===userId);
   const leads=allLeads.filter(l=>l.responsavel_id===userId);
   const wrap=document.getElementById('funis-equipe-wrap');
   if(!wrap) return;
+  // Show mass action controls and populate transfer select
+  const massBtn=document.getElementById('mass-toggle-btn');
+  if(massBtn) massBtn.style.display='inline-flex';
+  const massResp=document.getElementById('mass-transfer-resp');
+  if(massResp){
+    const vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
+    massResp.innerHTML='<option value="">Transferir para...</option>'+vends.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  }
 
   wrap.innerHTML=`
     <div style="margin-bottom:14px;display:flex;align-items:center;gap:12px">
@@ -2378,22 +2588,26 @@ async function openEquipeDetail(id){
             const uFechs=allLeads.filter(l=>l.responsavel_id===u.user_id&&l.status==='Fechado').length;
             const mb=membros.find(m=>m.user_id===u.user_id);
             const isCoord=mb?.cargo==='coordenador';
-            return`<div class="membro-row">
-              <div class="membro-av" style="background:${eq.cor||'var(--gold)'}">${u.name[0].toUpperCase()}</div>
-              <div style="flex:1">
-                <div style="display:flex;align-items:center;gap:6px">
-                  <span style="font-size:13px;font-weight:700">${u.name}</span>
-                  ${isCoord?`<span style="font-size:9px;font-weight:700;background:rgba(201,168,76,0.15);color:var(--gold2);border:1px solid var(--gold-dim);border-radius:4px;padding:1px 6px">COORD</span>`:''}
-                </div>
-                <div style="font-size:10.5px;color:var(--muted2)">${u.role} · ${uLeads} leads · ${uFechs} fechados</div>
-              </div>
-              <div style="display:flex;gap:6px;align-items:center">
-                ${isAdmin()?`<button class="act" onclick="setMemboCargo(&quot;${mb?.id}&quot;,&quot;${id}&quot;,&quot;${isCoord?'membro':'coordenador'}&quot;)" title="${isCoord?'Remover coordenador':'Tornar coordenador'}" style="${isCoord?'border-color:var(--gold-dim);color:var(--gold-dim)':''}">
-                  ${isCoord?'👑 Remover Coord':'👑 Coord'}
-                </button>`:''}
-                <button class="act red" onclick="removeMembro('${mb?.id}','${id}')">✕</button>
-              </div>
-            </div>`;
+            const coordBadge=isCoord?'<span style="font-size:9px;font-weight:700;background:rgba(201,168,76,0.15);color:#e0c068;border:1px solid #7a6328;border-radius:4px;padding:1px 6px">COORD</span>':'';
+            const coordLabel=isCoord?'Remover Coord':'Tornar Coord';
+            const coordCargo=isCoord?'membro':'coordenador';
+            const coordStyle=isCoord?'border-color:var(--gold-dim);color:var(--gold-dim)':'';
+            const coordTitle=isCoord?'Remover coordenador':'Tornar coordenador';
+            const adminBtn=isAdmin()?('<button class="act" onclick="setMemboCargo(\''+mb?.id+'\',\''+id+'\',\''+coordCargo+'\')" title="'+coordTitle+'" style="'+coordStyle+'">👑 '+coordLabel+'</button>'):'';
+            return'<div class="membro-row">'+
+              '<div class="membro-av" style="background:'+(eq.cor||'var(--gold)')+'">'+u.name[0].toUpperCase()+'</div>'+
+              '<div style="flex:1">'+
+                '<div style="display:flex;align-items:center;gap:6px">'+
+                  '<span style="font-size:13px;font-weight:700">'+u.name+'</span>'+
+                  coordBadge+
+                '</div>'+
+                '<div style="font-size:10.5px;color:var(--muted2)">'+u.role+' · '+uLeads+' leads · '+uFechs+' fechados</div>'+
+              '</div>'+
+              '<div style="display:flex;gap:6px;align-items:center">'+
+                adminBtn+
+                '<button class="act red" onclick="removeMembro(\''+mb?.id+'\',\''+id+'\')">✕</button>'+
+              '</div>'+
+            '</div>';
           }).join('')}
       </div>
     </div>
@@ -2449,11 +2663,13 @@ async function removeMembro(membroId,equipeId){
 }
 
 function openModal_equipe(){
-  editEquipeId=null;
-  document.getElementById('modal-equipe-ttl').textContent='Nova Equipe';
-  sv('eq-nome','');sv('eq-desc','');
-  corSelecionada='#c9a84c';
-  document.querySelectorAll('.cor-opt').forEach((c,i)=>c.classList.toggle('selected',i===0));
+  // Only reset if NOT called from editEquipe (editEquipeId already set)
+  if(!editEquipeId){
+    document.getElementById('modal-equipe-ttl').textContent='Nova Equipe';
+    sv('eq-nome','');sv('eq-desc','');
+    corSelecionada='#c9a84c';
+    document.querySelectorAll('.cor-opt').forEach((c,i)=>c.classList.toggle('selected',i===0));
+  }
 }
 
 async function saveEquipe(){
