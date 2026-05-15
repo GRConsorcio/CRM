@@ -2940,7 +2940,15 @@ function openLeadsMass(){
   document.getElementById('leads-mass-btn').style.display='none';
   const vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
   document.getElementById('leads-mass-resp').innerHTML='<option value="">Transferir para vendedor...</option>'+vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
-  document.getElementById('leads-mass-equipe').innerHTML='<option value="">Enviar para equipe...</option>'+allEquipes.map(e=>'<option value="'+e.id+'">'+e.nome+'</option>').join('');
+  // Supervisor: only own equipes
+  let visEquipes;
+  if(isAdmin()||isCoordenador()){
+    visEquipes=allEquipes;
+  } else {
+    const myEqIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
+    visEquipes=allEquipes.filter(e=>myEqIds.includes(e.id));
+  }
+  document.getElementById('leads-mass-equipe').innerHTML='<option value="">Enviar para equipe...</option>'+visEquipes.map(e=>'<option value="'+e.id+'">'+e.nome+'</option>').join('');
   const hd=document.getElementById('l-chk-head');
   if(hd) hd.style.display='table-cell';
   document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='table-cell');
