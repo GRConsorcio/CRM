@@ -691,12 +691,26 @@ async function initApp(user){
   document.getElementById('auth-screen').style.display='none';
   try{
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),10000);
+    console.log('1. ensureProfile iniciando...');
     await ensureProfile();
+    console.log('2. ensureProfile OK, role:', CUProfile?.role);
+    console.log('3. loadAll iniciando...');
     await loadAll();
+    console.log('4. loadAll OK, leads:', allLeads.length, 'users:', allUsers.length);
     clearTimeout(t);
+    console.log('5. renderNav...');
     renderNav();
+    console.log('6. renderDashboard...');
+    // Reset para dashboard sempre
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
+    document.getElementById('page-dashboard').classList.add('on');
+    document.querySelector('#nav-body .nav-item')?.classList.add('on');
+    document.getElementById('topbar-title').textContent='Dashboard';
     renderDashboard();
+    console.log('7. setupRealtime...');
     setupRealtime();
+    console.log('8. App pronto!');
   } catch(e){
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
