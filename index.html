@@ -2628,7 +2628,9 @@ function renderMeuFunil(){
         ${s} <span style="color:var(--muted2)">(${ls.length})</span>
       </div>
       ${ls.length===0?'<div style="font-size:11px;color:var(--muted);text-align:center;padding:10px 0">Vazio</div>':''}
-      ${ls.map(l=>`<div class="funil-card"
+      ${ls.map(l=>{
+        const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+        return`<div class="funil-card"
         draggable="true"
         data-lead-id="${l.id}"
         ondragstart="onDragStart(event,'${l.id}')"
@@ -2638,14 +2640,17 @@ function renderMeuFunil(){
         onmouseover="this.style.borderColor='var(--gold-dim)'"
         onmouseout="this.style.borderColor='var(--border)'">
         <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
-        <div style="font-size:10.5px;color:var(--muted2);margin-bottom:6px">${l.interesse||'—'}</div>
-        <div style="display:flex;gap:3px;flex-wrap:wrap">
+        ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${l.telefone}</div>`:''}
+        <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
+        ${resp?`<div style="font-size:9.5px;color:var(--muted)">👤 ${resp.name}</div>`:''}
+        <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:8px">
           ${STAGES.filter(x=>x!==s).map(x=>`<button onclick="event.stopPropagation();moveStageAndRefreshMeuFunil('${l.id}','${x}')"
             style="background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:4px;padding:2px 5px;font-size:9px;cursor:pointer;font-family:inherit;transition:all .13s"
             onmouseover="this.style.color='${SCOL[x]}';this.style.borderColor='${SCOL[x]}'"
             onmouseout="this.style.color='var(--muted2)';this.style.borderColor='var(--border)'">${x}</button>`).join('')}
         </div>
-      </div>`).join('')}
+      </div>`;
+  }).join('')}
     </div>`;
   }).join('');
 }
@@ -2841,12 +2846,16 @@ async function coordMassRemover(){
 
 /* ═══ COORD: FUNIL DA EQUIPE ═══ */
 function renderCoordFunil(){
-  const fv=document.getElementById('cf-vend-filter')?.value;
   const mbs=getCoordMembers();
   const vSel=document.getElementById('cf-vend-filter');
-  if(vSel&&vSel.options.length<=1)
+  // Always repopulate the vendor filter so it reflects current team members
+  if(vSel){
+    const prevVal=vSel.value;
     vSel.innerHTML='<option value="">Todos os vendedores</option>'+
       allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+    if(prevVal) vSel.value=prevVal;
+  }
+  const fv=vSel?.value||'';
   let leads=getCoordLeads();
   if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
   document.getElementById('coord-funil-grid').innerHTML=STAGES.map(s=>{
