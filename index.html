@@ -481,7 +481,11 @@ tr:hover td{background:rgba(255,255,255,.015)}
             <div class="upload-sub">Formato: .csv ou .txt separado por vírgula</div>
           </div>
           <div id="csv-preview"></div>
-          <button class="btn-primary" id="csv-import-btn" style="width:100%;display:none" onclick="importCSV()">
+          <div class="fld" id="csv-resp-wrap" style="display:none;margin-top:10px">
+            <label>Responsável</label>
+            <select class="inp" id="csv-resp"></select>
+          </div>
+          <button class="btn-primary" id="csv-import-btn" style="width:100%;display:none;margin-top:8px" onclick="importCSV()">
             ⬆️ Importar leads
           </button>
         </div>
@@ -498,8 +502,8 @@ tr:hover td{background:rgba(255,255,255,.015)}
           <textarea class="inp" id="bulk-text" style="min-height:160px;font-family:monospace;font-size:12px"
             placeholder="João Silva | (31) 99999-1111 | Fiat Argo R$60k&#10;Maria Souza | (31) 88888-2222 | Strada R$80k&#10;Pedro Lima | (31) 77777-3333 | Fastback R$100k"></textarea>
           <div class="fld" style="margin-top:12px">
-            <label>Responsável (opcional)</label>
-            <select class="inp" id="bulk-resp"><option value="">Distribuir automaticamente</option></select>
+            <label>Responsável</label>
+            <select class="inp" id="bulk-resp"><option value="">Manter na base (sem responsável)</option></select>
           </div>
           <button class="btn-primary" style="width:100%;margin-top:8px" onclick="importBulk()">
             ⬆️ Importar lista
@@ -2418,11 +2422,18 @@ function reRenderCurrent(){
 let csvParsedLeads=[];
 
 function renderImportar(){
-  // populate bulk resp
-  const vends=allUsers.filter(u=>u.role==='vendedor');
-  const el=document.getElementById('bulk-resp');
-  if(el) el.innerHTML='<option value="">Distribuir automaticamente</option>'+
-    vends.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  // populate resp selects for both CSV and bulk import
+  const todos=allUsers.filter(u=>u.role==='vendedor'||u.role==='admin'||u.role==='coordenador'||u.role==='supervisor');
+  const optBase='<option value="">Manter na base (sem responsável)</option>';
+  // Find Rafael Messias user_id (case-insensitive match)
+  const rafael=allUsers.find(u=>u.name&&u.name.toLowerCase().includes('rafael'));
+  const makeOpts=(defaultId)=>optBase+todos.map(u=>`<option value="${u.user_id}"${u.user_id===defaultId?' selected':''}>${u.name} (${u.role})</option>`).join('');
+
+  const bulkEl=document.getElementById('bulk-resp');
+  if(bulkEl) bulkEl.innerHTML=makeOpts(rafael?.user_id||'');
+
+  const csvEl=document.getElementById('csv-resp');
+  if(csvEl) csvEl.innerHTML=makeOpts(rafael?.user_id||'');
 }
 
 function handleCSV(file){
@@ -2506,6 +2517,7 @@ function parseCSV(text){
 
   btn.textContent=`⬆️ Importar ${csvParsedLeads.length} lead${csvParsedLeads.length!==1?'s':''}`;
   btn.style.display='block';
+  document.getElementById('csv-resp-wrap').style.display='block';
 
   preview.innerHTML=`
     <div style="font-size:11.5px;color:var(--green);margin-bottom:8px">✅ ${csvParsedLeads.length} lead${csvParsedLeads.length!==1?'s':''} encontrado${csvParsedLeads.length!==1?'s':''}${erros.length?` (${erros.length} linha${erros.length!==1?'s':''} ignorada${erros.length!==1?'s':''})`:''}</div>
@@ -2518,13 +2530,17 @@ function parseCSV(text){
 async function importCSV(){
   if(!csvParsedLeads.length){toast('Nenhum lead para importar','err');return;}
   const btn=document.getElementById('csv-import-btn');
+  const respId=document.getElementById('csv-resp')?.value||null;
   btn.textContent='Importando...';btn.disabled=true;
-  await importLeads(csvParsedLeads,'CSV');
+  // Assign chosen responsável to all leads in batch
+  const leadsComResp=csvParsedLeads.map(l=>({...l,responsavel_id:respId||null}));
+  await importLeads(leadsComResp,'CSV');
   csvParsedLeads=[];
   btn.style.display='none';
   btn.disabled=false;
   document.getElementById('csv-preview').innerHTML='';
   document.getElementById('csv-file').value='';
+  document.getElementById('csv-resp-wrap').style.display='none';
 }
 
 async function importBulk(){
@@ -2551,16 +2567,11 @@ async function importBulk(){
 }
 
 async function importLeads(leads,fonte){
-  const vends=allUsers.filter(u=>u.role==='vendedor');
-  let{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
-  let rIdx=dc?.ultimo_vendedor_idx||0;
-
   let ok=0,errs=0;
   const batch=[];
   for(const lead of leads){
-    // Auto-distribute if no responsavel
-    let respId=lead.responsavel_id||null;
-    if(!respId&&vends.length){respId=vends[rIdx%vends.length].user_id;rIdx++;}
+    // Usa o responsável definido — não distribui automaticamente
+    const respId=lead.responsavel_id||null;
     batch.push({
       nome:lead.nome,
       telefone:lead.telefone||null,
@@ -2581,9 +2592,6 @@ async function importLeads(leads,fonte){
     if(error){errs+=Math.min(50,batch.length-i);console.error('Import error:',error);}
     else{ok+=data?.length||0;if(data)allLeads.unshift(...data);}
   }
-
-  // Update distribuicao counter
-  if(dc) await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:rIdx,updated_at:new Date().toISOString()}).eq('id',dc.id);
 
   saveCache();
   populateSelects();
