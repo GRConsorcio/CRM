@@ -1111,7 +1111,7 @@ async function initApp(user){
       populateSelects();
       renderNav();
       goToDashboard();
-      renderDashboard();
+      renderDashboard().catch(()=>{});
       setupRealtime();
       // Start task alert system
       setTimeout(checkTaskAlerts,2000);
@@ -1133,7 +1133,7 @@ async function initApp(user){
     populateSelects();
     renderNav();
     goToDashboard();
-    renderDashboard();
+    renderDashboard().catch(()=>{});
     setupRealtime();
     // Start task alert system
     setTimeout(checkTaskAlerts,2000);
@@ -1277,57 +1277,88 @@ async function ensureProfile(){
   document.getElementById('u-av').textContent=initials;
 }
 
+/* ═══ PAGINAÇÃO: busca TODOS os registros superando o limite de 1000 do Supabase ═══ */
+async function fetchAllPages(queryBuilder, pageSize=1000){
+  let allData=[];
+  let from=0;
+  while(true){
+    const{data,error}=await queryBuilder.range(from,from+pageSize-1);
+    if(error){console.warn('fetchAllPages error:',error.message);break;}
+    if(!data||data.length===0) break;
+    allData=allData.concat(data);
+    if(data.length<pageSize) break; // última página
+    from+=pageSize;
+  }
+  return allData;
+}
+
 async function loadAll(){
   const isAdm=isAdminOrCoord();
   const safe=async(q)=>{try{
-    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),5000));
+    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),15000));
     const r=await Promise.race([q,tOut]);
     return r;
   }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
   const isCoordRole=CUProfile?.role==='supervisor'; // supervisor = restricted coord
-  let leadsQ;
-  if(isAdm||isCoordenador()){
-    // Admin and Coordenador see all leads
-    leadsQ=sb.from('crm_leads').select('*').order('created_at',{ascending:false});
-  } else if(isCoordRole){
-    // Coordinator: gets leads from their equipes (as coord member)
-    const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
-    const coordMembers=allMembroEquipes.filter(m=>coordEquipes.includes(m.equipe_id)).map(m=>m.user_id);
-    const uniqueMembers=[...new Set([...coordMembers,CU.id])];
-    if(coordEquipes.length>0){
-      leadsQ=sb.from('crm_leads').select('*')
-        .or('equipe_id.in.('+coordEquipes.join(',')+')')
-        .order('created_at',{ascending:false});
-    } else {
-      leadsQ=sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
-    }
-  } else {
-    leadsQ=sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
-  }
+
   // Load equipe membros first so coordinator leadsQ can use it
   if(!allMembroEquipes.length){
     const{data:mb}=await sb.from('crm_equipe_membros').select('*');
     allMembroEquipes=mb||[];
   }
-  const [lu,lh,lt,lv,ld,ll]=await Promise.all([
+
+  // Load non-leads data in parallel (esses costumam ser menores)
+  const [lu,lh,lt,lv,ld]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
-    safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false})),
+    safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false}).limit(2000)),
     safe(sb.from('crm_tarefas').select('*').order('prazo',{ascending:true})),
     safe(sb.from('crm_vendas').select('*').order('created_at',{ascending:false})),
     safe(sb.from('crm_documentos').select('*').order('created_at',{ascending:false})),
-    safe(leadsQ),
   ]);
-  allLeads=ll.data||[];
+
   allUsers=lu.data||[];
   allHist=lh.data||[];
   allTasks=lt.data||[];
   allVendas=lv.data||[];
   allDocs=ld.data||[];
+
   // Warn if tables missing
   if(lu.error?.message?.includes('does not exist')){
     toast('⚠️ Tabelas não encontradas. Execute o SQL de setup no Supabase.','err');
     throw new Error('Tabelas não criadas. Execute o crm-setup-completo.sql no Supabase.');
   }
+
+  // ── LEADS: busca paginada para superar o limite de 1000 do Supabase ──
+  try{
+    if(isAdm||isCoordenador()){
+      // Admin e Coordenador veem TODOS os leads — paginação completa
+      toast('Carregando base completa de leads...','ok');
+      allLeads=await fetchAllPages(
+        sb.from('crm_leads').select('*').order('created_at',{ascending:false})
+      );
+    } else if(isCoordRole){
+      const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
+      if(coordEquipes.length>0){
+        allLeads=await fetchAllPages(
+          sb.from('crm_leads').select('*')
+            .or('equipe_id.in.('+coordEquipes.join(',')+')')
+            .order('created_at',{ascending:false})
+        );
+      } else {
+        const{data}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+        allLeads=data||[];
+      }
+    } else {
+      // Vendedor: busca apenas seus próprios leads (volume menor, sem necessidade de paginação em geral)
+      const{data}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+      allLeads=data||[];
+    }
+  } catch(e){
+    console.error('Erro ao carregar leads:',e.message);
+    toast('Erro ao carregar leads: '+e.message,'err');
+    allLeads=[];
+  }
+
   // Load equipes (non-blocking)
   loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
   populateSelects();
@@ -1379,7 +1410,11 @@ function renderNav(){
   html+=`<div class="nav-sect">Principal</div>
     <div class="nav-item on" onclick="nav('dashboard',this)" title="Dashboard"><span class="nav-icon">${IC.dashboard}</span><span class="nav-label">Dashboard</span></div>`;
 
+  const IC_vendas='<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 8.5h4M8 7v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const IC_clientes='<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11 7.5l1.5 1.5L15 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
   if(isAdm||isCoord){
+    // Admin e Coordenador: acesso total a leads + gestão completa
     html+=`<div class="nav-sect">Leads</div>
       <div class="nav-item" onclick="nav('leads',this)" title="Todos os Leads"><span class="nav-icon">${IC.leads}</span><span class="nav-label">Todos os Leads</span></div>
       <div class="nav-item" onclick="nav('funil',this)" title="Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil de Vendas</span></div>
@@ -1387,28 +1422,38 @@ function renderNav(){
       ${isAdm?`<div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>`:''}
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funis da Equipe</span></div>`;
   } else if(isSup){
+    // Supervisor: acesso apenas à sua equipe
     html+=`<div class="nav-sect">Minha Equipe</div>
       <div class="nav-item" onclick="nav('coord-leads',this)" title="Leads da Equipe"><span class="nav-icon">${IC.leads}</span><span class="nav-label">Leads da Equipe</span></div>
       <div class="nav-item" onclick="nav('coord-funil',this)" title="Funil da Equipe"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil da Equipe</span></div>
       <div class="nav-item" onclick="nav('coord-dist',this)" title="Distribuição"><span class="nav-icon">${IC.dist}</span><span class="nav-label">Distribuição</span></div>
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funil por Vendedor"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funil por Vendedor</span></div>`;
   } else {
+    // Vendedor: apenas seus leads
     html+=`<div class="nav-sect">Meus Leads</div>
       <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">${IC.myteam}</span><span class="nav-label">Meus Leads</span></div>
       <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Meu Funil</span></div>
-      <div class="nav-item" onclick="openVendasPage('todos')" title="Minhas Vendas"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 8.5h4M8 7v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="nav-label">Minhas Vendas</span></div>
-      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11 7.5l1.5 1.5L15 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="nav-label">Clientes Vendidos</span></div>`;
+      <div class="nav-item" onclick="openVendasPage('todos')" title="Minhas Vendas"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Minhas Vendas</span></div>`;
+    // Vendedor NÃO vê "Clientes Vendidos" — apenas a aba de Vendas acima
   }
 
   html+=`<div class="nav-sect">Agenda</div>
     <div class="nav-item" onclick="nav('tarefas',this)" title="Tarefas"><span class="nav-icon">${IC.tasks}</span><span class="nav-label">Tarefas</span><span class="nav-badge" id="nav-tasks-badge" style="display:none">!</span></div>`;
 
   if(admin){
+    // Admin e Coordenador: seção Gestão com Equipes + Vendas (todos) + Clientes Vendidos
     html+=`<div class="nav-sect">Gestão</div>
       <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">${IC.equipes}</span><span class="nav-label">Equipes</span></div>
-      <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 8.5h4M8 7v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="nav-label">Vendas</span></div>
-      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11 7.5l1.5 1.5L15 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="nav-label">Clientes Vendidos</span></div>`;
+      <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Vendas</span></div>
+      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon">${IC_clientes}</span><span class="nav-label">Clientes Vendidos</span></div>`;
+  } else if(isSup){
+    // Supervisor: seção Gestão com Vendas da equipe + Clientes Vendidos da equipe
+    html+=`<div class="nav-sect">Gestão</div>
+      <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas da Equipe"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Vendas da Equipe</span></div>
+      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon">${IC_clientes}</span><span class="nav-label">Clientes Vendidos</span></div>`;
   }
+  // Vendedor NÃO tem seção Gestão
+
   if(isAdm){
     html+=`<div class="nav-sect">Administração</div>
       <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">${IC.users}</span><span class="nav-label">Usuários</span></div>`;
@@ -1444,7 +1489,7 @@ function nav(page,el){
   document.getElementById('page-'+page).classList.add('on');
   if(el) el.classList.add('on');
   document.getElementById('topbar-title').textContent=PAGE_TITLES[page]||page;
-  if(page==='dashboard') renderDashboard();
+  if(page==='dashboard') renderDashboard().catch(e=>console.warn('renderDashboard error:',e));
   if(page==='leads') renderLeads();
   if(page==='meus-leads') renderMeusLeads();
   if(page==='funil') renderFunil();
@@ -1464,32 +1509,41 @@ function nav(page,el){
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 
 /* ═══ DASHBOARD ═══ */
-function renderDashboard(){
-  const myLeads=isAdminOrCoord()?allLeads:allLeads.filter(l=>l.responsavel_id===CU.id);
+async function renderDashboard(){
+  // Escopo de leads por perfil
+  let myLeads;
+  if(isAdmin()||isCoordenador()){
+    myLeads=allLeads; // tudo
+  } else if(isSupervisor()){
+    // Supervisor: leads da sua equipe
+    const myEquipeIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
+    const myMemberIds=[...new Set(allMembroEquipes.filter(m=>myEquipeIds.includes(m.equipe_id)).map(m=>m.user_id))];
+    myLeads=allLeads.filter(l=>myEquipeIds.includes(l.equipe_id)||myMemberIds.includes(l.responsavel_id));
+  } else {
+    myLeads=allLeads.filter(l=>l.responsavel_id===CU.id);
+  }
+
   const total=myLeads.length;
   const fechados=myLeads.filter(l=>l.status==='Fechado').length;
-  const semVend=allLeads.filter(l=>!l.responsavel_id).length;
+  const semVend=isAdminOrCoord()?allLeads.filter(l=>!l.responsavel_id).length:0;
   const hoje=new Date().toISOString().slice(0,10);
   const myTasks=isAdminOrCoord()?allTasks:allTasks.filter(t=>t.responsavel_id===CU.id||t.user_id===CU.id);
   const vencidas=myTasks.filter(t=>!t.concluida&&t.prazo&&t.prazo<hoje).length;
 
-  // Vendas stats scoped to user
-  const myVendaLeadIds=isAdminOrCoord()
-    ?allVendas.map(v=>v.lead_id)
-    :allVendas.filter(v=>myLeads.some(l=>l.id===v.lead_id)).map(v=>v.lead_id);
-  const myVendas=isAdminOrCoord()?allVendas:allVendas.filter(v=>myLeads.some(l=>l.id===v.lead_id));
+  // Vendas stats com escopo correto
+  const myVendas=getVisibleVendas();
   const vendasAprovadas=myVendas.filter(v=>v.status_venda==='Aprovado').length;
   const vendasCanceladas=myVendas.filter(v=>v.status_venda==='Cancelado').length;
 
   let kpis=`
-    <div class="kpi"><div class="kpi-label">Total de Leads</div><div class="kpi-val">${total}</div></div>
+    <div class="kpi"><div class="kpi-label">Total de Leads</div><div class="kpi-val">${total.toLocaleString('pt-BR')}</div></div>
     <div class="kpi"><div class="kpi-label">Fechamentos</div><div class="kpi-val" style="color:var(--green)">${fechados}</div></div>
     <div class="kpi"><div class="kpi-label">Conversão</div><div class="kpi-val" style="color:var(--gold2)">${total?Math.round(fechados/total*100):0}%</div></div>
-    <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04);cursor:pointer" onclick="openVendasPage('Aprovado')" title="Ver todas as vendas aprovadas"><div class="kpi-label" style="color:var(--green)">✅ Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
-    <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04);cursor:pointer" onclick="openVendasPage('Cancelado')" title="Ver todos os cancelamentos"><div class="kpi-label" style="color:var(--red)">❌ Cancelados</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
+    <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04);cursor:pointer" onclick="openVendasPage('Aprovado')" title="Ver vendas aprovadas"><div class="kpi-label" style="color:var(--green)">✅ Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
+    <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04);cursor:pointer" onclick="openVendasPage('Cancelado')" title="Ver cancelamentos"><div class="kpi-label" style="color:var(--red)">❌ Cancelados</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
     <div class="kpi"><div class="kpi-label">Tarefas Vencidas</div><div class="kpi-val" style="color:${vencidas?'var(--red)':'var(--text)'}">${vencidas}</div></div>`;
-  if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)">${semVend}</div></div>`;
-  // Ranking panel: only for admin/coord
+  if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)">${semVend.toLocaleString('pt-BR')}</div></div>`;
+  // Ranking panel: apenas admin/coord
   document.getElementById('dash-cols').style.display=isAdminOrCoord()?'':'none';
   document.getElementById('dash-kpis').innerHTML=kpis;
 
@@ -2390,25 +2444,24 @@ function setVendasFilter(status){
 }
 
 function getVisibleVendas(){
-  // Scope by role
-  let vendas;
+  // Escopo por perfil
   if(isAdmin()||isCoordenador()){
-    // All vendas
-    vendas=allVendas;
+    // Admin e Coordenador: veem TODAS as vendas de todos os vendedores
+    return allVendas;
   } else if(isSupervisor()){
-    // Only vendas from leads in their equipes
-    const myEquipeIds=allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id);
-    const equipeLeadIds=allLeads.filter(l=>myEquipeIds.includes(l.equipe_id)||(l.responsavel_id&&allMembroEquipes.some(m=>m.equipe_id&&myEquipeIds.includes(m.equipe_id)&&m.user_id===l.responsavel_id))).map(l=>l.id);
-    // Also include own leads
-    const myLeadIds=allLeads.filter(l=>l.responsavel_id===CU.id).map(l=>l.id);
-    const allIds=[...new Set([...equipeLeadIds,...myLeadIds])];
-    vendas=allVendas.filter(v=>allIds.includes(v.lead_id));
+    // Supervisor: apenas vendas de leads atribuídos à(s) sua(s) equipe(s)
+    const myEquipeIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
+    const myMemberIds=[...new Set(allMembroEquipes.filter(m=>myEquipeIds.includes(m.equipe_id)).map(m=>m.user_id))];
+    // Lead está na equipe diretamente OU está atribuído a um membro da equipe
+    const scopedLeadIds=allLeads
+      .filter(l=>myEquipeIds.includes(l.equipe_id)||myMemberIds.includes(l.responsavel_id))
+      .map(l=>l.id);
+    return allVendas.filter(v=>scopedLeadIds.includes(v.lead_id));
   } else {
-    // Vendedor: only own
+    // Vendedor: apenas suas próprias vendas
     const myLeadIds=allLeads.filter(l=>l.responsavel_id===CU.id).map(l=>l.id);
-    vendas=allVendas.filter(v=>myLeadIds.includes(v.lead_id)||v.vendedor_id===CU.id);
+    return allVendas.filter(v=>myLeadIds.includes(v.lead_id)||v.vendedor_id===CU.id);
   }
-  return vendas;
 }
 
 function renderVendasPage(){
@@ -2432,9 +2485,10 @@ function renderVendasPage(){
     if(btn) btn.classList.toggle('on',s===_vendasFilter);
   });
 
+  const scopeLabel=isAdmin()||isCoordenador()?'— Todos os Vendedores':isSupervisor()?'— Minha Equipe':'— Minhas Vendas';
   const title=_vendasFilter==='todos'?`Todas as Vendas`:_vendasFilter==='Aprovado'?'Vendas Aprovadas':_vendasFilter==='Cancelado'?'Cancelamentos':'Vendas Pendentes';
   const el=document.getElementById('vp-title');
-  if(el) el.textContent=`${title} — ${vendas.length}`;
+  if(el) el.textContent=`${title} ${scopeLabel} — ${vendas.length}`;
 
   const tbody=document.getElementById('vp-tbody');
   if(!tbody) return;
@@ -2610,17 +2664,24 @@ function saveCache(){
   try{
     const data={
       profile:CUProfile,
-      leads:allLeads.slice(0,200),  // limita para não estourar sessionStorage
+      leads:allLeads, // todos os leads — necessário para KPIs corretos
       users:allUsers,
-      hist:allHist.slice(0,100),
-      tasks:allTasks.slice(0,100),
-      vendas:allVendas.slice(0,100),
+      hist:allHist.slice(0,200),
+      tasks:allTasks.slice(0,200),
+      vendas:allVendas.slice(0,200),
       docs:allDocs.slice(0,100),
       equipes:allEquipes,
       membros:allMembroEquipes,
       ts:Date.now()
     };
-    sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
+    try{
+      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
+    } catch(quota){
+      // Se a base for muito grande (>5MB), salva sem leads (carrega ao iniciar)
+      console.warn('Cache quota exceeded, saving without leads');
+      const slim={...data, leads:allLeads.slice(0,500)};
+      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(slim));
+    }
   } catch(e){ console.warn('Cache save error:',e.message); }
 }
 
@@ -2787,13 +2848,13 @@ async function syncVenda(payload){
   else if(eventType==='UPDATE'){const i=allVendas.findIndex(v=>v.id===n.id);if(i>-1)Object.assign(allVendas[i],n);}
   else if(eventType==='DELETE') allVendas=allVendas.filter(v=>v.id!==o.id);
   // Re-render dashboard so Vendas/Cancelados KPIs update in real-time for everyone
-  if(document.getElementById('page-dashboard').classList.contains('on')) renderDashboard();
+  if(document.getElementById('page-dashboard').classList.contains('on')) renderDashboard().catch(()=>{});
   // Re-render open lead detail so the status badge updates live
   if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
 }
 
 function reRenderCurrent(){
-  if(document.getElementById('page-dashboard').classList.contains('on')) renderDashboard();
+  if(document.getElementById('page-dashboard').classList.contains('on')) renderDashboard().catch(e=>console.warn('Dashboard render error:',e));
   else if(document.getElementById('page-leads').classList.contains('on')) renderLeads();
   else if(document.getElementById('page-meus-leads').classList.contains('on')) renderMeusLeads();
   else if(document.getElementById('page-funil').classList.contains('on')) renderFunil();
