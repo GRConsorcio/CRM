@@ -81,7 +81,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 
 /* KPI */
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px}
-.kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;transition:all .15s}
+.kpi[onclick]:hover,.kpi[style*="cursor:pointer"]:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.3)}
 .kpi-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted2);margin-bottom:6px}
 .kpi-val{font-size:26px;font-weight:900;color:var(--gold2)}
 
@@ -452,6 +453,30 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div class="panel">
       <div class="panel-head"><div class="panel-title" id="t-title">Tarefas</div></div>
       <div class="panel-body" id="t-list"></div>
+    </div>
+  </div>
+
+  <!-- VENDAS & CANCELAMENTOS -->
+  <div class="page" id="page-vendas">
+    <div class="filter-bar">
+      <div style="display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
+        <button id="vp-btn-todos" class="tab on" onclick="setVendasFilter('todos')">Todas</button>
+        <button id="vp-btn-Aprovado" class="tab" onclick="setVendasFilter('Aprovado')">✅ Aprovadas</button>
+        <button id="vp-btn-Pendente" class="tab" onclick="setVendasFilter('Pendente')">⏳ Pendentes</button>
+        <button id="vp-btn-Cancelado" class="tab" onclick="setVendasFilter('Cancelado')">❌ Canceladas</button>
+      </div>
+      <input class="inp" id="vp-srch" placeholder="🔍 Buscar cliente ou lead..." oninput="renderVendasPage()" style="flex:1;min-width:150px">
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title" id="vp-title">Vendas</div>
+      </div>
+      <div class="tbl-wrap">
+        <table><thead><tr>
+          <th>Cliente (Lead)</th><th>Vendedor</th><th>Crédito</th><th>Parcela</th><th>Grupo / Cota</th><th>Status</th><th>Data</th><th></th>
+        </tr></thead>
+        <tbody id="vp-tbody"></tbody></table>
+      </div>
     </div>
   </div>
 
@@ -1370,7 +1395,9 @@ function renderNav(){
   } else {
     html+=`<div class="nav-sect">Meus Leads</div>
       <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">${IC.myteam}</span><span class="nav-label">Meus Leads</span></div>
-      <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Meu Funil</span></div>`;
+      <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Meu Funil</span></div>
+      <div class="nav-item" onclick="openVendasPage('todos')" title="Minhas Vendas"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 8.5h4M8 7v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="nav-label">Minhas Vendas</span></div>
+      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11 7.5l1.5 1.5L15 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="nav-label">Clientes Vendidos</span></div>`;
   }
 
   html+=`<div class="nav-sect">Agenda</div>
@@ -1378,7 +1405,9 @@ function renderNav(){
 
   if(admin){
     html+=`<div class="nav-sect">Gestão</div>
-      <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">${IC.equipes}</span><span class="nav-label">Equipes</span></div>`;
+      <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">${IC.equipes}</span><span class="nav-label">Equipes</span></div>
+      <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 8.5h4M8 7v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="nav-label">Vendas</span></div>
+      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11 7.5l1.5 1.5L15 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="nav-label">Clientes Vendidos</span></div>`;
   }
   if(isAdm){
     html+=`<div class="nav-sect">Administração</div>
@@ -1388,9 +1417,27 @@ function renderNav(){
   const flBtn=document.getElementById('sb-force-logout');
   if(flBtn) flBtn.style.display=isAdmin()?'':'none';
   updateTaskBadge();
+  // Demandas GR link (supervisor/coord/admin) — injected once, toggle visibility
+  let demBtn=document.getElementById('sb-demandas-btn');
+  if(!demBtn){
+    const sidebarEl=document.getElementById('sidebar');
+    if(sidebarEl){
+      demBtn=document.createElement('a');
+      demBtn.id='sb-demandas-btn';
+      demBtn.href='https://grconsorcio.github.io/DemandasGR/';
+      demBtn.target='_blank';
+      demBtn.rel='noopener noreferrer';
+      demBtn.className='nav-item';
+      demBtn.style.textDecoration='none';
+      demBtn.innerHTML=`<span class="nav-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 8h6M5 5.5h6M5 10.5h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span><span class="nav-label" style="display:flex;align-items:center;gap:5px">Demandas GR <span style="font-size:9px;background:var(--gold-glow);border:1px solid var(--gold-dim);color:var(--gold-dim);border-radius:4px;padding:1px 5px">↗</span></span>`;
+      const tglBtn=sidebarEl.querySelector('.sidebar-toggle');
+      if(tglBtn) sidebarEl.insertBefore(demBtn,tglBtn);
+    }
+  }
+  if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil'};
+const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos'};
 function nav(page,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
@@ -1403,6 +1450,7 @@ function nav(page,el){
   if(page==='funil') renderFunil();
   if(page==='distribuicao') renderDistribuicao();
   if(page==='tarefas') renderTarefas();
+  if(page==='vendas') renderVendasPage();
   if(page==='equipe') renderEquipe();
   if(page==='equipes') renderEquipes();
   if(page==='importar') renderImportar();
@@ -1437,8 +1485,8 @@ function renderDashboard(){
     <div class="kpi"><div class="kpi-label">Total de Leads</div><div class="kpi-val">${total}</div></div>
     <div class="kpi"><div class="kpi-label">Fechamentos</div><div class="kpi-val" style="color:var(--green)">${fechados}</div></div>
     <div class="kpi"><div class="kpi-label">Conversão</div><div class="kpi-val" style="color:var(--gold2)">${total?Math.round(fechados/total*100):0}%</div></div>
-    <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04)"><div class="kpi-label" style="color:var(--green)">✅ Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
-    <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04)"><div class="kpi-label" style="color:var(--red)">❌ Cancelados</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
+    <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04);cursor:pointer" onclick="openVendasPage('Aprovado')" title="Ver todas as vendas aprovadas"><div class="kpi-label" style="color:var(--green)">✅ Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
+    <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04);cursor:pointer" onclick="openVendasPage('Cancelado')" title="Ver todos os cancelamentos"><div class="kpi-label" style="color:var(--red)">❌ Cancelados</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
     <div class="kpi"><div class="kpi-label">Tarefas Vencidas</div><div class="kpi-val" style="color:${vencidas?'var(--red)':'var(--text)'}">${vencidas}</div></div>`;
   if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)">${semVend}</div></div>`;
   // Ranking panel: only for admin/coord
@@ -1602,6 +1650,7 @@ async function openDetail(id,from){
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px 18px;border-bottom:1px solid var(--border)">
       <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Telefone</div><div>${lead.telefone||'—'}</div></div>
+      <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Interesse</div><div>${lead.interesse||'—'}</div></div>
       <div>
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">E-mail
           <button onclick="openInlineEditEmailObs('${id}')" style="background:none;border:none;color:var(--gold-dim);cursor:pointer;font-size:11px;margin-left:6px;padding:0;vertical-align:middle" title="Editar e-mail e observações">✏️</button>
@@ -1616,9 +1665,8 @@ async function openDetail(id,from){
           </div>
         </div>
       </div>
-      <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Interesse</div><div>${lead.interesse||'—'}</div></div>
       <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Vendedor</div><div>${resp?.name||'Sem vendedor'}</div></div>
-      ${lead.observacoes?`<div style="grid-column:1/-1;display:none" id="obs-disp-${id}"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Observações</div><div style="font-size:12.5px;color:var(--muted2)">${lead.observacoes}</div></div>`:''}
+      ${lead.observacoes?`<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Observações</div><div style="font-size:12.5px;color:var(--muted2)">${lead.observacoes}</div></div>`:''}
       ${lead.equipe_id?`<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Equipe</div><div style="font-size:12.5px;color:var(--blue)">${allEquipes.find(e=>e.id===lead.equipe_id)?.nome||'—'}</div></div>`:''}
     </div>`;
 
@@ -1678,7 +1726,7 @@ async function openDetail(id,from){
             <div style="font-size:12.5px;color:var(--text);margin:3px 0">${h.descricao}</div>
             <div class="hist-meta">${u?.name||'—'} · ${fmtDt(h.created_at)}</div>
           </div>
-          <button class="act red" onclick="delHist('${h.id}')">🗑️</button>
+          ${isAdmin()?`<button class="act red" onclick="delHist('${h.id}')">🗑️</button>`:''}
         </div>`;
       }).join('')}
     </div>
@@ -1707,7 +1755,10 @@ async function openDetail(id,from){
   nav('lead-detail',null);
 }
 
-function goBackLeads(){nav(fromPage,null);renderNav();}
+function goBackLeads(){
+  nav(fromPage,null);renderNav();
+  if(fromPage==='vendas') renderVendasPage();
+}
 
 /* ═══ FUNIL ═══ */
 const STAGES=['Novo','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
@@ -2216,9 +2267,13 @@ async function updateVendaStatus(id,status){
   if(i>-1) allVendas[i].status_venda=status;
   saveCache();
   toast('Venda '+status.toLowerCase()+'!','ok');
-  // Atualiza dashboard de todos via realtime; atualiza local imediatamente
   renderDashboard();
-  openDetail(detailLeadId,fromPage);
+  // Refresh vendas page if open, otherwise refresh detail
+  if(document.getElementById('page-vendas')?.classList.contains('on')){
+    renderVendasPage();
+  } else if(detailLeadId){
+    openDetail(detailLeadId,fromPage);
+  }
 }
 
 async function downloadDoc(path,nome){
@@ -2305,6 +2360,113 @@ function toast(msg,type='ok'){
 }
 
 
+
+/* ═══ PÁGINA DE VENDAS ═══ */
+let _vendasFilter='todos';
+
+function openClientesVendidos(){
+  _vendasFilter='Aprovado';
+  nav('vendas',null);
+  renderNav();
+  renderVendasPage();
+  // Update topbar title
+  document.getElementById('topbar-title').textContent='Clientes Vendidos';
+}
+function openVendasPage(status){
+  _vendasFilter=status||'todos';
+  nav('vendas',null);
+  renderNav();
+  renderVendasPage();
+}
+
+function setVendasFilter(status){
+  _vendasFilter=status;
+  // Update tab buttons
+  ['todos','Aprovado','Pendente','Cancelado'].forEach(s=>{
+    const btn=document.getElementById('vp-btn-'+s);
+    if(btn) btn.classList.toggle('on',s===status);
+  });
+  renderVendasPage();
+}
+
+function getVisibleVendas(){
+  // Scope by role
+  let vendas;
+  if(isAdmin()||isCoordenador()){
+    // All vendas
+    vendas=allVendas;
+  } else if(isSupervisor()){
+    // Only vendas from leads in their equipes
+    const myEquipeIds=allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id);
+    const equipeLeadIds=allLeads.filter(l=>myEquipeIds.includes(l.equipe_id)||(l.responsavel_id&&allMembroEquipes.some(m=>m.equipe_id&&myEquipeIds.includes(m.equipe_id)&&m.user_id===l.responsavel_id))).map(l=>l.id);
+    // Also include own leads
+    const myLeadIds=allLeads.filter(l=>l.responsavel_id===CU.id).map(l=>l.id);
+    const allIds=[...new Set([...equipeLeadIds,...myLeadIds])];
+    vendas=allVendas.filter(v=>allIds.includes(v.lead_id));
+  } else {
+    // Vendedor: only own
+    const myLeadIds=allLeads.filter(l=>l.responsavel_id===CU.id).map(l=>l.id);
+    vendas=allVendas.filter(v=>myLeadIds.includes(v.lead_id)||v.vendedor_id===CU.id);
+  }
+  return vendas;
+}
+
+function renderVendasPage(){
+  const q=(document.getElementById('vp-srch')?.value||'').toLowerCase();
+  let vendas=getVisibleVendas();
+
+  // Filter by status tab
+  if(_vendasFilter!=='todos') vendas=vendas.filter(v=>v.status_venda===_vendasFilter);
+
+  // Filter by search
+  if(q){
+    vendas=vendas.filter(v=>{
+      const lead=allLeads.find(l=>l.id===v.lead_id);
+      return (lead?.nome||'').toLowerCase().includes(q)||(v.cpf||'').includes(q)||(v.grupo||'').toLowerCase().includes(q);
+    });
+  }
+
+  // Update active tab styling
+  ['todos','Aprovado','Pendente','Cancelado'].forEach(s=>{
+    const btn=document.getElementById('vp-btn-'+s);
+    if(btn) btn.classList.toggle('on',s===_vendasFilter);
+  });
+
+  const title=_vendasFilter==='todos'?`Todas as Vendas`:_vendasFilter==='Aprovado'?'Vendas Aprovadas':_vendasFilter==='Cancelado'?'Cancelamentos':'Vendas Pendentes';
+  const el=document.getElementById('vp-title');
+  if(el) el.textContent=`${title} — ${vendas.length}`;
+
+  const tbody=document.getElementById('vp-tbody');
+  if(!tbody) return;
+
+  if(vendas.length===0){
+    tbody.innerHTML=`<tr><td colspan="8"><div class="empty"><div class="ei">${_vendasFilter==='Aprovado'?'✅':_vendasFilter==='Cancelado'?'❌':'🏦'}</div>Nenhuma venda encontrada</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML=vendas.map(v=>{
+    const lead=allLeads.find(l=>l.id===v.lead_id);
+    const vendedor=allUsers.find(u=>u.user_id===v.vendedor_id);
+    const badgeCls=v.status_venda==='Aprovado'?'b-aprov':v.status_venda==='Cancelado'?'b-canc':'b-pend';
+    const canManage=isAdmin()||isCoordenador();
+    return`<tr>
+      <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${v.lead_id}','vendas')">${lead?.nome||'—'}</td>
+      <td style="font-size:11.5px">${vendedor?.name||'—'}</td>
+      <td style="color:var(--gold2);font-weight:700">${v.valor_credito?brl(v.valor_credito):'—'}</td>
+      <td style="font-size:11.5px">${v.parcela?brl(v.parcela):'—'}</td>
+      <td style="color:var(--muted2);font-size:11px">${v.grupo||'—'} / ${v.cota||'—'}</td>
+      <td><span class="badge ${badgeCls}">${v.status_venda}</span></td>
+      <td style="color:var(--muted2);font-size:11px">${fmtDt(v.created_at)}</td>
+      <td>
+        ${canManage?`<div style="display:flex;gap:4px">
+          ${v.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${v.id}','Aprovado')">✅</button>`:''}
+          ${v.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${v.id}','Cancelado')">❌</button>`:''}
+          <button class="act" onclick="revertVenda('${v.id}','${v.lead_id}')" style="border-color:var(--orange);color:var(--orange)" title="Reverter">↩</button>
+        </div>`:'<button class="act" onclick="openDetail(\''+v.lead_id+'\',\'vendas\')">Ver →</button>'}
+      </td>
+    </tr>`;
+  }).join('');
+}
 
 /* ═══ REVERTER VENDA → LEAD NORMAL ═══ */
 async function revertVenda(vendaId, leadId){
@@ -2464,12 +2626,53 @@ function saveCache(){
 
 async function refreshInBackground(){
   try{
-    // Só atualiza dados — não mexe no Realtime
     await loadAll();
     saveCache();
     reRenderCurrent();
     populateSelects();
+    // Auto-return rules (admin only to avoid race conditions)
+    if(isAdmin()) await runAutoReturnRules();
   } catch(e){ console.warn('Background refresh error:',e.message); }
+}
+
+async function runAutoReturnRules(){
+  const now=new Date();
+  const leadsToReturn=[];
+  for(const l of allLeads){
+    if(!l.responsavel_id) continue; // already in base
+    const dist=l.distribuido_em?new Date(l.distribuido_em):null;
+    if(!dist) continue;
+    const daysSinceDist=(now-dist)/(1000*60*60*24);
+    // Skip permanently: Fechado with approved venda or Cancelado with cancelled venda
+    const venda=allVendas.find(v=>v.lead_id===l.id);
+    const isVendido=l.status==='Fechado'&&venda?.status_venda==='Aprovado';
+    const isCancelado=venda?.status_venda==='Cancelado';
+    if(isVendido||isCancelado) continue; // These stay with vendedor
+    // Rule 1: Perdido → return to base after 2 days
+    if(l.status==='Perdido'&&daysSinceDist>=2){
+      leadsToReturn.push({id:l.id,reason:'Perdido há 2+ dias'});
+      continue;
+    }
+    // Rule 2: Any active lead > 14 days → return to base
+    if(daysSinceDist>=14&&l.status!=='Perdido'){
+      leadsToReturn.push({id:l.id,reason:'Lead há 14+ dias sem venda'});
+    }
+  }
+  if(!leadsToReturn.length) return;
+  const ids=leadsToReturn.map(x=>x.id);
+  const{error}=await sb.from('crm_leads').update({responsavel_id:null,equipe_id:null,distribuido_em:null}).in('id',ids);
+  if(error){console.warn('Auto-return error:',error.message);return;}
+  ids.forEach(id=>{
+    const i=allLeads.findIndex(l=>l.id===id);
+    if(i>-1){allLeads[i].responsavel_id=null;allLeads[i].equipe_id=null;allLeads[i].distribuido_em=null;}
+  });
+  // Log each return in history
+  for(const item of leadsToReturn){
+    await sb.from('crm_historico').insert({lead_id:item.id,user_id:CU.id,tipo:'📝 Anotação',descricao:`Retornado automaticamente: ${item.reason}`,created_at:new Date().toISOString()}).catch(()=>{});
+  }
+  saveCache();
+  if(leadsToReturn.length) toast(`${leadsToReturn.length} lead(s) retornado(s) automaticamente à base`, 'ok');
+  reRenderCurrent();
 }
 
 /* ═══ REALTIME SUBSCRIPTIONS ═══ */
@@ -3057,14 +3260,28 @@ function renderCoordFunil(){
       ${ls.length===0?'<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Vazio</div>':''}
       ${ls.map(l=>{
         const u=allUsers.find(u=>u.user_id===l.responsavel_id);
-        return`<div class="funil-card" draggable="true"
+        const vd=allVendas.find(v=>v.lead_id===l.id);
+        const isAprov=vd?.status_venda==='Aprovado';
+        const isCanc=vd?.status_venda==='Cancelado';
+        const cardBorder=isAprov?'2px solid #4ade80':isCanc?'2px solid #e55':'1px solid var(--border)';
+        const cardBg=isAprov?'rgba(74,222,128,0.06)':isCanc?'rgba(229,85,85,0.06)':'var(--surface)';
+        return`<div class="funil-card" draggable="${_cfMassMode?'false':'true'}"
+          data-lead-id="${l.id}" id="cf-card-${l.id}"
           ondragstart="onDragStart(event,'${l.id}')" ondragend="onDragEnd(event)"
-          style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px;margin-bottom:7px;display:flex;align-items:center;gap:7px;transition:all .13s"
-          onmouseover="this.style.borderColor='var(--gold-dim)'" onmouseout="this.style.borderColor='var(--border)'">
-          ${_cfMassMode?`<input type="checkbox" class="cf-chk" data-id="${l.id}" style="accent-color:var(--gold);flex-shrink:0" onchange="updateCfCount()">`: ''}
-          <div style="flex:1;cursor:pointer" onclick="openDetail('${l.id}','coord-leads')">
-            <div style="font-size:11.5px;font-weight:700">${l.nome}</div>
-            <div style="font-size:9.5px;color:var(--muted2)">${u?.name||'—'} · ${l.interesse||'—'}</div>
+          onclick="${_cfMassMode?'toggleCfCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'coord-leads\')'}"
+          style="background:${cardBg};border:${cardBorder};border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s;cursor:pointer;position:relative"
+          onmouseover="if(!${isAprov}&&!${isCanc})this.style.borderColor='var(--gold-dim)'"
+          onmouseout="if(!${isAprov}&&!${isCanc})this.style.borderColor='var(--border)'">
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" class="cf-chk" data-id="${l.id}"
+              style="accent-color:var(--gold);width:16px;height:16px;flex-shrink:0;display:${_cfMassMode?'block':'none'}"
+              onclick="event.stopPropagation()" onchange="updateCfCount()">
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
+              ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">📞 ${l.telefone}</div>`:''}
+              <div style="font-size:10.5px;color:var(--muted2)">${l.interesse||'—'}</div>
+              ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">👤 ${u.name}</div>`:''}
+            </div>
           </div>
         </div>`;
       }).join('')}
@@ -3080,12 +3297,52 @@ async function cfOnDrop(e,newStage){
 function toggleCfMass(on){
   _cfMassMode=on;
   const bar=document.getElementById('cf-mass-bar');
-  if(bar) bar.style.display=on?'flex':'none';
+  if(bar){
+    bar.style.display=on?'flex':'none';
+    // Add quantity selector
+    if(on&&!document.getElementById('cf-qty-row')){
+      const qrow=document.createElement('div');
+      qrow.id='cf-qty-row';
+      qrow.style.cssText='display:flex;align-items:center;gap:8px';
+      qrow.innerHTML=`<span style="font-size:11.5px;color:var(--muted2)">Qtd:</span><input id="cf-qty-inp" type="number" min="1" class="inp" style="width:66px;padding:5px 8px;font-size:12px" placeholder="N°"><button class="btn-sm" onclick="selectCfByCount(parseInt(document.getElementById('cf-qty-inp').value)||0)" style="border-color:var(--gold-dim);color:var(--gold2)">✔</button>`;
+      bar.appendChild(qrow);
+    }
+  }
   const mbs=getCoordMembers();
   const rSel=document.getElementById('cf-mass-resp');
   if(rSel) rSel.innerHTML='<option value="">Transferir para...</option>'+
     allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
   renderCoordFunil();
+  if(on) setTimeout(initCfDragSelect,100);
+}
+function toggleCfCard(e,id){
+  e.stopPropagation();
+  const chk=document.querySelector(`.cf-chk[data-id="${id}"]`);
+  if(chk){chk.checked=!chk.checked;updateCfCount();}
+}
+// Drag select for coord funil table (Leads da Equipe table)
+let _cfDragSelecting=false,_cfDragSelectVal=null;
+document.addEventListener('mouseup',()=>{_cfDragSelecting=false;_cfDragSelectVal=null;});
+function initCfDragSelect(){
+  const grid=document.getElementById('coord-funil-grid');
+  if(!grid||grid._cfDragInit) return;
+  grid._cfDragInit=true;
+  grid.addEventListener('mousedown',e=>{
+    if(!_cfMassMode) return;
+    const chk=e.target.closest('[data-lead-id]')?.querySelector('.cf-chk');
+    if(!chk) return;
+    _cfDragSelecting=true;_cfDragSelectVal=!chk.checked;
+    chk.checked=_cfDragSelectVal;updateCfCount();e.preventDefault();
+  });
+  grid.addEventListener('mouseover',e=>{
+    if(!_cfDragSelecting||!_cfMassMode) return;
+    const chk=e.target.closest('[data-lead-id]')?.querySelector('.cf-chk');
+    if(chk&&chk.checked!==_cfDragSelectVal){chk.checked=_cfDragSelectVal;updateCfCount();}
+  });
+}
+function selectCfByCount(n){
+  const chks=document.querySelectorAll('.cf-chk');
+  let cnt=0;chks.forEach(c=>{c.checked=(cnt<n);cnt++;});updateCfCount();
 }
 function cfSelectAll(sel){document.querySelectorAll('.cf-chk').forEach(c=>{c.checked=sel;});updateCfCount();}
 function updateCfCount(){
