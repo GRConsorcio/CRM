@@ -41,13 +41,13 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .logo-sub{font-size:9px;color:var(--gold-dim);text-transform:uppercase;letter-spacing:.14em;margin-top:2px;white-space:nowrap}
 .sidebar.collapsed .logo-txt{display:none}
 .nav-body{padding:6px 0;flex:1;overflow-y:auto;overflow-x:hidden}
-.nav-sect{font-size:8px;font-weight:700;color:var(--gold-dim);padding:10px 16px 3px;text-transform:uppercase;letter-spacing:.18em;white-space:nowrap}
+.nav-sect{font-size:9px;font-weight:700;color:var(--gold-dim);padding:12px 16px 4px;text-transform:uppercase;letter-spacing:.22em;white-space:nowrap}
 .sidebar.collapsed .nav-sect{display:none}
-.nav-item{display:flex;align-items:center;gap:9px;padding:9px 16px;cursor:pointer;font-size:12.5px;color:var(--muted2);border-left:2px solid transparent;transition:all .13s;white-space:nowrap}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;font-size:13.5px;color:var(--muted2);border-left:2px solid transparent;transition:all .13s;white-space:nowrap}
 .nav-item:hover{color:var(--gold2);background:var(--gold-glow)}
 .nav-item.on{color:var(--gold2);font-weight:700;border-left-color:var(--gold);background:var(--gold-glow)}
 .sidebar.collapsed .nav-item{justify-content:center;padding:10px 0;border-left:none}
-.nav-icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.nav-icon{font-size:15px;width:22px;text-align:center;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .sidebar.collapsed .nav-label,.sidebar.collapsed .nav-badge{display:none}
 .nav-badge{background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 6px;margin-left:auto}
 .sb-foot{padding:10px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
@@ -233,6 +233,21 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .notify.show{opacity:1;transform:translateY(0)}
 .notify.ok{border-left:3px solid var(--green)}
 .notify.err{border-left:3px solid var(--red)}
+
+/* TASK POPUP ALERT */
+@keyframes taskBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(201,168,76,0.4)}50%{opacity:.85;box-shadow:0 0 20px 6px rgba(201,168,76,0.35)}}
+@keyframes taskSlideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+.task-alert-popup{position:fixed;top:70px;right:20px;z-index:9998;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.task-alert-item{background:var(--surface);border:1.5px solid var(--gold);border-radius:12px;padding:14px 18px;min-width:280px;max-width:340px;pointer-events:all;animation:taskSlideIn .35s ease,taskBlink 2s ease-in-out infinite;cursor:pointer;position:relative}
+.task-alert-item.urgent{border-color:var(--red);animation:taskSlideIn .35s ease,taskBlinkRed 2s ease-in-out infinite}
+@keyframes taskBlinkRed{0%,100%{box-shadow:0 0 0 0 rgba(229,85,85,0.4)}50%{box-shadow:0 0 20px 6px rgba(229,85,85,0.35)}}
+.task-alert-close{position:absolute;top:6px;right:10px;background:none;border:none;color:var(--muted2);font-size:14px;cursor:pointer;padding:0;line-height:1}
+.task-alert-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold);margin-bottom:4px}
+.task-alert-desc{font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px}
+.task-alert-meta{font-size:10.5px;color:var(--muted2)}
+
+/* EDIT INLINE MODAL */
+.edit-inline-modal{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:16px;margin-top:8px}
 </style>
 </head>
 <body>
@@ -327,7 +342,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <input class="inp" id="l-srch" placeholder="🔍 Buscar..." oninput="renderLeads()">
       <select id="l-f-status" onchange="renderLeads()">
         <option value="">Todos os status</option>
-        <option>Novo</option><option>Contato</option><option>Proposta</option>
+        <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
         <option>Fechado</option><option>Perdido</option>
       </select>
       <select id="l-f-resp" onchange="renderLeads()">
@@ -378,7 +393,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <input class="inp" id="ml-srch" placeholder="🔍 Buscar..." oninput="renderMeusLeads()">
       <select id="ml-f-status" onchange="renderMeusLeads()">
         <option value="">Todos os status</option>
-        <option>Novo</option><option>Contato</option><option>Proposta</option>
+        <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
         <option>Fechado</option><option>Perdido</option>
       </select>
     </div>
@@ -530,7 +545,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <input class="inp" id="cl-srch" placeholder="🔍 Buscar..." oninput="renderCoordLeads()">
       <select id="cl-f-status" onchange="renderCoordLeads()">
         <option value="">Todos os status</option>
-        <option>Novo</option><option>Contato</option><option>Proposta</option>
+        <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
         <option>Fechado</option><option>Perdido</option>
       </select>
       <select id="cl-f-vend" onchange="renderCoordLeads()">
@@ -659,11 +674,11 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div class="fld"><label>Telefone</label><input class="inp" id="ld-tel" placeholder="(31) 99999-9999"></div>
       <div class="fld"><label>E-mail</label><input class="inp" id="ld-email" type="email" placeholder="email@..."></div>
     </div>
-    <div class="fld"><label>Interesse</label><input class="inp" id="ld-int" placeholder="Ex: Fiat Argo R$60k"></div>
+    <div class="fld"><label>Observações</label><textarea class="inp" id="ld-obs" placeholder="Anotações..."></textarea></div>
     <div class="fld-row">
       <div class="fld"><label>Status</label>
         <select class="inp" id="ld-status">
-          <option>Novo</option><option>Contato</option><option>Proposta</option><option>Fechado</option><option>Perdido</option>
+          <option>Novo</option><option>Em Negociação</option><option>Proposta</option><option>Fechado</option><option>Perdido</option>
         </select>
       </div>
       <div class="fld"><label>Origem</label>
@@ -675,7 +690,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div class="fld"><label>Vendedor responsável</label>
       <select class="inp" id="ld-resp"><option value="">Sem vendedor (distribuir depois)</option></select>
     </div>
-    <div class="fld"><label>Observações</label><textarea class="inp" id="ld-obs" placeholder="Anotações..."></textarea></div>
+    <div class="fld"><label>Interesse</label><input class="inp" id="ld-int" placeholder="Ex: Fiat Argo R$60k"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('lead')">Cancelar</button>
       <button class="btn-save" onclick="saveLead()">Salvar</button>
@@ -744,8 +759,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div class="fld"><label>Lead relacionado</label><select class="inp" id="ta-lead"></select></div>
     <div class="fld-row">
       <div class="fld"><label>Prazo</label><input class="inp" id="ta-prazo" type="date"></div>
-      <div class="fld"><label>Responsável</label><select class="inp" id="ta-resp"></select></div>
+      <div class="fld"><label>Horário</label><input class="inp" id="ta-hora" type="time" placeholder="14:30"></div>
     </div>
+    <div class="fld"><label>Responsável</label><select class="inp" id="ta-resp"></select></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('tarefa')">Cancelar</button>
       <button class="btn-save" onclick="saveTarefa()">Salvar</button>
@@ -977,6 +993,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
   </div>
 </div>
 
+<div class="task-alert-popup" id="task-alert-popup"></div>
 <div class="notify" id="notify"></div>
 
 <script>
@@ -1071,6 +1088,10 @@ async function initApp(user){
       goToDashboard();
       renderDashboard();
       setupRealtime();
+      // Start task alert system
+      setTimeout(checkTaskAlerts,2000);
+      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
       // Atualiza dados em background sem bloquear a UI
       refreshInBackground();
       return;
@@ -1089,6 +1110,10 @@ async function initApp(user){
     goToDashboard();
     renderDashboard();
     setupRealtime();
+    // Start task alert system
+    setTimeout(checkTaskAlerts,2000);
+    if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+    _taskAlertInterval=setInterval(checkTaskAlerts,60000);
   } catch(e){
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
@@ -1311,47 +1336,58 @@ function renderNav(){
   const isAdm=isAdmin();
   const isCoord=isCoordenador();
   const isSup=isSupervisor();
-  const admin=isAdminOrCoord(); // admin + coord + supervisor
+  const admin=isAdminOrCoord();
+  // Clean SVG icons - no emoji
+  const IC={
+    dashboard:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".9"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".9"/></svg>',
+    leads:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="5.5" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 13c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="4.5" r="2" stroke="currentColor" stroke-width="1.4"/><path d="M14 12c0-1.5-1-2.5-2-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    funil:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 3h12l-4.5 5v5l-3-1.5V8L2 3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    dist:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="3" r="1.8" stroke="currentColor" stroke-width="1.4"/><circle cx="3" cy="13" r="1.8" stroke="currentColor" stroke-width="1.4"/><circle cx="13" cy="13" r="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M8 5v2m-3.5 4L8 7l3.5 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    import:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m-3-3 3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+    scope:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor" opacity=".6"/><path d="M8 2.5v1M8 12.5v1M2.5 8h1M12.5 8h1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    tasks:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 7.5l2 2 4-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    equipes:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1.5" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9 11.5h5M11.5 9v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+    users:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.5 L9.5 6 L14 6 L10.5 8.8 L11.8 13.5 L8 10.8 L4.2 13.5 L5.5 8.8 L2 6 L6.5 6 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+    myteam:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  };
   let html='';
   html+=`<div class="nav-sect">Principal</div>
-    <div class="nav-item on" onclick="nav('dashboard',this)" title="Dashboard"><span class="nav-icon">◆</span><span class="nav-label">Dashboard</span></div>`;
+    <div class="nav-item on" onclick="nav('dashboard',this)" title="Dashboard"><span class="nav-icon">${IC.dashboard}</span><span class="nav-label">Dashboard</span></div>`;
 
   if(isAdm||isCoord){
-    // Admin + Coordenador: full access to all leads
     html+=`<div class="nav-sect">Leads</div>
-      <div class="nav-item" onclick="nav('leads',this)" title="Todos os Leads"><span class="nav-icon">👥</span><span class="nav-label">Todos os Leads</span></div>
-      <div class="nav-item" onclick="nav('funil',this)" title="Funil"><span class="nav-icon">🎯</span><span class="nav-label">Funil de Vendas</span></div>
-      <div class="nav-item" onclick="nav('distribuicao',this)" title="Distribuição"><span class="nav-icon">⚡</span><span class="nav-label">Distribuição</span></div>
-      ${isAdm?`<div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">📥</span><span class="nav-label">Importar Leads</span></div>`:''}
-      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">🔭</span><span class="nav-label">Funis da Equipe</span></div>`;
+      <div class="nav-item" onclick="nav('leads',this)" title="Todos os Leads"><span class="nav-icon">${IC.leads}</span><span class="nav-label">Todos os Leads</span></div>
+      <div class="nav-item" onclick="nav('funil',this)" title="Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil de Vendas</span></div>
+      <div class="nav-item" onclick="nav('distribuicao',this)" title="Distribuição"><span class="nav-icon">${IC.dist}</span><span class="nav-label">Distribuição</span></div>
+      ${isAdm?`<div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>`:''}
+      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funis da Equipe</span></div>`;
   } else if(isSup){
-    // Supervisor: own equipe only
     html+=`<div class="nav-sect">Minha Equipe</div>
-      <div class="nav-item" onclick="nav('coord-leads',this)" title="Leads da Equipe"><span class="nav-icon">👥</span><span class="nav-label">Leads da Equipe</span></div>
-      <div class="nav-item" onclick="nav('coord-funil',this)" title="Funil da Equipe"><span class="nav-icon">🎯</span><span class="nav-label">Funil da Equipe</span></div>
-      <div class="nav-item" onclick="nav('coord-dist',this)" title="Distribuição"><span class="nav-icon">⚡</span><span class="nav-label">Distribuição</span></div>
-      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funil por Vendedor"><span class="nav-icon">🔭</span><span class="nav-label">Funil por Vendedor</span></div>`;
+      <div class="nav-item" onclick="nav('coord-leads',this)" title="Leads da Equipe"><span class="nav-icon">${IC.leads}</span><span class="nav-label">Leads da Equipe</span></div>
+      <div class="nav-item" onclick="nav('coord-funil',this)" title="Funil da Equipe"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil da Equipe</span></div>
+      <div class="nav-item" onclick="nav('coord-dist',this)" title="Distribuição"><span class="nav-icon">${IC.dist}</span><span class="nav-label">Distribuição</span></div>
+      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funil por Vendedor"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funil por Vendedor</span></div>`;
   } else {
-    // Vendedor: own leads only
     html+=`<div class="nav-sect">Meus Leads</div>
-      <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">👤</span><span class="nav-label">Meus Leads</span></div>
-      <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">🎯</span><span class="nav-label">Meu Funil</span></div>`;
+      <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">${IC.myteam}</span><span class="nav-label">Meus Leads</span></div>
+      <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Meu Funil</span></div>`;
   }
 
   html+=`<div class="nav-sect">Agenda</div>
-    <div class="nav-item" onclick="nav('tarefas',this)" title="Tarefas"><span class="nav-icon">✅</span><span class="nav-label">Tarefas</span></div>`;
+    <div class="nav-item" onclick="nav('tarefas',this)" title="Tarefas"><span class="nav-icon">${IC.tasks}</span><span class="nav-label">Tarefas</span><span class="nav-badge" id="nav-tasks-badge" style="display:none">!</span></div>`;
 
   if(admin){
     html+=`<div class="nav-sect">Gestão</div>
-      <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">🏅</span><span class="nav-label">Equipes</span></div>`;
+      <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">${IC.equipes}</span><span class="nav-label">Equipes</span></div>`;
   }
   if(isAdm){
     html+=`<div class="nav-sect">Administração</div>
-      <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">🛡️</span><span class="nav-label">Usuários</span></div>`;
+      <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">${IC.users}</span><span class="nav-label">Usuários</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
   const flBtn=document.getElementById('sb-force-logout');
   if(flBtn) flBtn.style.display=isAdmin()?'':'none';
+  updateTaskBadge();
 }
 
 const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil'};
@@ -1470,7 +1506,7 @@ function renderLeads(){
   const fs=document.getElementById('l-f-status')?.value;
   const fr=document.getElementById('l-f-resp')?.value;
   const f=allLeads.filter(l=>{
-    if(q&&!l.nome.toLowerCase().includes(q)&&!(l.interesse||'').toLowerCase().includes(q))return false;
+    if(q&&!l.nome.toLowerCase().includes(q)&&!(l.interesse||'').toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
     if(fs&&l.status!==fs)return false;
     if(fr&&l.responsavel_id!==fr)return false;
     return true;
@@ -1511,7 +1547,7 @@ function renderMeusLeads(){
   const fs=document.getElementById('ml-f-status')?.value;
   const f=allLeads.filter(l=>{
     if(l.responsavel_id!==CU.id)return false;
-    if(q&&!l.nome.toLowerCase().includes(q))return false;
+    if(q&&!l.nome.toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
     if(fs&&l.status!==fs)return false;
     return true;
   });
@@ -1541,6 +1577,7 @@ async function openDetail(id,from){
   const hoje=new Date().toISOString().slice(0,10);
   // canEditData: only admin can edit lead fields
   const canEditData=isAdmin();
+  const canEditEmailObs=true; // all users can edit email and observations
   // canWork: can register contacts, tasks, close sale
   const coordEquipeIds=(CUProfile?.role==='coordenador'||CUProfile?.role==='supervisor')
     ?allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id)
@@ -1565,10 +1602,23 @@ async function openDetail(id,from){
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px 18px;border-bottom:1px solid var(--border)">
       <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Telefone</div><div>${lead.telefone||'—'}</div></div>
-      <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">E-mail</div><div>${lead.email||'—'}</div></div>
+      <div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">E-mail
+          <button onclick="openInlineEditEmailObs('${id}')" style="background:none;border:none;color:var(--gold-dim);cursor:pointer;font-size:11px;margin-left:6px;padding:0;vertical-align:middle" title="Editar e-mail e observações">✏️</button>
+        </div>
+        <div id="email-disp-${id}">${lead.email||'—'}</div>
+        <div id="inline-edit-emailobs-${id}" style="display:none;margin-top:6px;grid-column:1/-1">
+          <input id="ie-email-${id}" class="inp" style="margin-bottom:6px;font-size:12px" value="${lead.email||''}" placeholder="E-mail">
+          <textarea id="ie-obs-${id}" class="inp" style="min-height:54px;font-size:12px" placeholder="Observações...">${lead.observacoes||''}</textarea>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button class="btn-primary" style="flex:1;font-size:11.5px;padding:7px" onclick="saveInlineEmailObs('${id}')">Salvar</button>
+            <button class="btn-sm" onclick="document.getElementById('inline-edit-emailobs-${id}').style.display='none'">Cancelar</button>
+          </div>
+        </div>
+      </div>
       <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Interesse</div><div>${lead.interesse||'—'}</div></div>
       <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Vendedor</div><div>${resp?.name||'Sem vendedor'}</div></div>
-      ${lead.observacoes?`<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Observações</div><div style="font-size:12.5px;color:var(--muted2)">${lead.observacoes}</div></div>`:''}
+      ${lead.observacoes?`<div style="grid-column:1/-1;display:none" id="obs-disp-${id}"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Observações</div><div style="font-size:12.5px;color:var(--muted2)">${lead.observacoes}</div></div>`:''}
       ${lead.equipe_id?`<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Equipe</div><div style="font-size:12.5px;color:var(--blue)">${allEquipes.find(e=>e.id===lead.equipe_id)?.nome||'—'}</div></div>`:''}
     </div>`;
 
@@ -1596,9 +1646,10 @@ async function openDetail(id,from){
           </div>
         </div>`).join('')}
       </div>`:''}
-      ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px">
+      ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         <button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">✅ Aprovar</button>
         <button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">❌ Cancelar</button>
+        <button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">↩ Reverter para Lead</button>
       </div>`:''}
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">📝 Anotações da Venda</div>
@@ -1659,8 +1710,8 @@ async function openDetail(id,from){
 function goBackLeads(){nav(fromPage,null);renderNav();}
 
 /* ═══ FUNIL ═══ */
-const STAGES=['Novo','Sem Contato','Contato','Proposta','Fechado','Perdido'];
-const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Contato':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
+const STAGES=['Novo','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
+const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Em Negociação':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
 function renderFunil(){
   const isAdmin=isAdminOrCoord();
   document.getElementById('funil-grid').innerHTML=STAGES.map(s=>{
@@ -1868,6 +1919,7 @@ function openModal(type){
   if(type==='tarefa'){
     ['ta-desc'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('ta-prazo').value='';
+    const taHora=document.getElementById('ta-hora');if(taHora)taHora.value='';
     document.getElementById('ta-resp').value=CU.id;
     // pre-select lead if in detail
     const ls=document.getElementById('ta-lead');
@@ -2023,7 +2075,7 @@ async function saveTarefa(){
   if(!desc){toast('Informe a descrição','err');return;}
   const{data}=await sb.from('crm_tarefas').insert({
     lead_id:v('ta-lead')||null,responsavel_id:v('ta-resp')||null,
-    descricao:desc,prazo:v('ta-prazo')||null,concluida:false,
+    descricao:desc,prazo:v('ta-prazo')||null,hora:v('ta-hora')||null,concluida:false,
     user_id:CU.id,created_at:new Date().toISOString()
   }).select().maybeSingle();
   if(data) allTasks.push(data);
@@ -2245,7 +2297,7 @@ function fmtDateStr(s){if(!s)return'';const[y,m,d]=s.split('-');return`${d}/${m}
 function fmtSize(b){if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
 function brl(n){return'R$ '+Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtCPF(c){if(!c)return'';const d=c.replace(/\D/g,'');return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');}
-function sBadge(s){const m={Novo:'b-novo',Contato:'b-contato',Proposta:'b-proposta',Fechado:'b-fechado',Perdido:'b-perdido'};return`<span class="badge ${m[s]||'b-novo'}">${s}</span>`;}
+function sBadge(s){const m={Novo:'b-novo','Em Negociação':'b-contato',Proposta:'b-proposta',Fechado:'b-fechado',Perdido:'b-perdido'};return`<span class="badge ${m[s]||'b-novo'}">${s}</span>`;}
 function toast(msg,type='ok'){
   const n=document.getElementById('notify');
   n.textContent=msg;n.className=`notify ${type} show`;
@@ -2253,6 +2305,135 @@ function toast(msg,type='ok'){
 }
 
 
+
+/* ═══ REVERTER VENDA → LEAD NORMAL ═══ */
+async function revertVenda(vendaId, leadId){
+  if(!confirm('Reverter esta venda? O lead voltará ao status anterior e a venda será removida.'))return;
+  if(!isAdmin()&&!isCoordenador()){toast('Sem permissão','err');return;}
+  // Remove docs from storage
+  const docs=allDocs.filter(d=>d.venda_id===vendaId||d.lead_id===leadId);
+  for(const d of docs){
+    await sb.storage.from('crm-documentos').remove([d.storage_path]).catch(()=>{});
+  }
+  await sb.from('crm_documentos').delete().eq('venda_id',vendaId);
+  await sb.from('crm_vendas').delete().eq('id',vendaId);
+  allVendas=allVendas.filter(v=>v.id!==vendaId);
+  allDocs=allDocs.filter(d=>d.venda_id!==vendaId);
+  // Revert lead status
+  await sb.from('crm_leads').update({status:'Proposta'}).eq('id',leadId);
+  const li=allLeads.findIndex(l=>l.id===leadId);
+  if(li>-1) allLeads[li].status='Proposta';
+  // Log in history
+  await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'📝 Anotação',descricao:'Venda revertida para lead normal (status: Proposta)',created_at:new Date().toISOString()});
+  const{data}=await sb.from('crm_historico').select('*').order('created_at',{ascending:false});
+  allHist=data||[];
+  saveCache();
+  toast('Venda revertida! Lead voltou para Proposta.','ok');
+  openDetail(leadId,fromPage);
+}
+
+/* ═══ INLINE EDIT EMAIL + OBSERVAÇÕES ═══ */
+function openInlineEditEmailObs(leadId){
+  const el=document.getElementById('inline-edit-emailobs-'+leadId);
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
+}
+async function saveInlineEmailObs(leadId){
+  const email=(document.getElementById('ie-email-'+leadId)?.value||'').trim();
+  const obs=(document.getElementById('ie-obs-'+leadId)?.value||'').trim();
+  const{error}=await sb.from('crm_leads').update({email:email||null,observacoes:obs||null}).eq('id',leadId);
+  if(error){toast('Erro ao salvar: '+error.message,'err');return;}
+  const li=allLeads.findIndex(l=>l.id===leadId);
+  if(li>-1){allLeads[li].email=email||null;allLeads[li].observacoes=obs||null;}
+  saveCache();
+  toast('E-mail e observações salvos!','ok');
+  openDetail(leadId,fromPage);
+}
+
+/* ═══ TASK ALERT POPUP (blinking, for all users) ═══ */
+let _taskAlertShown=new Set();
+let _taskAlertInterval=null;
+
+function checkTaskAlerts(){
+  if(!allTasks||!CU) return;
+  const now=new Date();
+  const today=now.toISOString().slice(0,10);
+  const popup=document.getElementById('task-alert-popup');
+  if(!popup) return;
+  // Tasks for current user that are due today or overdue and not done
+  const myTasks=allTasks.filter(t=>{
+    if(t.concluida) return false;
+    if(t.responsavel_id&&t.responsavel_id!==CU.id&&t.user_id!==CU.id) return false;
+    if(!t.prazo) return false;
+    // Check if due today or overdue
+    if(t.prazo>today) {
+      // Check if within next 30 minutes (if hora field set)
+      if(t.hora){
+        const taskDT=new Date(t.prazo+'T'+t.hora);
+        const diffMin=(taskDT-now)/60000;
+        return diffMin>=0&&diffMin<=30;
+      }
+      return false;
+    }
+    return true; // today or overdue
+  });
+  // Show new alerts
+  myTasks.forEach(t=>{
+    const alertKey=t.id+(t.hora||'');
+    if(_taskAlertShown.has(alertKey)) return;
+    _taskAlertShown.add(alertKey);
+    const isOverdue=t.prazo<today;
+    const isSoon=t.prazo===today||t.hora;
+    const div=document.createElement('div');
+    div.className='task-alert-item'+(isOverdue?' urgent':'');
+    const horaDisp=t.hora?` às ${t.hora}`:'';
+    div.innerHTML=`<button class="task-alert-close" onclick="dismissTaskAlert('${alertKey}',this.closest('.task-alert-item'))">✕</button>
+      <div class="task-alert-title">${isOverdue?'⚠ Tarefa Atrasada':t.hora?'⏰ Tarefa em Breve':'🔔 Tarefa para Hoje'}</div>
+      <div class="task-alert-desc">${t.descricao}</div>
+      <div class="task-alert-meta">Prazo: ${t.prazo?t.prazo.split('-').reverse().join('/'):'—'}${horaDisp}</div>`;
+    div.addEventListener('click',e=>{if(e.target.classList.contains('task-alert-close'))return;nav('tarefas',null);renderNav();dismissTaskAlert(alertKey,div);});
+    popup.appendChild(div);
+  });
+  // Auto-remove after 20s if not urgent
+  popup.querySelectorAll('.task-alert-item:not(.urgent)').forEach(el=>{
+    if(!el._autoRemove){el._autoRemove=true;setTimeout(()=>{if(el.parentNode)el.remove();},20000);}
+  });
+  // Update badge
+  updateTaskBadge();
+}
+function dismissTaskAlert(id,el){
+  if(el) el.remove();
+}
+function updateTaskBadge(){
+  const badge=document.getElementById('nav-tasks-badge');
+  if(!badge) return;
+  const today=new Date().toISOString().slice(0,10);
+  const cnt=allTasks.filter(t=>{
+    if(t.concluida) return false;
+    if(!t.prazo) return false;
+    if(t.responsavel_id&&t.responsavel_id!==CU?.id&&t.user_id!==CU?.id) return false;
+    return t.prazo<=today;
+  }).length;
+  badge.style.display=cnt>0?'':'none';
+  badge.textContent=cnt;
+}
+
+/* ═══ MASS SELECT: quantity input ═══ */
+function openLeadsMassWithCount(){
+  openLeadsMass();
+  // Show a small quantity input row in the action bar
+  const bar=document.getElementById('leads-action-bar');
+  if(!bar) return;
+  let qrow=document.getElementById('mass-qty-row');
+  if(!qrow){
+    qrow=document.createElement('div');
+    qrow.id='mass-qty-row';
+    qrow.style.cssText='display:flex;align-items:center;gap:8px;width:100%';
+    qrow.innerHTML=`<span style="font-size:12px;color:var(--muted2)">Selecionar quantidade:</span>
+      <input id="mass-qty-inp" type="number" min="1" class="inp" style="width:80px;padding:5px 8px;font-size:12px" placeholder="Qtd">
+      <button class="btn-sm" onclick="selectLeadsByCount(parseInt(document.getElementById('mass-qty-inp').value)||0)">Aplicar</button>`;
+    bar.appendChild(qrow);
+  }
+}
 
 function goToDashboard(){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
@@ -3065,6 +3246,42 @@ async function massRemove(){
 }
 
 /* ═══ SELEÇÃO EM MASSA — TODOS OS LEADS ═══ */
+// Drag-select: hold mouse and drag over rows to select them
+let _dragSelecting=false;
+let _dragSelectVal=null;
+document.addEventListener('mouseup',()=>{_dragSelecting=false;_dragSelectVal=null;});
+function initDragSelect(){
+  const tbody=document.getElementById('l-tbody');
+  if(!tbody||tbody._dragInit) return;
+  tbody._dragInit=true;
+  tbody.addEventListener('mousedown',e=>{
+    if(!_leadsMassMode) return;
+    const chk=e.target.closest('tr')?.querySelector('.lead-chk');
+    if(!chk) return;
+    _dragSelecting=true;
+    _dragSelectVal=!chk.checked;
+    chk.checked=_dragSelectVal;
+    updateLeadsMassCount();
+    e.preventDefault();
+  });
+  tbody.addEventListener('mouseover',e=>{
+    if(!_dragSelecting||!_leadsMassMode) return;
+    const chk=e.target.closest('tr')?.querySelector('.lead-chk');
+    if(chk&&chk.checked!==_dragSelectVal){
+      chk.checked=_dragSelectVal;
+      updateLeadsMassCount();
+    }
+  });
+}
+
+// Numeric quantity input for mass select
+function selectLeadsByCount(n){
+  const chks=document.querySelectorAll('.lead-chk');
+  let cnt=0;
+  chks.forEach(c=>{c.checked=(cnt<n);cnt++;});
+  updateLeadsMassCount();
+}
+
 function openLeadsMass(){
   _leadsMassMode=true;
   document.getElementById('leads-action-bar').style.display='flex';
@@ -3088,6 +3305,16 @@ function openLeadsMass(){
   if(delWrap) delWrap.innerHTML=isAdmin()
     ?'<div style="width:1px;height:20px;background:var(--border);display:inline-block;margin:0 2px;vertical-align:middle"></div><button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">🗑️ Apagar</button>'
     :'';
+  // Add quantity selector row
+  const bar=document.getElementById('leads-action-bar');
+  if(bar&&!document.getElementById('mass-qty-row')){
+    const qrow=document.createElement('div');
+    qrow.id='mass-qty-row';
+    qrow.style.cssText='display:flex;align-items:center;gap:8px;width:100%;flex-wrap:wrap';
+    qrow.innerHTML=`<span style="font-size:11.5px;color:var(--muted2)">Selecionar por qtd:</span><input id="mass-qty-inp" type="number" min="1" class="inp" style="width:74px;padding:5px 8px;font-size:12px" placeholder="N°"><button class="btn-sm" onclick="selectLeadsByCount(parseInt(document.getElementById('mass-qty-inp').value)||0)" style="border-color:var(--gold-dim);color:var(--gold2)">✔ Aplicar</button>`;
+    bar.appendChild(qrow);
+  }
+  setTimeout(initDragSelect,100);
   updateLeadsMassCount();
 }
 function closeLeadsMass(){
