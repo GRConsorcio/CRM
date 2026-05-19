@@ -235,6 +235,14 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .notify.ok{border-left:3px solid var(--green)}
 .notify.err{border-left:3px solid var(--red)}
 
+/* PAGINATION */
+.pg-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-top:1px solid var(--border);flex-wrap:wrap}
+.pg-btn{background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:5px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:inherit;transition:all .13s;min-width:32px;text-align:center}
+.pg-btn:hover{border-color:var(--gold-dim);color:var(--gold2)}
+.pg-btn.active{background:var(--gold);border-color:var(--gold);color:#0a0a0a;font-weight:700}
+.pg-btn:disabled{opacity:.3;cursor:default}
+.pg-info{font-size:11px;color:var(--muted2);margin-left:auto}
+
 /* TASK POPUP ALERT */
 @keyframes taskBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(201,168,76,0.4)}50%{opacity:.85;box-shadow:0 0 20px 6px rgba(201,168,76,0.35)}}
 @keyframes taskSlideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
@@ -340,13 +348,13 @@ tr:hover td{background:rgba(255,255,255,.015)}
   <!-- LEADS (admin/coord) -->
   <div class="page" id="page-leads">
     <div class="filter-bar">
-      <input class="inp" id="l-srch" placeholder="🔍 Buscar..." oninput="renderLeads()">
-      <select id="l-f-status" onchange="renderLeads()">
+      <input class="inp" id="l-srch" placeholder="🔍 Buscar..." oninput="renderLeads(true)">
+      <select id="l-f-status" onchange="renderLeads(true)">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
         <option>Fechado</option><option>Perdido</option>
       </select>
-      <select id="l-f-resp" onchange="renderLeads()">
+      <select id="l-f-resp" onchange="renderLeads(true)">
         <option value="">Todos os vendedores</option>
       </select>
       <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="recolherTudoParaMim()">↩️ Recolher tudo para mim</button>
@@ -380,6 +388,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       </div>
       <div class="tbl-wrap">
         <table><thead><tr>
+          <th id="l-chk-head" style="width:32px"></th>
           <th>Nome</th><th>Telefone</th><th>Interesse</th>
           <th>Status</th><th>Vendedor</th><th>Origem</th><th>Data</th><th></th>
         </tr></thead>
@@ -1377,9 +1386,10 @@ function populateSelects(){
   sel('ld-resp',`<option value="">Sem vendedor</option>`+vendOpts);
   sel('dm-vend',vendOpts);
   sel('ta-resp',`<option value="${CU.id}">Eu mesmo</option>`+allOpts);
-  const leadsOpts='<option value="">Nenhum</option>'+allLeads.map(l=>`<option value="${l.id}">${l.nome}</option>`).join('');
+  // ta-lead: limitar a 200 mais recentes para não travar com 46k leads
+  const leadsOpts='<option value="">Nenhum</option>'+allLeads.slice(0,200).map(l=>`<option value="${l.id}">${l.nome}</option>`).join('');
   sel('ta-lead',leadsOpts);
-  sel('dm-lead',allLeads.filter(l=>!l.responsavel_id).map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
+  sel('dm-lead',allLeads.filter(l=>!l.responsavel_id).slice(0,500).map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
   // filter selects
   const respFilter='<option value="">Todos os vendedores</option>'+vendOpts;
   const lf=document.getElementById('l-f-resp');
@@ -1490,7 +1500,7 @@ function nav(page,el){
   if(el) el.classList.add('on');
   document.getElementById('topbar-title').textContent=PAGE_TITLES[page]||page;
   if(page==='dashboard') renderDashboard().catch(e=>console.warn('renderDashboard error:',e));
-  if(page==='leads') renderLeads();
+  if(page==='leads') { leadsCurrentPage=1; renderLeads(); }
   if(page==='meus-leads') renderMeusLeads();
   if(page==='funil') renderFunil();
   if(page==='distribuicao') renderDistribuicao();
@@ -1598,7 +1608,12 @@ async function renderDashboard(){
 }
 
 /* ═══ LEADS (admin) ═══ */
-function renderLeads(){
+const LEADS_PAGE_SIZE = 1000;
+let leadsCurrentPage = 1;
+let leadsFilteredCache = [];
+
+function renderLeads(resetPage){
+  if(resetPage) leadsCurrentPage=1;
   // Inject New Lead button for admin only
   const nlw=document.getElementById('new-lead-btn-wrap');
   if(nlw) nlw.innerHTML=isAdmin()?'<button class="btn-primary" onclick="openModal(\'lead\')">+ Novo Lead</button>':'';
@@ -1613,7 +1628,13 @@ function renderLeads(){
     if(fr&&l.responsavel_id!==fr)return false;
     return true;
   });
-  document.getElementById('l-title').textContent=`Leads — ${f.length} registro${f.length!==1?'s':''}`;
+  leadsFilteredCache=f;
+  const totalPages=Math.max(1,Math.ceil(f.length/LEADS_PAGE_SIZE));
+  if(leadsCurrentPage>totalPages) leadsCurrentPage=totalPages;
+  const start=(leadsCurrentPage-1)*LEADS_PAGE_SIZE;
+  const pageItems=f.slice(start,start+LEADS_PAGE_SIZE);
+
+  document.getElementById('l-title').textContent=`Leads — ${f.length.toLocaleString('pt-BR')} registro${f.length!==1?'s':''}`;
   // Restore checkboxes after tbody re-render
   if(_leadsMassMode){
     setTimeout(()=>{
@@ -1623,9 +1644,9 @@ function renderLeads(){
       updateLeadsMassCount();
     },10);
   }
-  document.getElementById('l-tbody').innerHTML=f.length===0
-    ?`<tr><td colspan="8"><div class="empty"><div class="ei">👥</div>Nenhum lead</div></td></tr>`
-    :f.map(l=>{
+  document.getElementById('l-tbody').innerHTML=pageItems.length===0
+    ?`<tr><td colspan="9"><div class="empty"><div class="ei">👥</div>Nenhum lead</div></td></tr>`
+    :pageItems.map(l=>{
       const u=allUsers.find(u=>u.user_id===l.responsavel_id);
       return`<tr>
         <td class="lead-chk-td" style="width:36px"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" onchange="updateLeadsMassCount()"></td>
@@ -1641,6 +1662,50 @@ function renderLeads(){
         </div></td>
       </tr>`;
     }).join('');
+
+  // Render pagination bar
+  renderLeadsPagination(f.length, totalPages);
+}
+
+function renderLeadsPagination(total, totalPages){
+  // Remove existing bar if any
+  const existing=document.getElementById('leads-pg-bar');
+  if(existing) existing.remove();
+  if(totalPages<=1) return;
+  const bar=document.createElement('div');
+  bar.id='leads-pg-bar';
+  bar.className='pg-bar';
+  const start=(leadsCurrentPage-1)*LEADS_PAGE_SIZE+1;
+  const end=Math.min(leadsCurrentPage*LEADS_PAGE_SIZE,total);
+  // Build page buttons (show max 7 buttons around current)
+  let btns='';
+  const range=(from,to)=>{let s='';for(let i=from;i<=to;i++){s+=`<button class="pg-btn${i===leadsCurrentPage?' active':''}" onclick="goLeadsPage(${i})">${i}</button>`;}return s;};
+  if(totalPages<=7){
+    btns=range(1,totalPages);
+  } else if(leadsCurrentPage<=4){
+    btns=range(1,5)+'<span style="color:var(--muted);padding:0 4px">…</span>'+range(totalPages,totalPages);
+  } else if(leadsCurrentPage>=totalPages-3){
+    btns=range(1,1)+'<span style="color:var(--muted);padding:0 4px">…</span>'+range(totalPages-4,totalPages);
+  } else {
+    btns=range(1,1)+'<span style="color:var(--muted);padding:0 4px">…</span>'+range(leadsCurrentPage-1,leadsCurrentPage+1)+'<span style="color:var(--muted);padding:0 4px">…</span>'+range(totalPages,totalPages);
+  }
+  bar.innerHTML=`
+    <button class="pg-btn" onclick="goLeadsPage(${leadsCurrentPage-1})" ${leadsCurrentPage===1?'disabled':''}>‹</button>
+    ${btns}
+    <button class="pg-btn" onclick="goLeadsPage(${leadsCurrentPage+1})" ${leadsCurrentPage===totalPages?'disabled':''}>›</button>
+    <span class="pg-info">${start.toLocaleString('pt-BR')}–${end.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')}</span>`;
+  // Insert after tbl-wrap inside page-leads panel
+  const tblWrap=document.querySelector('#page-leads .tbl-wrap');
+  if(tblWrap) tblWrap.parentNode.insertBefore(bar,tblWrap.nextSibling);
+}
+
+function goLeadsPage(p){
+  const totalPages=Math.ceil(leadsFilteredCache.length/LEADS_PAGE_SIZE);
+  if(p<1||p>totalPages) return;
+  leadsCurrentPage=p;
+  renderLeads(true);
+  // Scroll table into view
+  document.getElementById('page-leads')?.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 /* ═══ MEUS LEADS (vendedor) ═══ */
@@ -2106,7 +2171,7 @@ async function saveLead(){
     closeModal('lead');
     toast('Lead atualizado!','ok');
     editLeadId=null;
-    renderLeads();
+    renderLeads(true);
     if(isAdminOrCoord()) populateSelects();
     saveCache();
   } else {
@@ -2126,7 +2191,7 @@ async function saveLead(){
     closeModal('lead');
     toast('Lead criado!','ok');
     editLeadId=null;
-    renderLeads();
+    renderLeads(true);
     populateSelects();
     saveCache();
   }
@@ -2153,7 +2218,7 @@ async function delLead(id){
   allHist=allHist.filter(h=>h.lead_id!==id);
   allTasks=allTasks.filter(t=>t.lead_id!==id);
   allVendas=allVendas.filter(v=>v.lead_id!==id);
-  renderLeads();toast('Lead removido','ok');
+  renderLeads(true);toast('Lead removido','ok');
 }
 
 /* ═══ HISTÓRICO ═══ */
@@ -2801,7 +2866,7 @@ async function syncLead(payload){
       if(!allLeads.find(l=>l.id===n.id)){
         allLeads.unshift(n);
         // Render inline without waiting for reRenderCurrent caller
-        if(document.getElementById('page-leads').classList.contains('on')) renderLeads();
+        if(document.getElementById('page-leads').classList.contains('on')) renderLeads(true);
         else if(document.getElementById('page-meus-leads').classList.contains('on')) renderMeusLeads();
         else if(document.getElementById('page-funil').classList.contains('on')) renderFunil();
         else if(document.getElementById('page-distribuicao').classList.contains('on')) renderDistribuicao();
@@ -2855,7 +2920,7 @@ async function syncVenda(payload){
 
 function reRenderCurrent(){
   if(document.getElementById('page-dashboard').classList.contains('on')) renderDashboard().catch(e=>console.warn('Dashboard render error:',e));
-  else if(document.getElementById('page-leads').classList.contains('on')) renderLeads();
+  else if(document.getElementById('page-leads').classList.contains('on')) renderLeads(true);
   else if(document.getElementById('page-meus-leads').classList.contains('on')) renderMeusLeads();
   else if(document.getElementById('page-funil').classList.contains('on')) renderFunil();
   else if(document.getElementById('page-distribuicao').classList.contains('on')) renderDistribuicao();
@@ -3696,7 +3761,7 @@ async function leadsMassTransfer(){
   const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString()}).in('id',ids);
   if(error){toast('Erro: '+error.message,'err');return;}
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
-  saveCache();populateSelects();renderLeads();
+  saveCache();populateSelects();renderLeads(true);
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
 }
 async function leadsMassEnviarEquipe(){
@@ -3707,7 +3772,7 @@ async function leadsMassEnviarEquipe(){
   const{error}=await sb.from('crm_leads').update({equipe_id:equipeId,responsavel_id:null}).in('id',ids);
   if(error){toast('Erro: '+error.message,'err');return;}
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1){allLeads[i].equipe_id=equipeId;allLeads[i].responsavel_id=null;}});
-  saveCache();renderLeads();
+  saveCache();renderLeads(true);
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' enviado'+(ids.length!==1?'s':'')+' para equipe!','ok');
 }
 
@@ -3838,7 +3903,7 @@ async function recolherTudoParaMim(){
       l.distribuido_em=null;
     }
   });
-  saveCache();populateSelects();renderLeads();
+  saveCache();populateSelects();renderLeads(true);
   const count=allLeads.filter(l=>l.status!=='Fechado').length;
   toast(count+' lead'+(count!==1?'s':'')+' prontos para distribuição!','ok');
 }
