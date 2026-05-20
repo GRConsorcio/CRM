@@ -362,6 +362,12 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <select id="l-f-ddd" onchange="renderLeads(true)" style="display:none">
         <option value="">Todos os DDDs</option>
       </select>
+      <!-- Filtro tipo lead: inclui Remalho -->
+      <select id="l-f-tipo" onchange="renderLeads(true)" style="display:none">
+        <option value="">Todos os tipos</option>
+        <option value="Novo">🆕 Novo</option>
+        <option value="Remalho">♻️ Remalho</option>
+      </select>
       <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="recolherTudoParaMim()">↩️ Recolher tudo para mim</button>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
       <span id="new-lead-btn-wrap"></span>
@@ -370,6 +376,12 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <span id="leads-sel-count" style="font-size:12.5px;font-weight:700;color:var(--gold2);min-width:80px">0 selecionados</span>
       <button class="btn-sm" onclick="leadsSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Todos</button>
       <button class="btn-sm" onclick="leadsSelectAll(false)">☐ Nenhum</button>
+      <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+      <!-- Filtro de origem: de qual vendedor pegar -->
+      <select id="leads-f-origin-sel" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;flex:1;min-width:160px" onchange="applyOriginFilter(this.value)">
+        <option value="">Mostrar de: todos</option>
+      </select>
+      <input type="hidden" id="l-f-origem" value="">
       <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
       <select id="leads-mass-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;flex:1;min-width:140px">
         <option value="">Transferir para vendedor...</option>
@@ -619,6 +631,70 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div class="panel-body" id="import-log">
         <div class="empty"><div class="ei">📥</div>Nenhuma importação ainda</div>
       </div>
+    </div>
+  </div>
+
+  </div>
+
+  <!-- MESCLAR BASE (admin only) -->
+  <div class="page" id="page-mesclar">
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <div class="panel-title">🔀 Mesclar Base por DDD</div>
+        <div style="font-size:11.5px;color:var(--muted2)">Monta lista com ~100 leads de cada DDD, mesclados • somente ADM</div>
+      </div>
+      <div class="panel-body">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+          <div class="fld" style="margin:0;flex:1;min-width:120px">
+            <label>Tipo de lead</label>
+            <select class="inp" id="mesclar-tipo" style="margin:0" onchange="updateMesclarPreview()">
+              <option value="">Todos</option>
+              <option value="Novo">🆕 Novo</option>
+              <option value="Remalho">♻️ Remalho</option>
+            </select>
+          </div>
+          <div class="fld" style="margin:0;flex:1;min-width:120px">
+            <label>Mínimo por DDD</label>
+            <input class="inp" id="mesclar-min" type="number" value="100" min="1" style="margin:0" oninput="updateMesclarPreview()">
+          </div>
+          <div class="fld" style="margin:0;flex:1;min-width:120px">
+            <label>Origem (vendedor)</label>
+            <select class="inp" id="mesclar-origem" style="margin:0" onchange="updateMesclarPreview()">
+              <option value="">Todos (incl. sem vendedor)</option>
+              <option value="__sem__">Sem vendedor</option>
+            </select>
+          </div>
+          <button class="btn-primary" onclick="gerarMesclar()" id="mesclar-gerar-btn">⚙️ Gerar lista</button>
+        </div>
+        <div id="mesclar-preview" style="font-size:11.5px;color:var(--muted2);margin-bottom:10px"></div>
+        <div id="mesclar-ddd-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+      </div>
+    </div>
+
+    <!-- Tabela resultado -->
+    <div class="panel" id="mesclar-result-panel" style="display:none">
+      <div class="panel-head">
+        <div class="panel-title" id="mesclar-result-title">Lista mesclada</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-sm" onclick="mesclarSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Todos</button>
+          <button class="btn-sm" onclick="mesclarSelectAll(false)">☐ Nenhum</button>
+          <select id="mesclar-mass-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 10px;font-size:12px;font-family:inherit;outline:none">
+            <option value="">Transferir para...</option>
+          </select>
+          <button class="btn-primary" onclick="mesclarTransfer()">↗ Transferir selecionados</button>
+        </div>
+      </div>
+      <div style="padding:8px 18px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted2)" id="mesclar-sel-info">0 selecionados</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:32px"><input type="checkbox" id="mesclar-chk-all" style="accent-color:var(--gold);width:14px;height:14px" onchange="mesclarSelectAll(this.checked)"></th>
+            <th>Nome</th><th>Telefone</th><th>DDD</th><th>Tipo</th><th>Status</th><th>Vendedor atual</th>
+          </tr></thead>
+          <tbody id="mesclar-tbody"></tbody>
+        </table>
+      </div>
+      <div id="mesclar-pg-bar" class="pg-bar" style="display:none"></div>
     </div>
   </div>
 
@@ -1570,6 +1646,7 @@ function renderNav(){
       <div class="nav-item" onclick="nav('funil',this)" title="Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil de Vendas</span></div>
       <div class="nav-item" onclick="nav('distribuicao',this)" title="Distribuição"><span class="nav-icon">${IC.dist}</span><span class="nav-label">Distribuição</span></div>
       ${isAdm?`<div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>`:''}
+      ${isAdm?`<div class="nav-item" onclick="nav('mesclar',this)" title="Mesclar Base"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4h4l2 4-2 4H2" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M14 4h-4l-2 4 2 4h4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span><span class="nav-label">Mesclar Base</span></div>`:''}
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funis da Equipe</span></div>`;
   } else if(isSup){
     // Supervisor: acesso apenas à sua equipe
@@ -1632,7 +1709,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos'};
+const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD'};
 function nav(page,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
@@ -1649,6 +1726,7 @@ function nav(page,el){
   if(page==='equipe') renderEquipe();
   if(page==='equipes') renderEquipes();
   if(page==='importar') renderImportar();
+  if(page==='mesclar') renderMesclar();
   if(page==='funis-equipe') renderFunisEquipe();
   if(page==='coord-leads') renderCoordLeads();
   if(page==='coord-funil') renderCoordFunil();
@@ -1751,6 +1829,15 @@ async function renderDashboard(){
 const LEADS_PAGE_SIZE = 1000;
 let leadsCurrentPage = 1;
 let leadsFilteredCache = [];
+// Persiste IDs selecionados entre re-renders da tabela
+let _selectedLeadIds = new Set();
+
+function applyOriginFilter(val){
+  const inp=document.getElementById('l-f-origem');
+  if(inp) inp.value=val;
+  _selectedLeadIds.clear();
+  renderLeads(true);
+}
 
 function extractDDD(tel){
   if(!tel) return '';
@@ -1767,6 +1854,9 @@ function populateDDDFilter(){
   const cur=sel.value;
   sel.innerHTML='<option value="">Todos os DDDs</option>'+ddds.map(d=>`<option value="${d}">${d} (${allLeads.filter(l=>extractDDD(l.telefone)===d).length})</option>`).join('');
   if(cur) sel.value=cur;
+  // Mostrar filtro tipo lead para admins
+  const tipoSel=document.getElementById('l-f-tipo');
+  if(tipoSel) tipoSel.style.display='';
 }
 
 function renderLeads(resetPage){
@@ -1781,12 +1871,17 @@ function renderLeads(resetPage){
   const q=(document.getElementById('l-srch')?.value||'').toLowerCase();
   const fs=document.getElementById('l-f-status')?.value;
   const fr=document.getElementById('l-f-resp')?.value;
+  const fo=document.getElementById('l-f-origem')?.value||''; // filtro origem do vendedor
   const fd=isAdmin()?(document.getElementById('l-f-ddd')?.value||''):'';
+  const ft=isAdmin()?(document.getElementById('l-f-tipo')?.value||''):'';
   const f=allLeads.filter(l=>{
     if(q&&!l.nome.toLowerCase().includes(q)&&!(l.interesse||'').toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
     if(fs&&l.status!==fs)return false;
     if(fr&&l.responsavel_id!==fr)return false;
+    if(fo==='__sem__'&&l.responsavel_id!=null)return false;
+    if(fo&&fo!=='__sem__'&&l.responsavel_id!==fo)return false;
     if(fd&&extractDDD(l.telefone)!==fd)return false;
+    if(ft&&(l.tipo_lead||'Novo')!==ft)return false;
     return true;
   });
   leadsFilteredCache=f;
@@ -1797,21 +1892,15 @@ function renderLeads(resetPage){
 
   const dddLabel=fd?` · DDD ${fd}`:'';
   document.getElementById('l-title').textContent=`Leads — ${f.length.toLocaleString('pt-BR')} registro${f.length!==1?'s':''}${dddLabel}`;
-  // Restore checkboxes after tbody re-render
-  if(_leadsMassMode){
-    setTimeout(()=>{
-      document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='table-cell');
-      const hd=document.getElementById('l-chk-head');
-      if(hd) hd.style.display='table-cell';
-      updateLeadsMassCount();
-    },10);
-  }
+
+  const showChk=_leadsMassMode;
   document.getElementById('l-tbody').innerHTML=pageItems.length===0
     ?`<tr><td colspan="9"><div class="empty"><div class="ei">👥</div>Nenhum lead</div></td></tr>`
     :pageItems.map(l=>{
       const u=allUsers.find(u=>u.user_id===l.responsavel_id);
+      const isChecked=_selectedLeadIds.has(l.id);
       return`<tr>
-        <td class="lead-chk-td" style="width:36px"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" onchange="updateLeadsMassCount()"></td>
+        <td class="lead-chk-td" style="width:36px;${showChk?'':'display:none'}"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" ${isChecked?'checked':''} onchange="onLeadChkChange(this)"></td>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead)}</td>
@@ -1825,6 +1914,11 @@ function renderLeads(resetPage){
       </tr>`;
     }).join('');
 
+  if(showChk){
+    const hd=document.getElementById('l-chk-head');
+    if(hd) hd.style.display='table-cell';
+  }
+  updateLeadsMassCount();
   // Render pagination bar
   renderLeadsPagination(f.length, totalPages);
 }
@@ -3932,19 +4026,26 @@ function initDragSelect(){
 
 // Numeric quantity input for mass select
 function selectLeadsByCount(n){
-  const chks=document.querySelectorAll('.lead-chk');
-  let cnt=0;
-  chks.forEach(c=>{c.checked=(cnt<n);cnt++;});
+  if(!n||n<1) return;
+  _selectedLeadIds.clear();
+  leadsFilteredCache.slice(0,n).forEach(l=>_selectedLeadIds.add(l.id));
+  // Atualiza checkboxes visíveis
+  document.querySelectorAll('.lead-chk').forEach(c=>{
+    c.checked=_selectedLeadIds.has(c.dataset.id);
+  });
   updateLeadsMassCount();
+  toast(_selectedLeadIds.size+' leads selecionados (pode navegar entre páginas)','ok');
 }
 
 function openLeadsMass(){
   _leadsMassMode=true;
+  _selectedLeadIds.clear();
   document.getElementById('leads-action-bar').style.display='flex';
   document.getElementById('leads-mass-btn').style.display='none';
+  // Populate transfer-to select
   const vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
   document.getElementById('leads-mass-resp').innerHTML='<option value="">Transferir para vendedor...</option>'+vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
-  // Supervisor: only own equipes
+  // Populate equipe select
   let visEquipes;
   if(isAdmin()||isCoordenador()){
     visEquipes=allEquipes;
@@ -3961,59 +4062,88 @@ function openLeadsMass(){
   if(delWrap) delWrap.innerHTML=isAdmin()
     ?'<div style="width:1px;height:20px;background:var(--border);display:inline-block;margin:0 2px;vertical-align:middle"></div><button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">🗑️ Apagar</button>'
     :'';
-  // Add quantity selector row
+  // Origem (vendedor de origem para filtrar) — inclui "Sem vendedor"
+  const originSel=document.getElementById('leads-f-origin-sel');
+  if(originSel){
+    originSel.innerHTML='<option value="">Mostrar de: todos os vendedores</option><option value="__sem__">Sem vendedor</option>'+
+      allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador').map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  }
+  // Quantity selector
   const bar=document.getElementById('leads-action-bar');
   if(bar&&!document.getElementById('mass-qty-row')){
     const qrow=document.createElement('div');
     qrow.id='mass-qty-row';
-    qrow.style.cssText='display:flex;align-items:center;gap:8px;width:100%;flex-wrap:wrap';
+    qrow.style.cssText='display:flex;align-items:center;gap:8px;width:100%;flex-wrap:wrap;margin-top:4px';
     qrow.innerHTML=`<span style="font-size:11.5px;color:var(--muted2)">Selecionar por qtd:</span><input id="mass-qty-inp" type="number" min="1" class="inp" style="width:74px;padding:5px 8px;font-size:12px" placeholder="N°"><button class="btn-sm" onclick="selectLeadsByCount(parseInt(document.getElementById('mass-qty-inp').value)||0)" style="border-color:var(--gold-dim);color:var(--gold2)">✔ Aplicar</button>`;
     bar.appendChild(qrow);
   }
   setTimeout(initDragSelect,100);
-  updateLeadsMassCount();
+  renderLeads();
 }
 function closeLeadsMass(){
   _leadsMassMode=false;
+  _selectedLeadIds.clear();
   document.getElementById('leads-action-bar').style.display='none';
   document.getElementById('leads-mass-btn').style.display='';
   const hd=document.getElementById('l-chk-head');
   if(hd) hd.style.display='none';
-  document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='none');
-  document.querySelectorAll('.lead-chk').forEach(c=>c.checked=false);
-  updateLeadsMassCount();
+  // Reset origin filter
+  const originSel=document.getElementById('leads-f-origin-sel');
+  if(originSel) originSel.value='';
+  const origInp=document.getElementById('l-f-origem');
+  if(origInp) origInp.value='';
+  // Remove qty row so it can be re-added fresh
+  const qr=document.getElementById('mass-qty-row');
+  if(qr) qr.remove();
+  renderLeads();
 }
 function toggleLeadsMassMode(on){ if(on) openLeadsMass(); else closeLeadsMass(); }
+function onLeadChkChange(chk){
+  if(chk.checked) _selectedLeadIds.add(chk.dataset.id);
+  else _selectedLeadIds.delete(chk.dataset.id);
+  updateLeadsMassCount();
+}
 function leadsSelectAll(sel){
-  document.querySelectorAll('.lead-chk').forEach(c=>c.checked=sel);
+  if(sel){
+    // Seleciona todos da lista filtrada atual (todas as páginas)
+    leadsFilteredCache.forEach(l=>_selectedLeadIds.add(l.id));
+  } else {
+    _selectedLeadIds.clear();
+  }
+  // Atualiza checkboxes visíveis
+  document.querySelectorAll('.lead-chk').forEach(c=>{
+    c.checked=_selectedLeadIds.has(c.dataset.id);
+  });
   const all=document.getElementById('l-chk-all');
   if(all) all.checked=sel;
   updateLeadsMassCount();
 }
 function updateLeadsMassCount(){
-  const total=document.querySelectorAll('.lead-chk').length;
-  const checked=document.querySelectorAll('.lead-chk:checked').length;
+  const visibleTotal=document.querySelectorAll('.lead-chk').length;
+  const n=_selectedLeadIds.size;
   const el=document.getElementById('leads-sel-count');
-  if(el) el.textContent=checked+' de '+total+' selecionado'+(checked!==1?'s':'');
+  if(el) el.textContent=n+' selecionado'+(n!==1?'s':'')+' ('+visibleTotal+' nesta página)';
   const all=document.getElementById('l-chk-all');
   if(all){
-    all.indeterminate=checked>0&&checked<total;
-    if(checked===total&&total>0) all.checked=true;
-    else if(checked===0) all.checked=false;
+    const visChecked=document.querySelectorAll('.lead-chk:checked').length;
+    all.indeterminate=visChecked>0&&visChecked<visibleTotal;
+    all.checked=visibleTotal>0&&visChecked===visibleTotal;
   }
 }
 async function leadsMassDelete(){
-  const ids=[...document.querySelectorAll('.lead-chk:checked')].map(c=>c.dataset.id);
+  const ids=[..._selectedLeadIds];
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!confirm(`Apagar ${ids.length} lead${ids.length!==1?'s':''}? Esta ação não pode ser desfeita.`))return;
-  // Delete in batches
-  for(let i=0;i<ids.length;i+=50){
-    const batch=ids.slice(i,i+50);
+  toast(`Apagando ${ids.length} leads, aguarde...`,'ok');
+  // Delete in batches of 100
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
     await sb.from('crm_historico').delete().in('lead_id',batch);
     await sb.from('crm_tarefas').delete().in('lead_id',batch);
     await sb.from('crm_documentos').delete().in('lead_id',batch);
     await sb.from('crm_vendas').delete().in('lead_id',batch);
-    await sb.from('crm_leads').delete().in('id',batch);
+    const{error}=await sb.from('crm_leads').delete().in('id',batch);
+    if(error){toast('Erro: '+error.message,'err');return;}
     batch.forEach(id=>{
       allLeads=allLeads.filter(l=>l.id!==id);
       allHist=allHist.filter(h=>h.lead_id!==id);
@@ -4027,25 +4157,40 @@ async function leadsMassDelete(){
 }
 
 async function leadsMassTransfer(){
-  const ids=[...document.querySelectorAll('.lead-chk:checked')].map(c=>c.dataset.id);
+  const ids=[..._selectedLeadIds];
   const respId=document.getElementById('leads-mass-resp')?.value;
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
-  const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString()}).in('id',ids);
-  if(error){toast('Erro: '+error.message,'err');return;}
-  ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
-  saveCache();populateSelects();renderLeads(true);
+  const vend=allUsers.find(u=>u.user_id===respId);
+  toast(`Transferindo ${ids.length} leads para ${vend?.name||'vendedor'}, aguarde...`,'ok');
+  // Transfer in batches of 100
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
+    const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString()}).in('id',batch);
+    if(error){toast('Erro: '+error.message,'err');return;}
+    batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].responsavel_id=respId;});
+  }
+  saveCache();populateSelects();
+  _selectedLeadIds.clear();
+  renderLeads();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
 }
 async function leadsMassEnviarEquipe(){
-  const ids=[...document.querySelectorAll('.lead-chk:checked')].map(c=>c.dataset.id);
+  const ids=[..._selectedLeadIds];
   const equipeId=document.getElementById('leads-mass-equipe')?.value;
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!equipeId){toast('Selecione uma equipe','err');return;}
-  const{error}=await sb.from('crm_leads').update({equipe_id:equipeId,responsavel_id:null}).in('id',ids);
-  if(error){toast('Erro: '+error.message,'err');return;}
-  ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1){allLeads[i].equipe_id=equipeId;allLeads[i].responsavel_id=null;}});
-  saveCache();renderLeads(true);
+  const eq=allEquipes.find(e=>e.id===equipeId);
+  toast(`Enviando ${ids.length} leads para equipe ${eq?.nome||'—'}, aguarde...`,'ok');
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
+    const{error}=await sb.from('crm_leads').update({equipe_id:equipeId,responsavel_id:null}).in('id',batch);
+    if(error){toast('Erro: '+error.message,'err');return;}
+    batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1){allLeads[idx].equipe_id=equipeId;allLeads[idx].responsavel_id=null;}});
+  }
+  saveCache();
+  _selectedLeadIds.clear();
+  renderLeads();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' enviado'+(ids.length!==1?'s':'')+' para equipe!','ok');
 }
 
@@ -4493,6 +4638,211 @@ async function delEquipe(id){
   toast('Equipe removida','ok');
   nav('equipes',null);
   renderEquipes();
+}
+
+/* ═══ MESCLAR BASE POR DDD (admin only) ═══ */
+let _mesclarList = [];       // lista mesclada atual
+let _mesclarSelected = new Set();
+let _mesclarPage = 1;
+const MESCLAR_PAGE_SIZE = 500;
+
+function renderMesclar(){
+  if(!isAdmin()) return;
+  // Populate origin select
+  const origSel=document.getElementById('mesclar-origem');
+  if(origSel){
+    const vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
+    origSel.innerHTML='<option value="">Todos (incl. sem vendedor)</option><option value="__sem__">Sem vendedor</option>'+
+      vends.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  }
+  // Populate transfer select
+  const resp=document.getElementById('mesclar-mass-resp');
+  if(resp){
+    const vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
+    resp.innerHTML='<option value="">Transferir para...</option>'+vends.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  }
+  updateMesclarPreview();
+}
+
+function updateMesclarPreview(){
+  const tipo=document.getElementById('mesclar-tipo')?.value||'';
+  const origem=document.getElementById('mesclar-origem')?.value||'';
+  const min=parseInt(document.getElementById('mesclar-min')?.value)||100;
+
+  let pool=allLeads.filter(l=>{
+    if(tipo&&(l.tipo_lead||'Novo')!==tipo) return false;
+    if(origem==='__sem__'&&l.responsavel_id!=null) return false;
+    if(origem&&origem!=='__sem__'&&l.responsavel_id!==origem) return false;
+    return true;
+  });
+
+  // Conta por DDD
+  const dddMap={};
+  pool.forEach(l=>{
+    const d=extractDDD(l.telefone)||'SEM DDD';
+    if(!dddMap[d]) dddMap[d]=[];
+    dddMap[d].push(l);
+  });
+
+  const ddds=Object.keys(dddMap).sort((a,b)=>a.localeCompare(b));
+  let total=0;
+  ddds.forEach(d=>{ total+=Math.min(dddMap[d].length,min); });
+
+  const preview=document.getElementById('mesclar-preview');
+  if(preview) preview.textContent=`${ddds.length} DDDs encontrados · ~${total.toLocaleString('pt-BR')} leads na lista mesclada (mín. ${min}/DDD)`;
+
+  // Chips por DDD
+  const chips=document.getElementById('mesclar-ddd-chips');
+  if(chips) chips.innerHTML=ddds.map(d=>`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:10.5px;color:var(--muted2)">${d} <strong style="color:var(--text)">${dddMap[d].length}</strong></span>`).join('');
+}
+
+function gerarMesclar(){
+  if(!isAdmin()) return;
+  const tipo=document.getElementById('mesclar-tipo')?.value||'';
+  const origem=document.getElementById('mesclar-origem')?.value||'';
+  const min=parseInt(document.getElementById('mesclar-min')?.value)||100;
+
+  let pool=allLeads.filter(l=>{
+    if(tipo&&(l.tipo_lead||'Novo')!==tipo) return false;
+    if(origem==='__sem__'&&l.responsavel_id!=null) return false;
+    if(origem&&origem!=='__sem__'&&l.responsavel_id!==origem) return false;
+    return true;
+  });
+
+  // Agrupar por DDD
+  const dddMap={};
+  pool.forEach(l=>{
+    const d=extractDDD(l.telefone)||'SEM DDD';
+    if(!dddMap[d]) dddMap[d]=[];
+    dddMap[d].push(l);
+  });
+
+  const ddds=Object.keys(dddMap).sort((a,b)=>dddMap[b].length-dddMap[a].length); // maior volume primeiro
+
+  // Pegar min de cada DDD; se tiver menos que min complementa com leads de outros DDDs maiores
+  const chosen=[];
+  const leftovers=[]; // leads não usados por DDD com excesso
+
+  ddds.forEach(d=>{
+    const arr=[...dddMap[d]]; // cópia
+    // Embaralhar para variedade
+    for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}
+    const take=Math.min(arr.length,min);
+    chosen.push(...arr.slice(0,take));
+    if(arr.length>take) leftovers.push(...arr.slice(take));
+  });
+
+  // Complementar DDDs que tinham menos que min
+  // Calcular quantos faltaram
+  let deficit=0;
+  ddds.forEach(d=>{ if(dddMap[d].length<min) deficit+=(min-dddMap[d].length); });
+
+  // Pegar do pool de sobra (embaralhar)
+  const lo=[...leftovers];
+  for(let i=lo.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[lo[i],lo[j]]=[lo[j],lo[i]];}
+  chosen.push(...lo.slice(0,deficit));
+
+  // Embaralhar a lista final para misturar DDDs
+  for(let i=chosen.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[chosen[i],chosen[j]]=[chosen[j],chosen[i]];}
+
+  _mesclarList=chosen;
+  _mesclarSelected.clear();
+  _mesclarPage=1;
+
+  document.getElementById('mesclar-result-panel').style.display='';
+  document.getElementById('mesclar-result-title').textContent=`Lista mesclada — ${_mesclarList.length.toLocaleString('pt-BR')} leads`;
+  renderMesclarTable();
+  toast(`Lista gerada: ${_mesclarList.length.toLocaleString('pt-BR')} leads mesclados!`,'ok');
+  document.getElementById('mesclar-result-panel').scrollIntoView({behavior:'smooth'});
+}
+
+function renderMesclarTable(){
+  const totalPages=Math.max(1,Math.ceil(_mesclarList.length/MESCLAR_PAGE_SIZE));
+  if(_mesclarPage>totalPages) _mesclarPage=totalPages;
+  const start=(_mesclarPage-1)*MESCLAR_PAGE_SIZE;
+  const pageItems=_mesclarList.slice(start,start+MESCLAR_PAGE_SIZE);
+
+  document.getElementById('mesclar-tbody').innerHTML=pageItems.map(l=>{
+    const u=allUsers.find(u=>u.user_id===l.responsavel_id);
+    const ddd=extractDDD(l.telefone)||'—';
+    return`<tr>
+      <td><input type="checkbox" class="mesclar-chk" data-id="${l.id}" style="accent-color:var(--gold);width:14px;height:14px" ${_mesclarSelected.has(l.id)?'checked':''} onchange="onMesclarChk(this)"></td>
+      <td style="font-weight:600">${l.nome}</td>
+      <td style="color:var(--muted2);font-size:11.5px">${l.telefone||'—'}</td>
+      <td><span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700">${ddd}</span></td>
+      <td>${l.tipo_lead==='Remalho'?'<span style="color:#c084fc;font-size:11px">♻️ Remalho</span>':'<span style="color:var(--blue);font-size:11px">🆕 Novo</span>'}</td>
+      <td>${sBadge(l.status)}</td>
+      <td style="font-size:11.5px">${u?u.name:'<span style="color:var(--orange)">Sem vendedor</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  updateMesclarSelInfo();
+
+  // Pagination
+  const bar=document.getElementById('mesclar-pg-bar');
+  if(!bar) return;
+  if(totalPages<=1){bar.style.display='none';return;}
+  bar.style.display='flex';
+  const s=(_mesclarPage-1)*MESCLAR_PAGE_SIZE+1;
+  const e=Math.min(_mesclarPage*MESCLAR_PAGE_SIZE,_mesclarList.length);
+  const mkBtn=(p,lbl,dis,act)=>`<button class="pg-btn${act?' active':''}" onclick="goMesclarPage(${p})" ${dis?'disabled':''}>${lbl}</button>`;
+  let btns='';
+  if(totalPages<=9){for(let i=1;i<=totalPages;i++) btns+=mkBtn(i,i,false,i===_mesclarPage);}
+  else if(_mesclarPage<=5){for(let i=1;i<=6;i++) btns+=mkBtn(i,i,false,i===_mesclarPage);btns+='<span class="pg-dots">…</span>';btns+=mkBtn(totalPages,totalPages,false,false);}
+  else if(_mesclarPage>=totalPages-4){btns+=mkBtn(1,1,false,false);btns+='<span class="pg-dots">…</span>';for(let i=totalPages-5;i<=totalPages;i++) btns+=mkBtn(i,i,false,i===_mesclarPage);}
+  else{btns+=mkBtn(1,1,false,false);btns+='<span class="pg-dots">…</span>';for(let i=_mesclarPage-2;i<=_mesclarPage+2;i++) btns+=mkBtn(i,i,false,i===_mesclarPage);btns+='<span class="pg-dots">…</span>';btns+=mkBtn(totalPages,totalPages,false,false);}
+  bar.innerHTML=`${mkBtn(_mesclarPage-1,'‹',_mesclarPage===1,false)}${btns}${mkBtn(_mesclarPage+1,'›',_mesclarPage===totalPages,false)}<span class="pg-info">${s.toLocaleString('pt-BR')}–${e.toLocaleString('pt-BR')} de ${_mesclarList.length.toLocaleString('pt-BR')}</span>`;
+}
+
+function goMesclarPage(p){
+  const tot=Math.ceil(_mesclarList.length/MESCLAR_PAGE_SIZE);
+  if(p<1||p>tot) return;
+  _mesclarPage=p;
+  renderMesclarTable();
+  document.getElementById('mesclar-result-panel').scrollIntoView({behavior:'smooth'});
+}
+
+function onMesclarChk(chk){
+  if(chk.checked) _mesclarSelected.add(chk.dataset.id);
+  else _mesclarSelected.delete(chk.dataset.id);
+  updateMesclarSelInfo();
+}
+
+function mesclarSelectAll(sel){
+  if(sel){_mesclarList.forEach(l=>_mesclarSelected.add(l.id));}
+  else{_mesclarSelected.clear();}
+  document.querySelectorAll('.mesclar-chk').forEach(c=>{c.checked=_mesclarSelected.has(c.dataset.id);});
+  const all=document.getElementById('mesclar-chk-all');
+  if(all) all.checked=sel;
+  updateMesclarSelInfo();
+}
+
+function updateMesclarSelInfo(){
+  const el=document.getElementById('mesclar-sel-info');
+  if(el) el.textContent=`${_mesclarSelected.size.toLocaleString('pt-BR')} selecionado${_mesclarSelected.size!==1?'s':''} de ${_mesclarList.length.toLocaleString('pt-BR')} total`;
+}
+
+async function mesclarTransfer(){
+  if(!isAdmin()) return;
+  const ids=[..._mesclarSelected];
+  const respId=document.getElementById('mesclar-mass-resp')?.value;
+  if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
+  if(!respId){toast('Selecione um vendedor de destino','err');return;}
+  const vend=allUsers.find(u=>u.user_id===respId);
+  toast(`Transferindo ${ids.length} leads para ${vend?.name||'vendedor'}...`,'ok');
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
+    const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString()}).in('id',batch);
+    if(error){toast('Erro: '+error.message,'err');return;}
+    batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].responsavel_id=respId;});
+  }
+  // Remove leads transferidos da lista mesclada
+  _mesclarList=_mesclarList.filter(l=>!_mesclarSelected.has(l.id));
+  _mesclarSelected.clear();
+  saveCache();populateSelects();
+  document.getElementById('mesclar-result-title').textContent=`Lista mesclada — ${_mesclarList.length.toLocaleString('pt-BR')} leads`;
+  renderMesclarTable();
+  toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
 }
 
 // Close modals on bg click
