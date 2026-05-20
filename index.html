@@ -109,6 +109,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 /* BADGES */
 .badge{display:inline-block;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .b-novo{background:#0d1a2e;color:var(--blue)}
+.b-remalho{background:#1a0a2e;color:#c084fc;border:1px solid rgba(192,132,252,0.3)}
 .b-contato{background:#1a0d2e;color:var(--purple)}
 .b-proposta{background:#1e1a05;color:var(--gold2)}
 .b-fechado{background:#0a1f0a;color:var(--green)}
@@ -534,6 +535,13 @@ tr:hover td{background:rgba(255,255,255,.015)}
             <label>Responsável</label>
             <select class="inp" id="csv-resp"></select>
           </div>
+          <div class="fld" id="csv-tipo-wrap" style="display:none;margin-top:10px">
+            <label>Tipo dos leads importados</label>
+            <select class="inp" id="csv-tipo">
+              <option value="Novo">🆕 Novo — nunca abordados</option>
+              <option value="Remalho">♻️ Remalho — já abordados</option>
+            </select>
+          </div>
           <button class="btn-primary" id="csv-import-btn" style="width:100%;display:none;margin-top:8px" onclick="importCSV()">
             ⬆️ Importar leads
           </button>
@@ -553,6 +561,13 @@ tr:hover td{background:rgba(255,255,255,.015)}
           <div class="fld" style="margin-top:12px">
             <label>Responsável</label>
             <select class="inp" id="bulk-resp"><option value="">Manter na base (sem responsável)</option></select>
+          </div>
+          <div class="fld" style="margin-top:8px">
+            <label>Tipo dos leads</label>
+            <select class="inp" id="bulk-tipo">
+              <option value="Novo">🆕 Novo — nunca abordados</option>
+              <option value="Remalho">♻️ Remalho — já abordados</option>
+            </select>
           </div>
           <button class="btn-primary" style="width:100%;margin-top:8px" onclick="importBulk()">
             ⬆️ Importar lista
@@ -719,6 +734,25 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <select class="inp" id="ld-origem">
           <option>Instagram</option><option>Facebook</option><option>WhatsApp</option><option>Indicação</option><option>Site</option><option>Outro</option>
         </select>
+      </div>
+    </div>
+    <div class="fld" id="ld-tipo-wrap" style="display:none">
+      <label>Tipo do Lead</label>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;transition:all .13s" id="tipo-novo-lbl">
+          <input type="radio" name="ld-tipo" id="ld-tipo-novo" value="Novo" checked style="accent-color:var(--blue);width:15px;height:15px" onchange="updateTipoStyle()">
+          <div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--blue)">🆕 Novo</div>
+            <div style="font-size:10.5px;color:var(--muted2)">Lead que nunca foi abordado</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;transition:all .13s" id="tipo-remalho-lbl">
+          <input type="radio" name="ld-tipo" id="ld-tipo-remalho" value="Remalho" style="accent-color:#c084fc;width:15px;height:15px" onchange="updateTipoStyle()">
+          <div>
+            <div style="font-size:12.5px;font-weight:700;color:#c084fc">♻️ Remalho</div>
+            <div style="font-size:10.5px;color:var(--muted2)">Lead já abordado anteriormente</div>
+          </div>
+        </label>
       </div>
     </div>
     <div class="fld"><label>Vendedor responsável</label>
@@ -1722,7 +1756,7 @@ function renderLeads(resetPage){
         <td class="lead-chk-td" style="width:36px"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" onchange="updateLeadsMassCount()"></td>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
-        <td>${sBadge(l.status)}</td>
+        <td>${sBadge(l.status,l.tipo_lead)}</td>
         <td>${u?`<span style="font-size:11px">${u.name}</span>`:'<span style="color:var(--orange);font-size:11px">Sem vendedor</span>'}</td>
         <td style="color:var(--muted2);font-size:11px">${l.origem||'—'}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
@@ -1827,7 +1861,7 @@ async function openDetail(id,from){
       <div class="detail-av">${lead.nome[0].toUpperCase()}</div>
       <div style="flex:1">
         <div class="detail-name">${lead.nome}</div>
-        <div class="detail-meta">${lead.origem||'—'} · ${sBadge(lead.status)}</div>
+        <div class="detail-meta">${lead.origem||'—'} · ${sBadge(lead.status,lead.tipo_lead)}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
@@ -2155,6 +2189,12 @@ function openModal(type){
     document.getElementById('ld-status').value='Novo';
     document.getElementById('ld-resp').value='';
     document.getElementById('ld-origem').value='Instagram';
+    // tipo lead — só admin vê
+    const tipoWrap=document.getElementById('ld-tipo-wrap');
+    if(tipoWrap) tipoWrap.style.display=isAdmin()?'block':'none';
+    const tipoNovo=document.getElementById('ld-tipo-novo');
+    if(tipoNovo) tipoNovo.checked=true;
+    updateTipoStyle();
   }
   if(type==='tarefa'){
     ['ta-desc'].forEach(id=>document.getElementById(id).value='');
@@ -2223,15 +2263,26 @@ function openModal(type){
 }
 function closeModal(type){document.getElementById('modal-'+type).classList.remove('on');}
 
+function updateTipoStyle(){
+  const isRemalho=document.getElementById('ld-tipo-remalho')?.checked;
+  const novoLbl=document.getElementById('tipo-novo-lbl');
+  const remalhoLbl=document.getElementById('tipo-remalho-lbl');
+  if(novoLbl) novoLbl.style.borderColor=isRemalho?'var(--border)':'var(--blue)';
+  if(remalhoLbl) remalhoLbl.style.borderColor=isRemalho?'#c084fc':'var(--border)';
+}
+
 /* ═══ SAVE LEAD ═══ */
 async function saveLead(){
   const nome=document.getElementById('ld-nome').value.trim();
   if(!nome){toast('Informe o nome do lead','err');return;}
+  const tipoSel=document.querySelector('input[name="ld-tipo"]:checked');
+  const tipoLead=isAdmin()&&tipoSel?tipoSel.value:undefined;
   const payload={
     nome,telefone:v('ld-tel'),email:v('ld-email'),interesse:v('ld-int'),
     status:v('ld-status'),origem:v('ld-origem'),
     responsavel_id:v('ld-resp')||null,
     observacoes:v('ld-obs')||null,criado_por:CU.id,
+    ...(tipoLead!==undefined?{tipo_lead:tipoLead}:{}),
   };
   if(editLeadId){
     await sb.from('crm_leads').update(payload).eq('id',editLeadId);
@@ -2274,6 +2325,15 @@ function editLead(id){
   sv('ld-nome',l.nome);sv('ld-tel',l.telefone||'');sv('ld-email',l.email||'');
   sv('ld-int',l.interesse||'');sv('ld-status',l.status);
   sv('ld-origem',l.origem||'Outro');sv('ld-resp',l.responsavel_id||'');sv('ld-obs',l.observacoes||'');
+  // tipo_lead — só admin vê
+  const tipoWrap=document.getElementById('ld-tipo-wrap');
+  if(tipoWrap) tipoWrap.style.display=isAdmin()?'block':'none';
+  if(isAdmin()){
+    const tipoVal=l.tipo_lead||'Novo';
+    const tipoEl=document.getElementById(tipoVal==='Remalho'?'ld-tipo-remalho':'ld-tipo-novo');
+    if(tipoEl) tipoEl.checked=true;
+    updateTipoStyle();
+  }
   document.getElementById('modal-lead').classList.add('on');
 }
 
@@ -2541,7 +2601,12 @@ function fmtDateStr(s){if(!s)return'';const[y,m,d]=s.split('-');return`${d}/${m}
 function fmtSize(b){if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
 function brl(n){return'R$ '+Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtCPF(c){if(!c)return'';const d=c.replace(/\D/g,'');return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');}
-function sBadge(s){const m={Novo:'b-novo','Em Negociação':'b-contato',Proposta:'b-proposta',Fechado:'b-fechado',Perdido:'b-perdido'};return`<span class="badge ${m[s]||'b-novo'}">${s}</span>`;}
+function sBadge(s,tipo){
+  const m={Novo:"b-novo","Em Negociação":"b-contato",Proposta:"b-proposta",Fechado:"b-fechado",Perdido:"b-perdido"};
+  let html=`<span class="badge ${m[s]||"b-novo"}">${s}</span>`;
+  if(tipo==="Remalho"&&isAdmin()) html+=` <span class="badge b-remalho">Remalho</span>`;
+  return html;
+}
 function toast(msg,type='ok'){
   const n=document.getElementById('notify');
   n.textContent=msg;n.className=`notify ${type} show`;
@@ -3116,6 +3181,7 @@ function parseCSV(text){
   btn.textContent=`⬆️ Importar ${csvParsedLeads.length} lead${csvParsedLeads.length!==1?'s':''}`;
   btn.style.display='block';
   document.getElementById('csv-resp-wrap').style.display='block';
+  if(isAdmin()) document.getElementById('csv-tipo-wrap').style.display='block';
 
   preview.innerHTML=`
     <div style="font-size:11.5px;color:var(--green);margin-bottom:8px">✅ ${csvParsedLeads.length} lead${csvParsedLeads.length!==1?'s':''} encontrado${csvParsedLeads.length!==1?'s':''}${erros.length?` (${erros.length} linha${erros.length!==1?'s':''} ignorada${erros.length!==1?'s':''})`:''}</div>
@@ -3129,9 +3195,9 @@ async function importCSV(){
   if(!csvParsedLeads.length){toast('Nenhum lead para importar','err');return;}
   const btn=document.getElementById('csv-import-btn');
   const respId=document.getElementById('csv-resp')?.value||null;
+  const tipoLead=isAdmin()?(document.getElementById('csv-tipo')?.value||'Novo'):'Novo';
   btn.textContent='Importando...';btn.disabled=true;
-  // Assign chosen responsável to all leads in batch
-  const leadsComResp=csvParsedLeads.map(l=>({...l,responsavel_id:respId||null}));
+  const leadsComResp=csvParsedLeads.map(l=>({...l,responsavel_id:respId||null,tipo_lead:tipoLead}));
   await importLeads(leadsComResp,'CSV');
   csvParsedLeads=[];
   btn.style.display='none';
@@ -3139,11 +3205,13 @@ async function importCSV(){
   document.getElementById('csv-preview').innerHTML='';
   document.getElementById('csv-file').value='';
   document.getElementById('csv-resp-wrap').style.display='none';
+  document.getElementById('csv-tipo-wrap').style.display='none';
 }
 
 async function importBulk(){
   const text=document.getElementById('bulk-text').value.trim();
   const respId=document.getElementById('bulk-resp')?.value||null;
+  const tipoLead=isAdmin()?(document.getElementById('bulk-tipo')?.value||'Novo'):'Novo';
   if(!text){toast('Cole a lista de contatos','err');return;}
 
   const lines=text.split('\n').filter(l=>l.trim());
@@ -3156,6 +3224,7 @@ async function importBulk(){
       interesse:fixEncoding(parts[2])||null,
       origem:'Lista',
       responsavel_id:respId||null,
+      tipo_lead:tipoLead,
     };
   }).filter(Boolean);
 
@@ -3177,6 +3246,7 @@ async function importLeads(leads,fonte){
       interesse:lead.interesse||null,
       origem:lead.origem||fonte,
       status:'Novo',
+      tipo_lead:lead.tipo_lead||'Novo',
       responsavel_id:respId,
       criado_por:CU.id,
       distribuido_em:respId?new Date().toISOString():null,
