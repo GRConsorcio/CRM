@@ -1252,10 +1252,10 @@ async function initApp(user){
   if(cacheData){
     try{
       const cached=JSON.parse(cacheData);
-      // Invalida cache viciado: se tinha exatamente 5000 leads, a fase 2 provavelmente falhou
-      // e o cache está incompleto. Força reload completo.
-      if(cached.leads&&cached.leads.length===5000){
-        console.log('Cache com exatamente 5000 leads — provável cache incompleto, recarregando...');
+      // Invalida cache incompleto: Supabase retorna no máximo 1000 por query sem .range()
+      // Se o cache tem exatamente 1000, a fase 2 provavelmente não rodou
+      if(cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin'){
+        console.log('Cache com '+cached.leads.length+' leads — possível cache incompleto, recarregando...');
         sessionStorage.removeItem('crm_data_'+CU.id);
         // Cai no fluxo de primeira vez abaixo
       } else {
@@ -1497,9 +1497,9 @@ async function loadAll(){
   // ── LEADS: carregamento progressivo para admin/coord ──
   try{
     if(isAdm||isCoordenador()){
-      // Fase 1: busca os primeiros 5000 e libera a UI imediatamente
-      const{data:first5k}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,4999);
-      allLeads=first5k||[];
+      // Fase 1: busca os primeiros 1000 para liberar a UI imediatamente
+      const{data:first1k}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,999);
+      allLeads=first1k||[];
       // Renderiza dashboard e nav logo com os primeiros dados
       populateSelects();
       renderNav();
@@ -1510,33 +1510,29 @@ async function loadAll(){
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
 
-      // Fase 2: busca o resto em background (não bloqueia a UI)
-      if(first5k&&first5k.length===5000){
+      // Fase 2: busca TODOS os registros restantes em background, página a página de 1000
+      if(first1k&&first1k.length===1000){
         const loadingToast=showLoadingProgress(allLeads.length);
         fetchAllPages(
           sb.from('crm_leads').select('*').order('created_at',{ascending:false}),
           1000,
-          (total)=>{ updateLoadingProgress(loadingToast,total+5000); },
-          5000  // <-- começa do registro 5001, sem pré-aplicar .range()
+          (total)=>{ updateLoadingProgress(loadingToast, total); },
+          1000  // começa do registro 1001
         ).then(rest=>{
           allLeads=[...allLeads,...rest];
-          hideLoadingProgress(loadingToast,allLeads.length);
+          hideLoadingProgress(loadingToast, allLeads.length);
           saveCache();
           populateSelects();
-          // Re-render se estiver na página de leads
           if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads(true);
           if(document.getElementById('page-dashboard')?.classList.contains('on')) renderDashboard().catch(()=>{});
-        }).catch(e=>{ console.warn('Background load error:',e.message); hideLoadingProgress(loadingToast,allLeads.length); });
-      } else {
-        populateSelects();
-        renderNav();
-        goToDashboard();
-        renderDashboard().catch(()=>{});
-        setupRealtime();
-        setTimeout(checkTaskAlerts,2000);
-        if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-        _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+          if(document.getElementById('page-mesclar')?.classList.contains('on')) renderMesclar();
+          console.log('Carga completa: '+allLeads.length+' leads');
+        }).catch(e=>{
+          console.warn('Background load error:',e.message);
+          hideLoadingProgress(loadingToast, allLeads.length);
+        });
       }
+      // Se vieram menos de 1000 na fase 1, já são todos — não precisa fase 2
       loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
       return; // initApp não precisa re-renderizar — já fizemos aqui
     } else if(isCoordRole){
@@ -3105,9 +3101,9 @@ function saveCache(){
 
 async function refreshInBackground(){
   try{
-    // Se admin com poucos leads carregados, provavelmente cache incompleto — faz carga completa
-    if(isAdminOrCoord()&&allLeads.length<5001){
-      console.log('refreshInBackground: poucos leads ('+allLeads.length+'), fazendo carga completa...');
+    // Se admin com 1000 ou menos leads, é o limite padrão do Supabase — carga incompleta
+    if(isAdminOrCoord()&&allLeads.length<=1000){
+      console.log('refreshInBackground: leads incompletos ('+allLeads.length+'), fazendo carga completa...');
       await loadAll();
       saveCache();
       reRenderCurrent();
@@ -3116,7 +3112,6 @@ async function refreshInBackground(){
       return;
     }
     // Para admin com base grande, só atualiza dados secundários em background
-    // Os leads são atualizados via realtime
     if(isAdminOrCoord()&&allLeads.length>1000){
       const [lu,lh,lt,lv]=await Promise.all([
         sb.from('crm_users').select('*').eq('ativo',true),
