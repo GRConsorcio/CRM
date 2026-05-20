@@ -359,6 +359,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <select id="l-f-resp" onchange="renderLeads(true)">
         <option value="">Todos os vendedores</option>
       </select>
+      <select id="l-f-ddd" onchange="renderLeads(true)" style="display:none">
+        <option value="">Todos os DDDs</option>
+      </select>
       <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="recolherTudoParaMim()">↩️ Recolher tudo para mim</button>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
       <span id="new-lead-btn-wrap"></span>
@@ -1500,6 +1503,8 @@ function populateSelects(){
   const respFilter='<option value="">Todos os vendedores</option>'+vendOpts;
   const lf=document.getElementById('l-f-resp');
   if(lf) lf.innerHTML=respFilter;
+  // DDD filter — admin only
+  if(isAdmin()) populateDDDFilter();
 }
 function sel(id,html){const e=document.getElementById(id);if(e)e.innerHTML=html;}
 
@@ -1718,6 +1723,23 @@ const LEADS_PAGE_SIZE = 1000;
 let leadsCurrentPage = 1;
 let leadsFilteredCache = [];
 
+function extractDDD(tel){
+  if(!tel) return '';
+  const digits=tel.replace(/\D/g,'');
+  if(digits.length>=10) return digits.slice(0,2);
+  return '';
+}
+
+function populateDDDFilter(){
+  const sel=document.getElementById('l-f-ddd');
+  if(!sel||!isAdmin()) return;
+  sel.style.display='';
+  const ddds=[...new Set(allLeads.map(l=>extractDDD(l.telefone)).filter(Boolean))].sort((a,b)=>a-b);
+  const cur=sel.value;
+  sel.innerHTML='<option value="">Todos os DDDs</option>'+ddds.map(d=>`<option value="${d}">${d} (${allLeads.filter(l=>extractDDD(l.telefone)===d).length})</option>`).join('');
+  if(cur) sel.value=cur;
+}
+
 function renderLeads(resetPage){
   if(resetPage) leadsCurrentPage=1;
   // Inject New Lead button for admin only
@@ -1725,13 +1747,17 @@ function renderLeads(resetPage){
   if(nlw) nlw.innerHTML=isAdmin()?'<button class="btn-primary" onclick="openModal(\'lead\')">+ Novo Lead</button>':'';
   const rtb=document.getElementById('leads-recolher-tudo-btn');
   if(rtb) rtb.style.display=isAdmin()?'':'none';
+  // Populate DDD filter (admin only)
+  populateDDDFilter();
   const q=(document.getElementById('l-srch')?.value||'').toLowerCase();
   const fs=document.getElementById('l-f-status')?.value;
   const fr=document.getElementById('l-f-resp')?.value;
+  const fd=isAdmin()?(document.getElementById('l-f-ddd')?.value||''):'';
   const f=allLeads.filter(l=>{
     if(q&&!l.nome.toLowerCase().includes(q)&&!(l.interesse||'').toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
     if(fs&&l.status!==fs)return false;
     if(fr&&l.responsavel_id!==fr)return false;
+    if(fd&&extractDDD(l.telefone)!==fd)return false;
     return true;
   });
   leadsFilteredCache=f;
@@ -1740,7 +1766,9 @@ function renderLeads(resetPage){
   const start=(leadsCurrentPage-1)*LEADS_PAGE_SIZE;
   const pageItems=f.slice(start,start+LEADS_PAGE_SIZE);
 
-  document.getElementById('l-title').textContent=`Leads — ${f.length.toLocaleString('pt-BR')} registro${f.length!==1?'s':''}`;
+  const fd=isAdmin()?(document.getElementById('l-f-ddd')?.value||''):'';
+  const dddLabel=fd?` · DDD ${fd}`:'';
+  document.getElementById('l-title').textContent=`Leads — ${f.length.toLocaleString('pt-BR')} registro${f.length!==1?'s':''}${dddLabel}`;
   // Restore checkboxes after tbody re-render
   if(_leadsMassMode){
     setTimeout(()=>{
