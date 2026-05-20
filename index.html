@@ -1134,20 +1134,23 @@ async function initApp(user){
 
   // ── PRIMEIRA VEZ: carrega normalmente
   try{
-    const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),10000);
+    const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
     await ensureProfile();
     await loadAll();
     clearTimeout(t);
     saveCache();
-    populateSelects();
-    renderNav();
-    goToDashboard();
-    renderDashboard().catch(()=>{});
-    setupRealtime();
-    // Start task alert system
-    setTimeout(checkTaskAlerts,2000);
-    if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-    _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+    // loadAll já inicializa UI para admin (retorno antecipado)
+    // Para outros perfis, inicializa aqui
+    if(!document.getElementById('page-dashboard')?.classList.contains('on')){
+      populateSelects();
+      renderNav();
+      goToDashboard();
+      renderDashboard().catch(()=>{});
+      setupRealtime();
+      setTimeout(checkTaskAlerts,2000);
+      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+    }
   } catch(e){
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
@@ -1286,16 +1289,19 @@ async function ensureProfile(){
   document.getElementById('u-av').textContent=initials;
 }
 
-/* ═══ PAGINAÇÃO: busca TODOS os registros superando o limite de 1000 do Supabase ═══ */
-async function fetchAllPages(queryBuilder, pageSize=1000){
+/* ═══ PAGINAÇÃO: busca todos os registros superando o limite de 1000 do Supabase ═══ */
+async function fetchAllPages(queryBuilder, pageSize=1000, onProgress){
   let allData=[];
   let from=0;
+  let batch=0;
   while(true){
     const{data,error}=await queryBuilder.range(from,from+pageSize-1);
     if(error){console.warn('fetchAllPages error:',error.message);break;}
     if(!data||data.length===0) break;
     allData=allData.concat(data);
-    if(data.length<pageSize) break; // última página
+    batch++;
+    if(onProgress) onProgress(allData.length, batch);
+    if(data.length<pageSize) break;
     from+=pageSize;
   }
   return allData;
@@ -1304,19 +1310,19 @@ async function fetchAllPages(queryBuilder, pageSize=1000){
 async function loadAll(){
   const isAdm=isAdminOrCoord();
   const safe=async(q)=>{try{
-    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),15000));
+    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),20000));
     const r=await Promise.race([q,tOut]);
     return r;
   }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
-  const isCoordRole=CUProfile?.role==='supervisor'; // supervisor = restricted coord
+  const isCoordRole=CUProfile?.role==='supervisor';
 
-  // Load equipe membros first so coordinator leadsQ can use it
+  // Load equipe membros first
   if(!allMembroEquipes.length){
     const{data:mb}=await sb.from('crm_equipe_membros').select('*');
     allMembroEquipes=mb||[];
   }
 
-  // Load non-leads data in parallel (esses costumam ser menores)
+  // Load non-leads data in parallel
   const [lu,lh,lt,lv,ld]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
     safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false}).limit(2000)),
@@ -1331,26 +1337,60 @@ async function loadAll(){
   allVendas=lv.data||[];
   allDocs=ld.data||[];
 
-  // Warn if tables missing
   if(lu.error?.message?.includes('does not exist')){
     toast('⚠️ Tabelas não encontradas. Execute o SQL de setup no Supabase.','err');
     throw new Error('Tabelas não criadas. Execute o crm-setup-completo.sql no Supabase.');
   }
 
-  // ── LEADS: busca paginada para superar o limite de 1000 do Supabase ──
+  // ── LEADS: carregamento progressivo para admin/coord ──
   try{
     if(isAdm||isCoordenador()){
-      // Admin e Coordenador veem TODOS os leads — paginação completa
-      toast('Carregando base completa de leads...','ok');
-      allLeads=await fetchAllPages(
-        sb.from('crm_leads').select('*').order('created_at',{ascending:false})
-      );
+      // Fase 1: busca os primeiros 5000 e libera a UI imediatamente
+      const{data:first5k}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,4999);
+      allLeads=first5k||[];
+      // Renderiza dashboard e nav logo com os primeiros dados
+      populateSelects();
+      renderNav();
+      goToDashboard();
+      renderDashboard().catch(()=>{});
+      setupRealtime();
+      setTimeout(checkTaskAlerts,2000);
+      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+
+      // Fase 2: busca o resto em background (não bloqueia a UI)
+      if(first5k&&first5k.length===5000){
+        const loadingToast=showLoadingProgress(allLeads.length);
+        fetchAllPages(
+          sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(5000,9999999),
+          1000,
+          (total)=>{ updateLoadingProgress(loadingToast,total+5000); }
+        ).then(rest=>{
+          allLeads=[...allLeads,...rest];
+          hideLoadingProgress(loadingToast,allLeads.length);
+          saveCache();
+          populateSelects();
+          // Re-render se estiver na página de leads
+          if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads(true);
+          if(document.getElementById('page-dashboard')?.classList.contains('on')) renderDashboard().catch(()=>{});
+        }).catch(e=>{ console.warn('Background load error:',e.message); hideLoadingProgress(loadingToast,allLeads.length); });
+      } else {
+        populateSelects();
+        renderNav();
+        goToDashboard();
+        renderDashboard().catch(()=>{});
+        setupRealtime();
+        setTimeout(checkTaskAlerts,2000);
+        if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+        _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      }
+      loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
+      return; // initApp não precisa re-renderizar — já fizemos aqui
     } else if(isCoordRole){
       const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
       if(coordEquipes.length>0){
         allLeads=await fetchAllPages(
-          sb.from('crm_leads').select('*')
-            .or('equipe_id.in.('+coordEquipes.join(',')+')')
+          sb.from('crm_leads').select('*').or('equipe_id.in.('+coordEquipes.join(',')+')')
             .order('created_at',{ascending:false})
         );
       } else {
@@ -1358,7 +1398,6 @@ async function loadAll(){
         allLeads=data||[];
       }
     } else {
-      // Vendedor: busca apenas seus próprios leads (volume menor, sem necessidade de paginação em geral)
       const{data}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
       allLeads=data||[];
     }
@@ -1368,9 +1407,40 @@ async function loadAll(){
     allLeads=[];
   }
 
-  // Load equipes (non-blocking)
   loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
   populateSelects();
+}
+
+/* ── Indicador de carregamento em background ── */
+let _loadingToastEl=null;
+function showLoadingProgress(current){
+  let el=document.getElementById('bg-load-toast');
+  if(!el){
+    el=document.createElement('div');
+    el.id='bg-load-toast';
+    el.style.cssText='position:fixed;bottom:64px;right:24px;background:var(--surface);border:1px solid var(--gold-dim);border-radius:10px;padding:10px 16px;font-size:12px;color:var(--text);z-index:9998;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
+    el.innerHTML=`<div style="width:14px;height:14px;border:2px solid var(--gold-dim);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
+      <span id="bg-load-txt">Carregando leads em background...</span>`;
+    document.body.appendChild(el);
+    // Add spin animation if not there
+    if(!document.getElementById('spin-style')){
+      const s=document.createElement('style');
+      s.id='spin-style';
+      s.textContent='@keyframes spin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(s);
+    }
+  }
+  _loadingToastEl=el;
+  return el;
+}
+function updateLoadingProgress(el,total){
+  const txt=document.getElementById('bg-load-txt');
+  if(txt) txt.textContent=`Carregando: ${total.toLocaleString('pt-BR')} leads...`;
+}
+function hideLoadingProgress(el,total){
+  if(!el) return;
+  el.innerHTML=`<span style="color:var(--green)">✅</span> <span>${total.toLocaleString('pt-BR')} leads carregados</span>`;
+  setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 3000);
 }
 
 function isAdminOrCoord(){return CUProfile?.role==='admin'||CUProfile?.role==='coordenador'||CUProfile?.role==='supervisor';}
@@ -2752,11 +2822,29 @@ function saveCache(){
 
 async function refreshInBackground(){
   try{
+    // Para admin com base grande, só atualiza dados secundários em background
+    // Os leads são atualizados via realtime
+    if(isAdminOrCoord()&&allLeads.length>1000){
+      const [lu,lh,lt,lv]=await Promise.all([
+        sb.from('crm_users').select('*').eq('ativo',true),
+        sb.from('crm_historico').select('*').order('created_at',{ascending:false}).limit(2000),
+        sb.from('crm_tarefas').select('*').order('prazo',{ascending:true}),
+        sb.from('crm_vendas').select('*').order('created_at',{ascending:false}),
+      ]);
+      if(lu.data) allUsers=lu.data;
+      if(lh.data) allHist=lh.data;
+      if(lt.data) allTasks=lt.data;
+      if(lv.data) allVendas=lv.data;
+      saveCache();
+      reRenderCurrent();
+      populateSelects();
+      if(isAdmin()) await runAutoReturnRules();
+      return;
+    }
     await loadAll();
     saveCache();
     reRenderCurrent();
     populateSelects();
-    // Auto-return rules (admin only to avoid race conditions)
     if(isAdmin()) await runAutoReturnRules();
   } catch(e){ console.warn('Background refresh error:',e.message); }
 }
