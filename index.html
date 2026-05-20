@@ -1252,27 +1252,35 @@ async function initApp(user){
   if(cacheData){
     try{
       const cached=JSON.parse(cacheData);
-      CUProfile=cached.profile;
-      allLeads=cached.leads||[];
-      allUsers=cached.users||[];
-      allHist=cached.hist||[];
-      allTasks=cached.tasks||[];
-      allVendas=cached.vendas||[];
-      allDocs=cached.docs||[];
-      allEquipes=cached.equipes||[];
-      allMembroEquipes=cached.membros||[];
-      populateSelects();
-      renderNav();
-      goToDashboard();
-      renderDashboard().catch(()=>{});
-      setupRealtime();
-      // Start task alert system
-      setTimeout(checkTaskAlerts,2000);
-      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-      // Atualiza dados em background sem bloquear a UI
-      refreshInBackground();
-      return;
+      // Invalida cache viciado: se tinha exatamente 5000 leads, a fase 2 provavelmente falhou
+      // e o cache está incompleto. Força reload completo.
+      if(cached.leads&&cached.leads.length===5000){
+        console.log('Cache com exatamente 5000 leads — provável cache incompleto, recarregando...');
+        sessionStorage.removeItem('crm_data_'+CU.id);
+        // Cai no fluxo de primeira vez abaixo
+      } else {
+        CUProfile=cached.profile;
+        allLeads=cached.leads||[];
+        allUsers=cached.users||[];
+        allHist=cached.hist||[];
+        allTasks=cached.tasks||[];
+        allVendas=cached.vendas||[];
+        allDocs=cached.docs||[];
+        allEquipes=cached.equipes||[];
+        allMembroEquipes=cached.membros||[];
+        populateSelects();
+        renderNav();
+        goToDashboard();
+        renderDashboard().catch(()=>{});
+        setupRealtime();
+        // Start task alert system
+        setTimeout(checkTaskAlerts,2000);
+        if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+        _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+        // Atualiza dados em background sem bloquear a UI
+        refreshInBackground();
+        return;
+      }
     } catch(e){ sessionStorage.removeItem('crm_data_'+CU.id); }
   }
 
@@ -1434,9 +1442,9 @@ async function ensureProfile(){
 }
 
 /* ═══ PAGINAÇÃO: busca todos os registros superando o limite de 1000 do Supabase ═══ */
-async function fetchAllPages(queryBuilder, pageSize=1000, onProgress){
+async function fetchAllPages(queryBuilder, pageSize=1000, onProgress, startOffset=0){
   let allData=[];
-  let from=0;
+  let from=startOffset;
   let batch=0;
   while(true){
     const{data,error}=await queryBuilder.range(from,from+pageSize-1);
@@ -1506,9 +1514,10 @@ async function loadAll(){
       if(first5k&&first5k.length===5000){
         const loadingToast=showLoadingProgress(allLeads.length);
         fetchAllPages(
-          sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(5000,9999999),
+          sb.from('crm_leads').select('*').order('created_at',{ascending:false}),
           1000,
-          (total)=>{ updateLoadingProgress(loadingToast,total+5000); }
+          (total)=>{ updateLoadingProgress(loadingToast,total+5000); },
+          5000  // <-- começa do registro 5001, sem pré-aplicar .range()
         ).then(rest=>{
           allLeads=[...allLeads,...rest];
           hideLoadingProgress(loadingToast,allLeads.length);
@@ -3096,6 +3105,16 @@ function saveCache(){
 
 async function refreshInBackground(){
   try{
+    // Se admin com poucos leads carregados, provavelmente cache incompleto — faz carga completa
+    if(isAdminOrCoord()&&allLeads.length<5001){
+      console.log('refreshInBackground: poucos leads ('+allLeads.length+'), fazendo carga completa...');
+      await loadAll();
+      saveCache();
+      reRenderCurrent();
+      populateSelects();
+      if(isAdmin()) await runAutoReturnRules();
+      return;
+    }
     // Para admin com base grande, só atualiza dados secundários em background
     // Os leads são atualizados via realtime
     if(isAdminOrCoord()&&allLeads.length>1000){
