@@ -441,6 +441,35 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div class="panel-head"><div class="panel-title">👥 Vendedores Ativos</div></div>
       <div class="panel-body" id="dist-vendedores"></div>
     </div>
+    <!-- Equipes panel — admin/coord only -->
+    <div class="panel" id="dist-equipes-panel" style="margin-bottom:16px;display:none">
+      <div class="panel-head">
+        <div class="panel-title">🏅 Distribuir para Equipe</div>
+        <div style="font-size:11px;color:var(--muted2)">Envia leads sem vendedor direto para uma equipe</div>
+      </div>
+      <div class="panel-body">
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div class="fld" style="flex:1;min-width:160px;margin:0">
+            <label>Equipe</label>
+            <select class="inp" id="dist-equipe-sel" style="margin:0"></select>
+          </div>
+          <div class="fld" style="width:120px;margin:0">
+            <label>Quantidade</label>
+            <input class="inp" id="dist-equipe-qty" type="number" placeholder="Todos" min="1" style="margin:0" oninput="updateDistEquipePreview()">
+          </div>
+          <div class="fld" style="width:160px;margin:0">
+            <label>Tipo do lead</label>
+            <select class="inp" id="dist-equipe-tipo" style="margin:0" onchange="updateDistEquipePreview()">
+              <option value="">Todos</option>
+              <option value="Novo">🆕 Novo</option>
+              <option value="Remalho">♻️ Remalho</option>
+            </select>
+          </div>
+          <button class="btn-primary" onclick="distParaEquipe()" style="flex-shrink:0;align-self:flex-end">🏅 Enviar para Equipe</button>
+        </div>
+        <div id="dist-equipe-preview" style="font-size:11.5px;color:var(--muted2);margin-top:10px"></div>
+      </div>
+    </div>
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title">📋 Leads sem vendedor</div>
@@ -1766,7 +1795,6 @@ function renderLeads(resetPage){
   const start=(leadsCurrentPage-1)*LEADS_PAGE_SIZE;
   const pageItems=f.slice(start,start+LEADS_PAGE_SIZE);
 
-  const fd=isAdmin()?(document.getElementById('l-f-ddd')?.value||''):'';
   const dddLabel=fd?` · DDD ${fd}`:'';
   document.getElementById('l-title').textContent=`Leads — ${f.length.toLocaleString('pt-BR')} registro${f.length!==1?'s':''}${dddLabel}`;
   // Restore checkboxes after tbody re-render
@@ -2108,6 +2136,26 @@ async function moveStage(id,status){
 
 /* ═══ DISTRIBUIÇÃO ═══ */
 function renderDistribuicao(){
+  // Painel de equipes — admin e coord apenas
+  const eqPanel=document.getElementById('dist-equipes-panel');
+  if(eqPanel){
+    const canDistEq=isAdmin()||isCoordenador();
+    eqPanel.style.display=canDistEq?'':'none';
+    if(canDistEq){
+      const eqSel=document.getElementById('dist-equipe-sel');
+      if(eqSel){
+        const eqsDisponiveis=isAdmin()?allEquipes:allEquipes.filter(e=>{
+          const myEqs=allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id);
+          return myEqs.includes(e.id);
+        });
+        eqSel.innerHTML=eqsDisponiveis.length===0
+          ?'<option value="">Nenhuma equipe cadastrada</option>'
+          :'<option value="">Selecione a equipe...</option>'+eqsDisponiveis.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+      }
+      // Preview count
+      updateDistEquipePreview();
+    }
+  }
   const vends=allUsers.filter(u=>u.role==='vendedor');
   document.getElementById('dist-vendedores').innerHTML=vends.length===0
     ?'<div class="empty"><div class="ei">👥</div>Nenhum vendedor cadastrado</div>'
@@ -2169,6 +2217,39 @@ async function distAutoAll(){
   }
   await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
   toast(`${semVend.length} lead(s) distribuídos!`,'ok');
+  renderDistribuicao();
+}
+
+/* ═══ DISTRIBUIÇÃO POR EQUIPE ═══ */
+function updateDistEquipePreview(){
+  const preview=document.getElementById('dist-equipe-preview');
+  if(!preview) return;
+  const tipo=document.getElementById('dist-equipe-tipo')?.value||'';
+  const qty=parseInt(document.getElementById('dist-equipe-qty')?.value)||null;
+  let semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
+  if(tipo) semVend=semVend.filter(l=>l.tipo_lead===tipo);
+  const total=semVend.length;
+  const a=qty?Math.min(qty,total):total;
+  preview.textContent=`${total.toLocaleString('pt-BR')} lead${total!==1?'s':''} disponíveis sem vendedor${tipo?' ('+tipo+')':''} — será${a!==1?'ão':''} enviado${a!==1?'s':''}: ${a.toLocaleString('pt-BR')}`;
+}
+
+async function distParaEquipe(){
+  if(!isAdmin()&&!isCoordenador()){toast('Sem permissão','err');return;}
+  const equipeId=document.getElementById('dist-equipe-sel')?.value;
+  if(!equipeId){toast('Selecione uma equipe','err');return;}
+  const tipo=document.getElementById('dist-equipe-tipo')?.value||'';
+  const qty=parseInt(document.getElementById('dist-equipe-qty')?.value)||null;
+  const equipe=allEquipes.find(e=>e.id===equipeId);
+  let semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
+  if(tipo) semVend=semVend.filter(l=>l.tipo_lead===tipo);
+  if(qty) semVend=semVend.slice(0,qty);
+  if(!semVend.length){toast('Nenhum lead disponível com esses critérios','err');return;}
+  if(!confirm(`Enviar ${semVend.length} lead(s) para a equipe "${equipe?.nome}"?`)) return;
+  const batch=semVend.map(l=>sb.from('crm_leads').update({equipe_id:equipeId,updated_at:new Date().toISOString()}).eq('id',l.id));
+  await Promise.all(batch);
+  semVend.forEach(l=>{const i=allLeads.findIndex(x=>x.id===l.id);if(i>-1)allLeads[i].equipe_id=equipeId;});
+  saveCache();
+  toast(`${semVend.length} lead(s) enviados para "${equipe?.nome}"!`,'ok');
   renderDistribuicao();
 }
 
