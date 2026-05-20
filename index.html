@@ -1252,10 +1252,11 @@ async function initApp(user){
   if(cacheData){
     try{
       const cached=JSON.parse(cacheData);
-      // Invalida cache incompleto: Supabase retorna no máximo 1000 por query sem .range()
-      // Se o cache tem exatamente 1000, a fase 2 provavelmente não rodou
+      // Invalida cache incompleto só para admin:
+      // Supabase retorna no máximo 1000 por query sem .range()
+      // Se admin tem ≤1000 leads em cache, a carga paralela provavelmente falhou
       if(cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin'){
-        console.log('Cache com '+cached.leads.length+' leads — possível cache incompleto, recarregando...');
+        console.log('Cache admin com '+cached.leads.length+' leads — incompleto, recarregando...');
         sessionStorage.removeItem('crm_data_'+CU.id);
         // Cai no fluxo de primeira vez abaixo
       } else {
@@ -1460,9 +1461,11 @@ async function fetchAllPages(queryBuilder, pageSize=1000, onProgress, startOffse
 }
 
 async function loadAll(){
-  const isAdm=isAdminOrCoord();
+  const isAdm=isAdmin();
+  const isCoord=isCoordenador();
+  const isSup=isSupervisor();
   const safe=async(q)=>{try{
-    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),20000));
+    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),25000));
     const r=await Promise.race([q,tOut]);
     return r;
   }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
@@ -1494,13 +1497,16 @@ async function loadAll(){
     throw new Error('Tabelas não criadas. Execute o crm-setup-completo.sql no Supabase.');
   }
 
-  // ── LEADS: carregamento progressivo para admin/coord ──
+  // ── LEADS ──
   try{
-    if(isAdm||isCoordenador()){
-      // Fase 1: busca os primeiros 1000 para liberar a UI imediatamente
+
+    // ════════════════════════════════════════════
+    // ADMIN — busca paralela de todos os leads
+    // ════════════════════════════════════════════
+    if(isAdm){
+      // Fase 1: primeiro lote de 1000 para liberar a UI imediatamente
       const{data:first1k}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,999);
       allLeads=first1k||[];
-      // Renderiza dashboard e nav logo com os primeiros dados
       populateSelects();
       renderNav();
       goToDashboard();
@@ -1510,32 +1516,100 @@ async function loadAll(){
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
 
-      // Fase 2: busca TODOS os registros restantes em background, página a página de 1000
       if(first1k&&first1k.length===1000){
-        const loadingToast=showLoadingProgress(allLeads.length);
-        fetchAllPages(
-          sb.from('crm_leads').select('*').order('created_at',{ascending:false}),
-          1000,
-          (total)=>{ updateLoadingProgress(loadingToast, total); },
-          1000  // começa do registro 1001
-        ).then(rest=>{
-          allLeads=[...allLeads,...rest];
-          hideLoadingProgress(loadingToast, allLeads.length);
-          saveCache();
-          populateSelects();
-          if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads(true);
-          if(document.getElementById('page-dashboard')?.classList.contains('on')) renderDashboard().catch(()=>{});
-          if(document.getElementById('page-mesclar')?.classList.contains('on')) renderMesclar();
-          console.log('Carga completa: '+allLeads.length+' leads');
-        }).catch(e=>{
-          console.warn('Background load error:',e.message);
-          hideLoadingProgress(loadingToast, allLeads.length);
-        });
+        // Fase 2: descobre total e dispara requisições paralelas
+        const loadingToast=showLoadingProgress(1000);
+        (async()=>{
+          try{
+            // Conta total de registros
+            const{count}=await sb.from('crm_leads').select('*',{count:'exact',head:true});
+            const total=count||0;
+            if(total<=1000){
+              hideLoadingProgress(loadingToast,allLeads.length);
+              return;
+            }
+            // Monta batches paralelos de 5000 cada (máximo Supabase via range)
+            const BATCH=5000;
+            const batches=[];
+            for(let from=1000;from<total;from+=BATCH){
+              batches.push({from,to:Math.min(from+BATCH-1,total-1)});
+            }
+            updateLoadingProgress(loadingToast,1000);
+            // Dispara em grupos de 8 simultâneos para não sobrecarregar
+            const CONCURRENT=8;
+            let fetched=1000;
+            for(let i=0;i<batches.length;i+=CONCURRENT){
+              const grupo=batches.slice(i,i+CONCURRENT);
+              const results=await Promise.all(
+                grupo.map(b=>sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(b.from,b.to))
+              );
+              results.forEach(r=>{
+                if(r.data&&r.data.length>0){
+                  allLeads=[...allLeads,...r.data];
+                  fetched+=r.data.length;
+                }
+              });
+              updateLoadingProgress(loadingToast,fetched);
+            }
+            hideLoadingProgress(loadingToast,allLeads.length);
+            saveCache();
+            populateSelects();
+            if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads(true);
+            if(document.getElementById('page-dashboard')?.classList.contains('on')) renderDashboard().catch(()=>{});
+            if(document.getElementById('page-mesclar')?.classList.contains('on')) renderMesclar();
+            console.log('Carga paralela completa: '+allLeads.length+' leads');
+          } catch(e){
+            console.warn('Parallel load error:',e.message);
+            hideLoadingProgress(loadingToast,allLeads.length);
+          }
+        })();
       }
-      // Se vieram menos de 1000 na fase 1, já são todos — não precisa fase 2
       loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
-      return; // initApp não precisa re-renderizar — já fizemos aqui
-    } else if(isCoordRole){
+      return;
+    }
+
+    // ════════════════════════════════════════════
+    // COORDENADOR — 20% do pool sem vendedor
+    // embaralhado deterministicamente pelo user ID
+    // ════════════════════════════════════════════
+    if(isCoord){
+      // Busca apenas leads sem vendedor do Supabase
+      const loadingToast=showLoadingProgress(0);
+      updateLoadingProgress(loadingToast,0);
+      const semVendPool=await fetchAllPages(
+        sb.from('crm_leads').select('*').is('responsavel_id',null).order('created_at',{ascending:false}),
+        1000
+      );
+      // Embaralhamento determinístico pelo ID do coordenador
+      // (mesmo seed = mesmos leads sempre, até redistribuição)
+      const seed=CU.id.split('').reduce((acc,c)=>acc+c.charCodeAt(0),0);
+      function seededRandom(s){ let x=Math.sin(s)*10000; return x-Math.floor(x); }
+      const shuffled=[...semVendPool].sort((a,b)=>{
+        const ha=seededRandom(seed+a.id.charCodeAt(0)+a.id.charCodeAt(1));
+        const hb=seededRandom(seed+b.id.charCodeAt(0)+b.id.charCodeAt(1));
+        return ha-hb;
+      });
+      // Pega 20% do pool
+      const vinte_pct=Math.ceil(shuffled.length*0.20);
+      allLeads=shuffled.slice(0,vinte_pct);
+      hideLoadingProgress(loadingToast,allLeads.length);
+      toast(`Base carregada: ${allLeads.length.toLocaleString('pt-BR')} leads disponíveis (20% do pool)`,'ok');
+      populateSelects();
+      renderNav();
+      goToDashboard();
+      renderDashboard().catch(()=>{});
+      setupRealtime();
+      setTimeout(checkTaskAlerts,2000);
+      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
+      return;
+    }
+
+    // ════════════════════════════════════════════
+    // SUPERVISOR — leads da própria equipe
+    // ════════════════════════════════════════════
+    if(isSup||isCoordRole){
       const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
       if(coordEquipes.length>0){
         allLeads=await fetchAllPages(
@@ -1547,6 +1621,7 @@ async function loadAll(){
         allLeads=data||[];
       }
     } else {
+      // VENDEDOR — só os próprios leads
       const{data}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
       allLeads=data||[];
     }
@@ -3101,9 +3176,9 @@ function saveCache(){
 
 async function refreshInBackground(){
   try{
-    // Se admin com 1000 ou menos leads, é o limite padrão do Supabase — carga incompleta
-    if(isAdminOrCoord()&&allLeads.length<=1000){
-      console.log('refreshInBackground: leads incompletos ('+allLeads.length+'), fazendo carga completa...');
+    // Admin com poucos leads = carga incompleta, refaz
+    if(isAdmin()&&allLeads.length<=1000){
+      console.log('refreshInBackground: admin com leads incompletos, recarregando...');
       await loadAll();
       saveCache();
       reRenderCurrent();
@@ -3111,8 +3186,8 @@ async function refreshInBackground(){
       if(isAdmin()) await runAutoReturnRules();
       return;
     }
-    // Para admin com base grande, só atualiza dados secundários em background
-    if(isAdminOrCoord()&&allLeads.length>1000){
+    // Admin com base grande: atualiza só dados secundários (leads chegam via realtime)
+    if(isAdmin()&&allLeads.length>1000){
       const [lu,lh,lt,lv]=await Promise.all([
         sb.from('crm_users').select('*').eq('ativo',true),
         sb.from('crm_historico').select('*').order('created_at',{ascending:false}).limit(2000),
@@ -3129,11 +3204,11 @@ async function refreshInBackground(){
       if(isAdmin()) await runAutoReturnRules();
       return;
     }
+    // Coordenador / supervisor / vendedor: reload normal
     await loadAll();
     saveCache();
     reRenderCurrent();
     populateSelects();
-    if(isAdmin()) await runAutoReturnRules();
   } catch(e){ console.warn('Background refresh error:',e.message); }
 }
 
