@@ -815,8 +815,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
   </div>
 
   <!-- EQUIPE DETALHE -->
-  <div class="page" id="page-equipe-detail" style="overflow-x:hidden">
-    <button class="back-btn" onclick="nav('equipes',null);renderNav()">← Voltar às Equipes</button>
+  <div class="page" id="page-equipe-detail" style="overflow-x:hidden;padding-top:18px">
     <div id="equipe-detail-wrap"></div>
   </div>
 
@@ -1821,6 +1820,21 @@ function nav(page,el){
   document.getElementById('page-'+page).classList.add('on');
   if(el) el.classList.add('on');
   document.getElementById('topbar-title').textContent=PAGE_TITLES[page]||page;
+  // Back-btn dinâmico no topbar para páginas de detalhe
+  var _eb=document.getElementById('topbar-back-btn');
+  if(_eb)_eb.remove();
+  var _bm={'equipe-detail':function(){nav('equipes',null);renderNav();},'lead-detail':null,'funil-vendedor':function(){nav('funis-equipe',null);}};
+  if(page in _bm && _bm[page]){
+    var _b=document.createElement('button');
+    _b.id='topbar-back-btn';
+    _b.style.cssText='display:inline-flex;align-items:center;gap:5px;background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:6px;padding:4px 11px;font-size:11px;cursor:pointer;font-family:inherit;margin-right:10px;transition:all .13s;flex-shrink:0';
+    _b.innerHTML='&#8592; Voltar';
+    _b.onmouseover=function(){this.style.borderColor='var(--gold-dim)';this.style.color='var(--gold2)';};
+    _b.onmouseout=function(){this.style.borderColor='var(--border)';this.style.color='var(--muted2)';};
+    _b.onclick=_bm[page];
+    var _ttl=document.getElementById('topbar-title');
+    _ttl.parentNode.insertBefore(_b,_ttl);
+  }
   if(page==='dashboard') renderDashboard().catch(e=>console.warn('renderDashboard error:',e));
   if(page==='leads') { leadsCurrentPage=1; renderLeads(); }
   if(page==='meus-leads') renderMeusLeads();
@@ -4841,10 +4855,11 @@ async function openEquipeDetail(id){
             ?'<tr><td colspan="4"><div class="empty"><div class="ei">📋</div>Nenhum lead</div></td></tr>'
             :leads.map(l=>{
               const u=allUsers.find(u=>u.user_id===l.responsavel_id);
+              const isExterno=u&&!membroIds.has(u.user_id);
               return`<tr>
                 <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','equipe-detail')">${l.nome}</td>
                 <td>${l.interesse||'—'}</td><td>${sBadge(l.status)}</td>
-                <td style="font-size:11.5px">${u?.name||'—'}</td>
+                <td style="font-size:11.5px">${u?.name||'—'}${isExterno?'<span style="font-size:9px;margin-left:5px;background:rgba(251,146,60,.15);color:var(--orange);border:1px solid rgba(251,146,60,.3);border-radius:3px;padding:1px 5px">externo</span>':''}</td>
               </tr>`;
             }).join('')}
         </tbody></table>
