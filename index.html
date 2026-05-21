@@ -4227,7 +4227,10 @@ function openLeadsMass(){
     qrow.innerHTML=`<span style="font-size:11.5px;color:var(--muted2)">Selecionar por qtd:</span><input id="mass-qty-inp" type="number" min="1" class="inp" style="width:74px;padding:5px 8px;font-size:12px" placeholder="N°"><button class="btn-sm" onclick="selectLeadsByCount(parseInt(document.getElementById('mass-qty-inp').value)||0)" style="border-color:var(--gold-dim);color:var(--gold2)">✔ Aplicar</button>`;
     bar.appendChild(qrow);
   }
-  setTimeout(initDragSelect,100);
+  setTimeout(()=>{
+    // força checkboxes visíveis após render
+    document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='table-cell');
+  },150);
   renderLeads();
 }
 function closeLeadsMass(){
@@ -5224,6 +5227,78 @@ async function mesclarTransfer(){
   renderMesclarTable();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
 }
+
+/* ═══════════════════════════════════════════════
+   LASSO (RUBBER-BAND) BOX SELECTION — tabela de leads
+   Clique e arraste sobre a tabela para selecionar linhas
+═══════════════════════════════════════════════ */
+(function(){
+  // Cria o elemento da caixinha visualmente
+  const box=document.createElement('div');
+  box.id='lasso-box';
+  box.style.cssText=[
+    'position:fixed',
+    'border:2px solid #c9a84c',
+    'background:rgba(201,168,76,0.10)',
+    'border-radius:3px',
+    'pointer-events:none',
+    'z-index:9000',
+    'display:none',
+    'box-shadow:0 0 0 1px rgba(201,168,76,0.25)'
+  ].join(';');
+  document.body.appendChild(box);
+
+  let active=false;
+  let sx=0,sy=0; // start coords
+
+  // Inicia lasso só quando estiver no modo seleção em massa
+  document.addEventListener('mousedown',function(e){
+    if(!_leadsMassMode) return;
+    const tblWrap=document.querySelector('#page-leads .tbl-wrap');
+    if(!tblWrap||!tblWrap.contains(e.target)) return;
+    // Não inicia se clicou num checkbox, botão ou link
+    if(e.target.tagName==='INPUT'||e.target.closest('button')||e.target.closest('a')) return;
+    active=true;
+    sx=e.clientX; sy=e.clientY;
+    box.style.left=sx+'px';
+    box.style.top=sy+'px';
+    box.style.width='0';
+    box.style.height='0';
+    box.style.display='block';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove',function(e){
+    if(!active) return;
+    const x=Math.min(e.clientX,sx);
+    const y=Math.min(e.clientY,sy);
+    const w=Math.abs(e.clientX-sx);
+    const h=Math.abs(e.clientY-sy);
+    box.style.left=x+'px';
+    box.style.top=y+'px';
+    box.style.width=w+'px';
+    box.style.height=h+'px';
+
+    // Seleciona todas as linhas que cruzam o retângulo
+    document.querySelectorAll('#l-tbody tr').forEach(function(row){
+      const chk=row.querySelector('.lead-chk');
+      if(!chk) return;
+      const r=row.getBoundingClientRect();
+      const hit=(r.top<(y+h))&&(r.bottom>y)&&(r.left<(x+w))&&(r.right>x);
+      if(hit){
+        chk.checked=true;
+        _selectedLeadIds.add(chk.dataset.id);
+      }
+    });
+    updateLeadsMassCount();
+  });
+
+  document.addEventListener('mouseup',function(){
+    if(!active) return;
+    active=false;
+    box.style.display='none';
+  });
+})();
 
 // Close modals on bg click
 ['enviar-equipe','recolher'].forEach(id=>{
