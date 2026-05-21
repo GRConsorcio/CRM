@@ -13,7 +13,7 @@
   --red:#e55;--green:#4ade80;--blue:#60a5fa;--purple:#a78bfa;--orange:#fb923c;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;width:100%;overflow:hidden}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;width:100%}
 
 /* AUTH */
 #auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999}
@@ -63,9 +63,9 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .sidebar.collapsed .tgl-label{display:none}
 
 /* MAIN */
-.main{margin-left:222px;flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;transition:margin-left .22s;overflow:hidden}
+.main{margin-left:222px;flex:1;min-width:0;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .22s}
 .sidebar.collapsed~.main{margin-left:54px}
-.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:50}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar-title{font-size:15px;font-weight:700;color:var(--gold2)}
 .topbar-right{display:flex;align-items:center;gap:10px}
 .user-chip{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px 4px 4px;font-size:11.5px;color:var(--muted2)}
@@ -76,8 +76,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .btn-primary:hover{background:var(--gold2)}
 
 /* PAGES */
-.pages-wrap{flex:1;overflow-y:auto;overflow-x:hidden}
-.page{display:none;padding:22px 24px;min-height:100%}
+.page{display:none;padding:22px 24px;flex:1}
 .page.on{display:block}
 
 /* KPI */
@@ -246,8 +245,13 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .pg-dots{color:var(--muted2);padding:0 4px;font-size:13px;line-height:1;align-self:flex-end;padding-bottom:2px}
 .pg-info{font-size:11px;color:var(--muted2);margin-left:auto;white-space:nowrap}
 
-/* TASK POPUP ALERT */
-@keyframes taskBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(201,168,76,0.4)}50%{opacity:.85;box-shadow:0 0 20px 6px rgba(201,168,76,0.35)}}
+/* LASSO SELECT */
+#lasso-box{position:fixed;border:2px solid var(--gold);background:rgba(201,168,76,0.08);border-radius:3px;pointer-events:none;z-index:9000;display:none}
+.lead-row-sel td{background:rgba(201,168,76,0.07)!important}
+/* DUPLICATE MODAL */
+#modal-dup-bg{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9500;display:none;align-items:center;justify-content:center}
+#modal-dup-bg.on{display:flex}
+
 @keyframes taskSlideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
 .task-alert-popup{position:fixed;top:70px;right:20px;z-index:9998;display:flex;flex-direction:column;gap:10px;pointer-events:none}
 .task-alert-item{background:var(--surface);border:1.5px solid var(--gold);border-radius:12px;padding:14px 18px;min-width:280px;max-width:340px;pointer-events:all;animation:taskSlideIn .35s ease,taskBlink 2s ease-in-out infinite;cursor:pointer;position:relative}
@@ -333,9 +337,6 @@ tr:hover td{background:rgba(255,255,255,.015)}
     </div>
   </div>
 
-  <!-- PAGES WRAP -->
-  <div class="pages-wrap" id="pages-wrap">
-
   <!-- DASHBOARD -->
   <div class="page on" id="page-dashboard">
     <div class="kpi-grid" id="dash-kpis"></div>
@@ -372,6 +373,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <option value="Novo">🆕 Novo</option>
         <option value="Remalho">♻️ Remalho</option>
       </select>
+      <input type="date" id="l-f-data-ini" onchange="renderLeads(true)" title="Data inicial" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark">
+      <input type="date" id="l-f-data-fim" onchange="renderLeads(true)" title="Data final" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark">
+      <button class="btn-sm" onclick="document.getElementById('l-f-data-ini').value='';document.getElementById('l-f-data-fim').value='';renderLeads(true)" title="Limpar datas" style="padding:7px 10px;font-size:11px">✕ Data</button>
       <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openRecolherTudo()">↩️ Recolher tudo para mim</button>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
       <span id="new-lead-btn-wrap"></span>
@@ -396,6 +400,13 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <option value="">Enviar para equipe...</option>
       </select>
       <button class="btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="leadsMassEnviarEquipe()">🏅 Enviar</button>
+      <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+      <select id="leads-mass-tipo" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;min-width:130px">
+        <option value="">Marcar tipo...</option>
+        <option value="Novo">🆕 Novo</option>
+        <option value="Remalho">♻️ Remalho</option>
+      </select>
+      <button class="btn-sm" style="border-color:var(--purple);color:#c084fc" onclick="leadsMassChangeTipo()">🏷️ Aplicar tipo</button>
       <div id="mass-delete-btn-wrap"></div>
       <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="closeLeadsMass()">✕ Fechar</button>
     </div>
@@ -638,6 +649,8 @@ tr:hover td{background:rgba(255,255,255,.015)}
     </div>
   </div>
 
+  </div>
+
   <!-- MESCLAR BASE (admin only) -->
   <div class="page" id="page-mesclar">
     <div class="panel" style="margin-bottom:16px">
@@ -824,8 +837,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div id="equipe-detail-wrap"></div>
   </div>
 
-  </div><!-- /pages-wrap -->
-</div><!-- /main -->
+</div>
 
 <!-- ═══ MODALS ═══ -->
 
@@ -1999,6 +2011,8 @@ function renderLeads(resetPage){
   const fo=document.getElementById('l-f-origem')?.value||''; // filtro origem do vendedor
   const fd=isAdmin()?(document.getElementById('l-f-ddd')?.value||''):'';
   const ft=isAdmin()?(document.getElementById('l-f-tipo')?.value||''):'';
+  const fdIni=document.getElementById('l-f-data-ini')?.value||'';
+  const fdFim=document.getElementById('l-f-data-fim')?.value||'';
   const f=allLeads.filter(l=>{
     if(q&&!l.nome.toLowerCase().includes(q)&&!(l.interesse||'').toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
     if(fs&&l.status!==fs)return false;
@@ -2007,6 +2021,7 @@ function renderLeads(resetPage){
     if(fo&&fo!=='__sem__'&&l.responsavel_id!==fo)return false;
     if(fd&&extractDDD(l.telefone)!==fd)return false;
     if(ft&&(l.tipo_lead||'Novo')!==ft)return false;
+    if(fdIni||fdFim){const dt=(l.created_at||'').slice(0,10);if(fdIni&&dt<fdIni)return false;if(fdFim&&dt>fdFim)return false;}
     return true;
   });
   leadsFilteredCache=f;
@@ -4327,6 +4342,27 @@ async function leadsMassEnviarEquipe(){
   _selectedLeadIds.clear();
   renderLeads();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' enviado'+(ids.length!==1?'s':'')+' para equipe!','ok');
+}
+
+async function leadsMassChangeTipo(){
+  const ids=[..._selectedLeadIds];
+  const tipo=document.getElementById('leads-mass-tipo')?.value;
+  if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
+  if(!tipo){toast('Selecione o tipo: Novo ou Remalho','err');return;}
+  const emoji=tipo==='Novo'?'🆕':'♻️';
+  if(!confirm(`Marcar ${ids.length} lead${ids.length!==1?'s':''} como ${emoji} ${tipo}?`)) return;
+  toast(`Atualizando tipo de ${ids.length} leads, aguarde...`,'ok');
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
+    const{error}=await sb.from('crm_leads').update({tipo_lead:tipo}).in('id',batch);
+    if(error){toast('Erro: '+error.message,'err');return;}
+    batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].tipo_lead=tipo;});
+  }
+  saveCache();
+  _selectedLeadIds.clear();
+  document.getElementById('leads-mass-tipo').value='';
+  renderLeads();
+  toast(`${ids.length} lead${ids.length!==1?'s':''} marcado${ids.length!==1?'s':''} como ${emoji} ${tipo}!`,'ok');
 }
 
 /* ═══ FUNIL POR VENDEDOR (admin/coord) ═══ */
