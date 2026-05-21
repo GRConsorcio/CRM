@@ -13,7 +13,7 @@
   --red:#e55;--green:#4ade80;--blue:#60a5fa;--purple:#a78bfa;--orange:#fb923c;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;width:100%}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;width:100%;overflow:hidden}
 
 /* AUTH */
 #auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999}
@@ -63,11 +63,12 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .sidebar.collapsed .tgl-label{display:none}
 
 /* MAIN */
-.main{margin-left:222px;flex:1;min-width:0;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .22s}
+.main{margin-left:222px;flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;transition:margin-left .22s;overflow:hidden}
 .sidebar.collapsed~.main{margin-left:54px}
-.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:50}
 .topbar-title{font-size:15px;font-weight:700;color:var(--gold2)}
 .topbar-right{display:flex;align-items:center;gap:10px}
+.pages-wrap{flex:1;overflow-y:auto;overflow-x:hidden}
 .user-chip{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px 4px 4px;font-size:11.5px;color:var(--muted2)}
 .user-av{width:26px;height:26px;border-radius:50%;background:var(--gold);color:#0a0a0a;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center}
 .btn-sm{background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit;transition:all .13s}
@@ -76,7 +77,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .btn-primary:hover{background:var(--gold2)}
 
 /* PAGES */
-.page{display:none;padding:22px 24px;flex:1}
+.pages-wrap{flex:1;overflow-y:auto;overflow-x:hidden}
+.page{display:none;padding:22px 24px;min-height:100%}
 .page.on{display:block}
 
 /* KPI */
@@ -331,6 +333,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <button class="btn-sm" onclick="doLogout()">Sair</button>
     </div>
   </div>
+
+  <!-- PAGES WRAP -->
+  <div class="pages-wrap" id="pages-wrap">
 
   <!-- DASHBOARD -->
   <div class="page on" id="page-dashboard">
@@ -634,8 +639,6 @@ tr:hover td{background:rgba(255,255,255,.015)}
     </div>
   </div>
 
-  </div>
-
   <!-- MESCLAR BASE (admin only) -->
   <div class="page" id="page-mesclar">
     <div class="panel" style="margin-bottom:16px">
@@ -822,7 +825,8 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div id="equipe-detail-wrap"></div>
   </div>
 
-</div>
+  </div><!-- /pages-wrap -->
+</div><!-- /main -->
 
 <!-- ═══ MODALS ═══ -->
 
