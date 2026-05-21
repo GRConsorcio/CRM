@@ -1855,6 +1855,7 @@ function nav(page,el){
   }
   if(page==='dashboard') renderDashboard().catch(e=>console.warn('renderDashboard error:',e));
   if(page==='leads') { leadsCurrentPage=1; renderLeads(); }
+  else if(_leadsMassMode) closeLeadsMass(); // sai da aba leads → fecha modo massa
   if(page==='meus-leads') renderMeusLeads();
   if(page==='funil') renderFunil();
   if(page==='distribuicao') renderDistribuicao();
@@ -2043,7 +2044,7 @@ function renderLeads(resetPage){
         <td class="lead-chk-td" style="width:36px;${showChk?'':'display:none'}"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" ${isChecked?'checked':''} onchange="onLeadChkChange(this)"></td>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
-        <td>${sBadge(l.status,l.tipo_lead)}</td>
+        <td>${sBadge(l.status,l.tipo_lead,l.id)}</td>
         <td>${u?`<span style="font-size:11px">${u.name}</span>`:'<span style="color:var(--orange);font-size:11px">Sem vendedor</span>'}</td>
         <td style="color:var(--muted2);font-size:11px">${l.origem||'—'}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
@@ -2124,7 +2125,7 @@ function renderMeusLeads(){
     :f.map(l=>`<tr>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','meus-leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
-        <td>${sBadge(l.status)}</td>
+        <td>${sBadge(l.status,l.tipo_lead,l.id)}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
         <td><button class="act" onclick="openDetail('${l.id}','meus-leads')">Ver →</button></td>
       </tr>`).join('');
@@ -2157,7 +2158,7 @@ async function openDetail(id,from){
       <div class="detail-av">${lead.nome[0].toUpperCase()}</div>
       <div style="flex:1">
         <div class="detail-name">${lead.nome}</div>
-        <div class="detail-meta">${lead.origem||'—'} · ${sBadge(lead.status,lead.tipo_lead)}</div>
+        <div class="detail-meta">${lead.origem||'—'} · ${sBadge(lead.status,lead.tipo_lead,lead.id)}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
@@ -2950,11 +2951,39 @@ function fmtDateStr(s){if(!s)return'';const[y,m,d]=s.split('-');return`${d}/${m}
 function fmtSize(b){if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
 function brl(n){return'R$ '+Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtCPF(c){if(!c)return'';const d=c.replace(/\D/g,'');return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');}
-function sBadge(s,tipo){
+function sBadge(s,tipo,leadId){
   const m={Novo:"b-novo","Em Negociação":"b-contato",Proposta:"b-proposta",Fechado:"b-fechado",Perdido:"b-perdido"};
   let html=`<span class="badge ${m[s]||"b-novo"}">${s}</span>`;
-  if(tipo==="Remalho"&&isAdmin()) html+=` <span class="badge b-remalho">Remalho</span>`;
+  // Mostra badge de tipo para TODOS os usuários
+  if(tipo==="Remalho"){
+    if(isAdmin()&&leadId){
+      // Admin: clicável para trocar para Novo
+      html+=` <span class="badge b-remalho" style="cursor:pointer" title="Clique para mudar para Novo" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Novo',this)">♻️ Remalho</span>`;
+    } else {
+      html+=` <span class="badge b-remalho">♻️ Remalho</span>`;
+    }
+  } else {
+    // Novo — só mostra badge clicável para admin; para outros fica implícito
+    if(isAdmin()&&leadId){
+      html+=` <span class="badge b-novo" style="cursor:pointer;opacity:0.55" title="Clique para marcar como Remalho" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Remalho',this)">🆕 Novo</span>`;
+    }
+  }
   return html;
+}
+async function quickTipoToggle(leadId,novoTipo,el){
+  const emoji=novoTipo==='Remalho'?'♻️':'🆕';
+  el.textContent='...';
+  const{error}=await sb.from('crm_leads').update({tipo_lead:novoTipo}).eq('id',leadId);
+  if(error){toast('Erro: '+error.message,'err');el.textContent=novoTipo==='Remalho'?'🆕 Novo':'♻️ Remalho';return;}
+  const i=allLeads.findIndex(l=>l.id===leadId);
+  if(i>-1) allLeads[i].tipo_lead=novoTipo;
+  saveCache();
+  // Re-render wherever we are
+  if(document.getElementById('page-lead-detail')?.classList.contains('on')) openDetail(leadId,fromPage);
+  else if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads();
+  else if(document.getElementById('page-coord-leads')?.classList.contains('on')) renderCoordLeads();
+  else if(document.getElementById('page-meus-leads')?.classList.contains('on')) renderMeusLeads();
+  toast(`Lead marcado como ${emoji} ${novoTipo}!`,'ok');
 }
 function toast(msg,type='ok'){
   const n=document.getElementById('notify');
@@ -3834,7 +3863,7 @@ function renderCoordLeads(){
         <td><input type="checkbox" class="coord-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" onchange="updateCoordMassCount()"></td>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','coord-leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
-        <td>${sBadge(l.status)}</td>
+        <td>${sBadge(l.status,l.tipo_lead,l.id)}</td>
         <td style="font-size:11.5px">${u?.name||'<span style="color:var(--orange)">Sem vendedor</span>'}</td>
         <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
         <td><button class="act" onclick="openDetail('${l.id}','coord-leads')">Ver →</button></td>
@@ -4697,7 +4726,7 @@ function renderRecolherList(){
             onchange="updateRecolherCount()">
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.nome}</div>
-            <div style="font-size:10.5px;color:var(--muted2);margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${sBadge(l.status)} <span>${meta}</span></div>
+            <div style="font-size:10.5px;color:var(--muted2);margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${sBadge(l.status,l.tipo_lead)} <span>${meta}</span></div>
           </div>
         </label>`;
       }).join('');
@@ -4904,7 +4933,7 @@ async function openEquipeDetail(id){
               const isExterno=u&&!membroIds.has(u.user_id);
               return`<tr>
                 <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','equipe-detail')">${l.nome}</td>
-                <td>${l.interesse||'—'}</td><td>${sBadge(l.status)}</td>
+                <td>${l.interesse||'—'}</td><td>${sBadge(l.status,l.tipo_lead,l.id)}</td>
                 <td style="font-size:11.5px">${u?.name||'—'}${isExterno?'<span style="font-size:9px;margin-left:5px;background:rgba(251,146,60,.15);color:var(--orange);border:1px solid rgba(251,146,60,.3);border-radius:3px;padding:1px 5px">externo</span>':''}</td>
               </tr>`;
             }).join('')}
@@ -5131,7 +5160,7 @@ function renderMesclarTable(){
       <td style="color:var(--muted2);font-size:11.5px">${l.telefone||'—'}</td>
       <td><span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700">${ddd}</span></td>
       <td>${l.tipo_lead==='Remalho'?'<span style="color:#c084fc;font-size:11px">♻️ Remalho</span>':'<span style="color:var(--blue);font-size:11px">🆕 Novo</span>'}</td>
-      <td>${sBadge(l.status)}</td>
+      <td>${sBadge(l.status,l.tipo_lead,l.id)}</td>
       <td style="font-size:11.5px">${u?u.name:'<span style="color:var(--orange)">Sem vendedor</span>'}</td>
     </tr>`;
   }).join('');
