@@ -4732,8 +4732,9 @@ function renderEquipes(){
   }
   grid.innerHTML=f.map(eq=>{
     const membros=allMembroEquipes.filter(m=>m.equipe_id===eq.id);
-    const leads=allLeads.filter(l=>l.equipe_id===eq.id||membros.some(m=>m.user_id===l.responsavel_id)).length;
-    const fechados=allLeads.filter(l=>l.status==='Fechado'&&(l.equipe_id===eq.id||membros.some(m=>m.user_id===l.responsavel_id))).length;
+    const mIds=new Set(membros.map(m=>m.user_id));
+    const leads=allLeads.filter(l=>l.equipe_id===eq.id||(!l.equipe_id&&l.responsavel_id&&mIds.has(l.responsavel_id))).length;
+    const fechados=allLeads.filter(l=>l.status==='Fechado'&&(l.equipe_id===eq.id||(!l.equipe_id&&l.responsavel_id&&mIds.has(l.responsavel_id)))).length;
     return`<div class="equipe-card" onclick="openEquipeDetail('${eq.id}')">
       <div class="equipe-card-bar" style="background:${eq.cor||'var(--gold)'}"></div>
       <div class="equipe-card-body">
@@ -4755,8 +4756,13 @@ async function openEquipeDetail(id){
   if(!eq)return;
   const membros=allMembroEquipes.filter(m=>m.equipe_id===id);
   const membrosUsers=membros.map(m=>allUsers.find(u=>u.user_id===m.user_id)).filter(Boolean);
-  // Leads: either assigned to a member OR sent directly to the equipe
-  const leads=allLeads.filter(l=>l.equipe_id===id||membros.some(m=>m.user_id===l.responsavel_id));
+  // Leads: pertence diretamente à equipe OU está com um membro SEM equipe definida
+  // (evita puxar leads de outras equipes apenas por o vendedor ser membro aqui)
+  const membroIds=new Set(membros.map(m=>m.user_id));
+  const leads=allLeads.filter(l=>
+    l.equipe_id===id ||
+    (!l.equipe_id && l.responsavel_id && membroIds.has(l.responsavel_id))
+  );
   const fechados=leads.filter(l=>l.status==='Fechado').length;
 
   document.getElementById('equipe-detail-wrap').innerHTML=`
