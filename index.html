@@ -678,8 +678,11 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <div style="display:flex;gap:8px">
           <button class="btn-sm" onclick="mesclarSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Todos</button>
           <button class="btn-sm" onclick="mesclarSelectAll(false)">☐ Nenhum</button>
-          <select id="mesclar-mass-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 10px;font-size:12px;font-family:inherit;outline:none">
-            <option value="">Transferir para...</option>
+          <select id="mesclar-mass-resp" onchange="document.getElementById('mesclar-mass-equipe').value=''" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 10px;font-size:12px;font-family:inherit;outline:none;min-width:160px">
+            <option value="">Vendedor...</option>
+          </select>
+          <select id="mesclar-mass-equipe" onchange="document.getElementById('mesclar-mass-resp').value=''" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 10px;font-size:12px;font-family:inherit;outline:none;min-width:160px">
+            <option value="">Equipe...</option>
           </select>
           <button class="btn-primary" onclick="mesclarTransfer()">↗ Transferir selecionados</button>
         </div>
@@ -4969,7 +4972,11 @@ function renderMesclar(){
   const resp=document.getElementById('mesclar-mass-resp');
   if(resp){
     const vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='coordenador');
-    resp.innerHTML='<option value="">Transferir para...</option>'+vends.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+    resp.innerHTML='<option value="">Vendedor...</option>'+vends.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  }
+  const eqSel=document.getElementById('mesclar-mass-equipe');
+  if(eqSel){
+    eqSel.innerHTML='<option value="">Equipe...</option>'+allEquipes.map(e=>`<option value="eq:${e.id}">${e.nome}</option>`).join('');
   }
   updateMesclarPreview();
 }
@@ -5135,9 +5142,32 @@ function updateMesclarSelInfo(){
 async function mesclarTransfer(){
   if(!isAdmin()) return;
   const ids=[..._mesclarSelected];
-  const respId=document.getElementById('mesclar-mass-resp')?.value;
+  const respId  =document.getElementById('mesclar-mass-resp')?.value;
+  const equipeVal=document.getElementById('mesclar-mass-equipe')?.value;
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
-  if(!respId){toast('Selecione um vendedor de destino','err');return;}
+  if(!respId && !equipeVal){toast('Selecione um vendedor ou equipe de destino','err');return;}
+
+  // Transferir para EQUIPE
+  if(equipeVal && equipeVal.startsWith('eq:')){
+    const equipeId=equipeVal.slice(3);
+    const eq=allEquipes.find(e=>e.id===equipeId);
+    toast(`Transferindo ${ids.length} leads para equipe ${eq?.nome||''}...`,'ok');
+    for(let i=0;i<ids.length;i+=100){
+      const batch=ids.slice(i,i+100);
+      const{error}=await sb.from('crm_leads').update({equipe_id:equipeId,responsavel_id:null,distribuido_em:new Date().toISOString()}).in('id',batch);
+      if(error){toast('Erro: '+error.message,'err');return;}
+      batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1){allLeads[idx].equipe_id=equipeId;allLeads[idx].responsavel_id=null;}});
+    }
+    _mesclarList=_mesclarList.filter(l=>!_mesclarSelected.has(l.id));
+    _mesclarSelected.clear();
+    saveCache();populateSelects();
+    document.getElementById('mesclar-mass-equipe').value='';
+    renderMesclarTable();updateMesclarSelInfo();
+    toast(`${ids.length} lead${ids.length!==1?'s':''} enviado${ids.length!==1?'s':''} para equipe ${eq?.nome||''}!`,'ok');
+    return;
+  }
+
+  // Transferir para VENDEDOR
   const vend=allUsers.find(u=>u.user_id===respId);
   toast(`Transferindo ${ids.length} leads para ${vend?.name||'vendedor'}...`,'ok');
   for(let i=0;i<ids.length;i+=100){
