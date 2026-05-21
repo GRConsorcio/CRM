@@ -13,7 +13,7 @@
   --red:#e55;--green:#4ade80;--blue:#60a5fa;--purple:#a78bfa;--orange:#fb923c;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;width:100%}
 
 /* AUTH */
 #auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999}
@@ -63,7 +63,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .sidebar.collapsed .tgl-label{display:none}
 
 /* MAIN */
-.main{margin-left:222px;flex:1;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .22s}
+.main{margin-left:222px;flex:1;min-width:0;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .22s}
 .sidebar.collapsed~.main{margin-left:54px}
 .topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .topbar-title{font-size:15px;font-weight:700;color:var(--gold2)}
@@ -4058,6 +4058,7 @@ async function coordDistAutoAll(){
 let _massMode=false;
 let _massVendedorId=null;
 let _leadsMassMode=false;
+let _cfMassMode=false;
 
 
 function toggleMassCard(e,leadId){
