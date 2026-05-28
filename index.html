@@ -3348,7 +3348,9 @@ async function runAutoReturnRules(){
   });
   // Log each return in history
   for(const item of leadsToReturn){
-    await sb.from('crm_historico').insert({lead_id:item.id,user_id:CU.id,tipo:'📝 Anotação',descricao:`Retornado automaticamente: ${item.reason}`,created_at:new Date().toISOString()}).catch(()=>{});
+    try {
+      await sb.from('crm_historico').insert({lead_id:item.id,user_id:CU.id,tipo:'📝 Anotação',descricao:`Retornado automaticamente: ${item.reason}`,created_at:new Date().toISOString()});
+    } catch(e) { console.warn('History insert error:', e); }
   }
   saveCache();
   if(leadsToReturn.length) toast(`${leadsToReturn.length} lead(s) retornado(s) automaticamente à base`, 'ok');
