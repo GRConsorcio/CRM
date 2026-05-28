@@ -2624,11 +2624,25 @@ function updateTipoStyle(){
 /* ═══ SAVE LEAD ═══ */
 async function saveLead(){
   const nome=document.getElementById('ld-nome').value.trim();
+  const telefone=v('ld-tel').trim();
   if(!nome){toast('Informe o nome do lead','err');return;}
+  
+  // VERIFICAÇÃO DE DUPLICATA (Nome + Telefone)
+  if(!editLeadId){
+    const duplicado = allLeads.find(l => 
+      l.nome.toLowerCase() === nome.toLowerCase() && 
+      (l.telefone || '').replace(/\D/g,'') === telefone.replace(/\D/g,'')
+    );
+    if(duplicado){
+      toast('Lead já existe (mesmo nome e número)!','err');
+      return;
+    }
+  }
+
   const tipoSel=document.querySelector('input[name="ld-tipo"]:checked');
   const tipoLead=isAdmin()&&tipoSel?tipoSel.value:undefined;
   const payload={
-    nome,telefone:v('ld-tel'),email:v('ld-email'),interesse:v('ld-int'),
+    nome,telefone,email:v('ld-email'),interesse:v('ld-int'),
     status:v('ld-status'),origem:v('ld-origem'),
     responsavel_id:v('ld-resp')||null,
     observacoes:v('ld-obs')||null,criado_por:CU.id,
@@ -3621,13 +3635,30 @@ async function importBulk(){
 }
 
 async function importLeads(leads,fonte){
-  let ok=0,errs=0;
+  let ok=0,errs=0,dups=0;
   const batch=[];
+  
   for(const lead of leads){
-    // Usa o responsável definido — não distribui automaticamente
+    // VERIFICAÇÃO DE DUPLICATA NO IMPORT
+    const nomeLead = lead.nome.trim();
+    const telLead = (lead.telefone || '').replace(/\D/g,'');
+    
+    const isDup = allLeads.some(l => 
+      l.nome.toLowerCase() === nomeLead.toLowerCase() && 
+      (l.telefone || '').replace(/\D/g,'') === telLead
+    ) || batch.some(b => 
+      b.nome.toLowerCase() === nomeLead.toLowerCase() && 
+      (b.telefone || '').replace(/\D/g,'') === telLead
+    );
+
+    if(isDup){
+      dups++;
+      continue;
+    }
+
     const respId=lead.responsavel_id||null;
     batch.push({
-      nome:lead.nome,
+      nome:nomeLead,
       telefone:lead.telefone||null,
       email:lead.email||null,
       interesse:lead.interesse||null,
@@ -3639,6 +3670,11 @@ async function importLeads(leads,fonte){
       distribuido_em:respId?new Date().toISOString():null,
       created_at:new Date().toISOString(),
     });
+  }
+
+  if(batch.length === 0 && dups > 0){
+    toast(`${dups} leads ignorados por serem duplicados.`,'err');
+    return;
   }
 
   // Insert in batches of 50
@@ -3659,11 +3695,14 @@ async function importLeads(leads,fonte){
   entry.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:3px">
     <strong>${fonte}</strong><span style="color:var(--muted2);font-size:11px">${now}</span></div>
     <div style="color:var(--green)">✅ ${ok} importado${ok!==1?'s':''}</div>
+    ${dups?`<div style="color:var(--orange)">⚠️ ${dups} duplicado${dups!==1?'s':''} ignorado${dups!==1?'s':''}</div>`:''}
     ${errs?`<div style="color:var(--red)">❌ ${errs} erro${errs!==1?'s':''}</div>`:''}`;
   if(log.querySelector('.empty')) log.innerHTML='';
   log.prepend(entry);
 
-  toast(`${ok} lead${ok!==1?'s':''} importado${ok!==1?'s':''}!`,ok>0?'ok':'err');
+  let msg = `${ok} lead${ok!==1?'s':''} importado${ok!==1?'s':''}!`;
+  if(dups) msg += ` (${dups} duplicados ignorados)`;
+  toast(msg, ok>0?'ok':'err');
 }
 
 
