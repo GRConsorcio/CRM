@@ -3328,14 +3328,15 @@ async function runAutoReturnRules(){
     const isVendido=l.status==='Fechado'&&venda?.status_venda==='Aprovado';
     const isCancelado=venda?.status_venda==='Cancelado';
     if(isVendido||isCancelado) continue; // These stay with vendedor
-    // Rule 1: Perdido → return to base after 2 days
-    if(l.status==='Perdido'&&daysSinceDist>=2){
-      leadsToReturn.push({id:l.id,reason:'Perdido há 2+ dias'});
+    // Regra 1: Perdido → volta para a base após 3 dias corridos
+    if(l.status==='Perdido' && daysSinceDist >= 3){
+      leadsToReturn.push({id:l.id, reason:'Perdido há 3 dias'});
       continue;
     }
-    // Rule 2: Any active lead > 14 days → return to base
-    if(daysSinceDist>=14&&l.status!=='Perdido'){
-      leadsToReturn.push({id:l.id,reason:'Lead há 14+ dias sem venda'});
+    // Regra 2: Novo, Sem Contato, Em Negociação, Proposta → volta para a base após 7 dias corridos
+    const statusAtivos = ['Novo', 'Sem Contato', 'Em Negociação', 'Proposta'];
+    if(statusAtivos.includes(l.status) && daysSinceDist >= 7){
+      leadsToReturn.push({id:l.id, reason:`${l.status} há 7 dias`});
     }
   }
   if(!leadsToReturn.length) return;
