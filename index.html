@@ -4646,6 +4646,21 @@ function updateRtPreview(){
   }
 }
 
+
+async function processInBatches(ids, updateData, tableName, batchSize = 100) {
+    const total = ids.length;
+    let processed = 0;
+    for (let i = 0; i < total; i += batchSize) {
+        const batch = ids.slice(i, i + batchSize);
+        const { error } = await sb.from(tableName)
+            .update(updateData)
+            .in('id', batch);
+        if (error) throw error;
+        processed += batch.length;
+        console.log(`Processado ${processed} de ${total} em ${tableName}`);
+    }
+}
+
 async function confirmarRecolherTudo(){
   const opcao=_rtOpcao;
   const eqId =document.getElementById('rt-sel-equipe').value;
@@ -4674,10 +4689,12 @@ async function confirmarRecolherTudo(){
   if(!confirm(`Recolher ${leads.length} lead${leads.length!==1?'s':''} (${descricao})?\nEles ficarão sem equipe/vendedor e voltarão para a fila de Distribuição.`))return;
 
   const ids=leads.map(l=>l.id);
-  const{error}=await sb.from('crm_leads')
-    .update({responsavel_id:null,equipe_id:null,distribuido_em:null})
-    .in('id',ids);
-  if(error){toast('Erro: '+error.message,'err');return;}
+  try {
+    await processInBatches(ids, {responsavel_id:null,equipe_id:null,distribuido_em:null}, 'crm_leads');
+  } catch(error) {
+    toast('Erro: ' + error.message, 'err');
+    return;
+  }
 
   ids.forEach(id=>{
     const i=allLeads.findIndex(l=>l.id===id);
@@ -4789,10 +4806,12 @@ async function confirmarRecolher(){
   const ids=[...document.querySelectorAll('.recolher-chk:checked')].map(c=>c.dataset.id);
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   // Recolhe: remove equipe E vendedor dos leads selecionados
-  const{error}=await sb.from('crm_leads')
-    .update({equipe_id:null,responsavel_id:null,distribuido_em:null})
-    .in('id',ids);
-  if(error){toast('Erro: '+error.message,'err');return;}
+  try {
+    await processInBatches(ids, {equipe_id:null,responsavel_id:null,distribuido_em:null}, 'crm_leads');
+  } catch(error) {
+    toast('Erro: ' + error.message, 'err');
+    return;
+  }
   ids.forEach(id=>{
     const i=allLeads.findIndex(l=>l.id===id);
     if(i>-1){allLeads[i].equipe_id=null;allLeads[i].responsavel_id=null;allLeads[i].distribuido_em=null;}
