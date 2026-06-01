@@ -1006,7 +1006,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         🪪 Documento com Foto <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
       </div>
       <div class="upload-zone" id="upload-zone" onclick="document.getElementById('v-doc-foto').click()" style="padding:16px">
-        <input type="file" id="v-doc-foto" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('foto',this.files)" style="display:none">
+        <input type="file" id="v-doc-foto" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="handleCatFile('foto',this.files[0])" style="display:none">
         <div class="upload-icon" style="font-size:22px;margin-bottom:6px">📎</div>
         <div class="upload-txt" style="font-size:11.5px">Clique para selecionar</div>
         <div class="upload-sub">RG, CNH ou Passaporte — PDF, JPG, PNG</div>
@@ -1020,7 +1020,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         📄 Contrato <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
       </div>
       <div class="upload-zone" onclick="document.getElementById('v-contrato').click()" style="padding:16px">
-        <input type="file" id="v-contrato" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('contrato',this.files)" style="display:none">
+        <input type="file" id="v-contrato" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="handleCatFile('contrato',this.files[0])" style="display:none">
         <div class="upload-icon" style="font-size:22px;margin-bottom:6px">📎</div>
         <div class="upload-txt" style="font-size:11.5px">Clique para selecionar</div>
         <div class="upload-sub">Contrato assinado — PDF, JPG, PNG</div>
@@ -1034,7 +1034,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         🧾 Boleto <span style="font-size:9px;color:var(--muted2);background:var(--surface2);padding:1px 6px;border-radius:4px;border:1px solid var(--border)">opcional</span>
       </div>
       <div class="upload-zone" onclick="document.getElementById('v-boleto').click()" style="padding:16px">
-        <input type="file" id="v-boleto" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('boleto',this.files)" style="display:none">
+        <input type="file" id="v-boleto" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="handleCatFile('boleto',this.files[0])" style="display:none">
         <div class="upload-icon" style="font-size:22px;margin-bottom:6px">📎</div>
         <div class="upload-txt" style="font-size:11.5px">Clique para selecionar</div>
         <div class="upload-sub">Boleto bancário — PDF, JPG, PNG</div>
@@ -1048,7 +1048,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         ✅ Comprovante de Pagamento <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
       </div>
       <div class="upload-zone" onclick="document.getElementById('v-comprovante').click()" style="padding:16px">
-        <input type="file" id="v-comprovante" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('comprovante',this.files)" style="display:none">
+        <input type="file" id="v-comprovante" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="handleCatFile('comprovante',this.files[0])" style="display:none">
         <div class="upload-icon" style="font-size:22px;margin-bottom:6px">📎</div>
         <div class="upload-txt" style="font-size:11.5px">Clique para selecionar</div>
         <div class="upload-sub">Comprovante de pagamento — PDF, JPG, PNG</div>
@@ -1297,9 +1297,7 @@ async function doLogout(){
 async function initApp(user){
   if(CU&&CU.id===user.id&&CUProfile) return;
   CU=user;
-  // Garante que o DOM está pronto antes de manipular
-  const authScr = document.getElementById('auth-screen');
-  if(authScr) authScr.classList.remove('on');
+  document.getElementById('auth-screen').style.display='none';
 
   // ── CACHE FIRST: mostra dados salvos instantaneamente
   const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
@@ -1364,7 +1362,7 @@ async function initApp(user){
       document.getElementById('setup-warning').style.display='flex';
     } else {
       toast('Erro: '+(e?.message||e),'err');
-      document.getElementById('auth-screen').classList.add('on');
+      document.getElementById('auth-screen').style.display='flex';
       document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
     }
   }
@@ -1387,7 +1385,7 @@ async function initApp(user){
             await sb.auth.signOut({scope:'local'});
             Object.keys(localStorage).forEach(k=>{if(k.startsWith('sb-'))localStorage.removeItem(k);});
             Object.keys(sessionStorage).forEach(k=>{if(k.startsWith('crm_'))sessionStorage.removeItem(k);});
-            document.getElementById('auth-screen').classList.add('on');
+            document.getElementById('auth-screen').style.display='flex';
             return;
           }
         }
@@ -1404,7 +1402,7 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
   if(ev==='SIGNED_OUT'){
     CU=null; CUProfile=null;
     if(realtimeChannel){ sb.removeChannel(realtimeChannel); realtimeChannel=null; }
-    document.getElementById('auth-screen').classList.add('on');
+    document.getElementById('auth-screen').style.display='flex';
     return;
   }
   if(session?.user) await initApp(session.user);
@@ -2156,8 +2154,7 @@ async function openDetail(id,from){
   const hist=allHist.filter(h=>h.lead_id===id);
   const tasks=allTasks.filter(t=>t.lead_id===id);
   const venda=allVendas.find(v=>v.lead_id===id);
-  // Admin e Coordenador devem ver todos os documentos do lead, independente de quem subiu
-  const docs=allDocs.filter(d=>d.lead_id===id || (venda && d.venda_id === venda.id));
+  const docs=allDocs.filter(d=>d.lead_id===id);
   const hoje=new Date().toISOString().slice(0,10);
   // canEditData: admin can edit all fields; vendedor can edit basic info (tipo_lead hidden in modal)
   const canEditData=isAdmin()||lead.responsavel_id===CU.id||isAdminOrCoord();
@@ -2209,8 +2206,7 @@ async function openDetail(id,from){
   // Venda se existir
   if(venda){
     html+=`<div style="padding:16px 18px;border-bottom:1px solid var(--border)">
-      <div style="font-size:11px;font-weight:900;color:var(--gold2);margin-bottom:8px">👤 Cliente: ${lead.nome}</div>
-	      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">🏦 Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':'b-pend'}">${venda.status_venda}</span></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">🏦 Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':'b-pend'}">${venda.status_venda}</span></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12.5px">
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">CPF</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Nascimento</div><strong>${venda.data_nascimento?fmtDateStr(venda.data_nascimento):'—'}</strong></div>
@@ -2898,7 +2894,7 @@ async function saveVenda(){
   const li=allLeads.findIndex(l=>l.id===vendaLeadId);
   if(li>-1) allLeads[li].status='Fechado';
 
-  catFiles={foto:[],contrato:[],boleto:[],comprovante:[]};
+  catFiles={foto:null,contrato:null,boleto:null,comprovante:null};
   pendingFiles=[];
   closeModal('venda');
   toast('Venda registrada com sucesso!','ok');
