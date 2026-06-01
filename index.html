@@ -851,6 +851,16 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div class="fld"><label>E-mail</label><input class="inp" id="ld-email" type="email" placeholder="email@..."></div>
     </div>
     <div class="fld"><label>Observações</label><textarea class="inp" id="ld-obs" placeholder="Anotações..."></textarea></div>
+    <div class="fld" id="ld-status-vend-wrap" style="display:none">
+      <label>Status do Lead</label>
+      <select class="inp" id="ld-status-vend">
+        <option value="Novo">Novo</option>
+        <option value="Sem Contato">Sem Contato</option>
+        <option value="Em Negociação">Em Negociação</option>
+        <option value="Proposta">Proposta</option>
+        <option value="Perdido">Perdido</option>
+      </select>
+    </div>
     <div class="fld-row" id="ld-status-wrap">
       <div class="fld"><label>Status</label>
         <select class="inp" id="ld-status">
@@ -2548,6 +2558,11 @@ function openModal(type){
     const tipoNovo=document.getElementById('ld-tipo-novo');
     if(tipoNovo) tipoNovo.checked=true;
     updateTipoStyle();
+    // Campo de status do vendedor — oculto ao criar novo lead (só admin cria)
+    const svw=document.getElementById('ld-status-vend-wrap');
+    if(svw) svw.style.display='none';
+    const stw=document.getElementById('ld-status-wrap');
+    if(stw) stw.style.display='';
   }
   if(type==='tarefa'){
     ['ta-desc'].forEach(id=>document.getElementById(id).value='');
@@ -2644,13 +2659,18 @@ async function saveLead(){
 
   const tipoSel=document.querySelector('input[name="ld-tipo"]:checked');
   const tipoLead=isAdmin()&&tipoSel?tipoSel.value:undefined;
+  const canEditAll=isAdmin()||isCoordenador()||isSupervisor();
+  // Vendedores usam o campo de status simplificado; admin/coord usam o campo completo
+  const statusVal=canEditAll?v('ld-status'):(v('ld-status-vend')||v('ld-status'));
   const payload={
     nome,telefone,email:v('ld-email'),interesse:v('ld-int'),
-    status:v('ld-status'),origem:v('ld-origem'),
-    responsavel_id:v('ld-resp')||null,
+    status:statusVal,origem:canEditAll?v('ld-origem'):undefined,
+    responsavel_id:canEditAll?(v('ld-resp')||null):undefined,
     observacoes:v('ld-obs')||null,criado_por:CU.id,
     ...(tipoLead!==undefined?{tipo_lead:tipoLead}:{}),
   };
+  // Remove campos undefined do payload
+  Object.keys(payload).forEach(k=>{if(payload[k]===undefined)delete payload[k];});
   if(editLeadId){
     await sb.from('crm_leads').update(payload).eq('id',editLeadId);
     // Update local immediately for snappy UX; realtime will confirm
@@ -2659,7 +2679,8 @@ async function saveLead(){
     closeModal('lead');
     toast('Lead atualizado!','ok');
     editLeadId=null;
-    renderLeads(true);
+    // Se for vendedor, re-renderiza meus leads; senão, a tabela admin
+    if(CUProfile?.role==='vendedor') renderMeusLeads(); else renderLeads(true);
     if(isAdminOrCoord()) populateSelects();
     saveCache();
   } else {
@@ -2701,12 +2722,18 @@ function editLead(id){
     if(tipoEl) tipoEl.checked=true;
     updateTipoStyle();
   }
-  // Para vendedores: oculta campos de responsável e status (apenas admin/coord podem alterar)
+  // Para vendedores: oculta campos de responsável e status completo (apenas admin/coord podem alterar)
+  // Mas mostra campo de status simplificado para vendedores
   const respWrap=document.getElementById('ld-resp-wrap');
   const statusWrap=document.getElementById('ld-status-wrap');
+  const statusVendWrap=document.getElementById('ld-status-vend-wrap');
+  const statusVendSel=document.getElementById('ld-status-vend');
   const canEditAll=isAdmin()||isCoordenador()||isSupervisor();
   if(respWrap) respWrap.style.display=canEditAll?'':'none';
   if(statusWrap) statusWrap.style.display=canEditAll?'':'none';
+  if(statusVendWrap) statusVendWrap.style.display=canEditAll?'none':'block';
+  // Sincroniza o valor no select do vendedor
+  if(!canEditAll&&statusVendSel) statusVendSel.value=l.status||'Novo';
   document.getElementById('modal-lead').classList.add('on');
 }
 
