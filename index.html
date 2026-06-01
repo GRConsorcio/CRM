@@ -851,13 +851,13 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div class="fld"><label>E-mail</label><input class="inp" id="ld-email" type="email" placeholder="email@..."></div>
     </div>
     <div class="fld"><label>Observações</label><textarea class="inp" id="ld-obs" placeholder="Anotações..."></textarea></div>
-    <div class="fld-row">
+    <div class="fld-row" id="ld-status-wrap">
       <div class="fld"><label>Status</label>
         <select class="inp" id="ld-status">
           <option>Novo</option><option>Em Negociação</option><option>Proposta</option><option>Fechado</option><option>Perdido</option>
         </select>
       </div>
-      <div class="fld"><label>Origem</label>
+      <div class="fld" id="ld-origem-wrap"><label>Origem</label>
         <select class="inp" id="ld-origem">
           <option>Instagram</option><option>Facebook</option><option>WhatsApp</option><option>Indicação</option><option>Site</option><option>Outro</option>
         </select>
@@ -882,7 +882,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
         </label>
       </div>
     </div>
-    <div class="fld"><label>Vendedor responsável</label>
+    <div class="fld" id="ld-resp-wrap"><label>Vendedor responsável</label>
       <select class="inp" id="ld-resp"><option value="">Sem vendedor (distribuir depois)</option></select>
     </div>
     <div class="fld"><label>Interesse</label><input class="inp" id="ld-int" placeholder="Ex: Fiat Argo R$60k"></div>
@@ -1294,12 +1294,6 @@ async function initApp(user){
   if(cacheData){
     try{
       const cached=JSON.parse(cacheData);
-      // BUG FIX: Garantir que o perfil em cache pertence ao usuário logado
-      if(cached.profile && cached.profile.user_id !== CU.id) {
-        console.warn('Cache de outro usuário detectado, limpando...');
-        sessionStorage.removeItem('crm_data_'+CU.id);
-        throw new Error('invalid_cache');
-      }
       // Invalida cache incompleto só para admin:
       // Supabase retorna no máximo 1000 por query sem .range()
       // Se admin tem ≤1000 leads em cache, a carga paralela provavelmente falhou
@@ -2133,7 +2127,10 @@ function renderMeusLeads(){
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead,l.id)}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
-        <td><button class="act" onclick="openDetail('${l.id}','meus-leads')">Ver →</button></td>
+        <td><div style="display:flex;gap:5px">
+          <button class="act" onclick="editLead('${l.id}')">✏️</button>
+          <button class="act" onclick="openDetail('${l.id}','meus-leads')">Ver →</button>
+        </div></td>
       </tr>`).join('');
 }
 
@@ -2149,8 +2146,8 @@ async function openDetail(id,from){
   const venda=allVendas.find(v=>v.lead_id===id);
   const docs=allDocs.filter(d=>d.lead_id===id);
   const hoje=new Date().toISOString().slice(0,10);
-  // canEditData: only admin can edit lead fields
-  const canEditData=isAdmin();
+  // canEditData: admin can edit all fields; vendedor can edit basic info (tipo_lead hidden in modal)
+  const canEditData=isAdmin()||lead.responsavel_id===CU.id||isAdminOrCoord();
   const canEditEmailObs=true; // all users can edit email and observations
   // canWork: can register contacts, tasks, close sale
   const coordEquipeIds=(CUProfile?.role==='coordenador'||CUProfile?.role==='supervisor')
@@ -2704,6 +2701,12 @@ function editLead(id){
     if(tipoEl) tipoEl.checked=true;
     updateTipoStyle();
   }
+  // Para vendedores: oculta campos de responsável e status (apenas admin/coord podem alterar)
+  const respWrap=document.getElementById('ld-resp-wrap');
+  const statusWrap=document.getElementById('ld-status-wrap');
+  const canEditAll=isAdmin()||isCoordenador()||isSupervisor();
+  if(respWrap) respWrap.style.display=canEditAll?'':'none';
+  if(statusWrap) statusWrap.style.display=canEditAll?'':'none';
   document.getElementById('modal-lead').classList.add('on');
 }
 
@@ -2816,8 +2819,9 @@ async function saveVenda(){
   if(!catFiles.contrato){toast('Anexe o Contrato','err');return;}
   if(!catFiles.comprovante){toast('Anexe o Comprovante de Pagamento','err');return;}
 
+  const lead=allLeads.find(l=>l.id===vendaLeadId);
   const payload={
-    lead_id:vendaLeadId,vendedor_id:CU.id,
+    lead_id:vendaLeadId,vendedor_id:lead?.responsavel_id||CU.id,
     cpf:v('v-cpf'),data_nascimento:v('v-nasc')||null,
     grupo:v('v-grupo')||null,cota:v('v-cota')||null,
     data_vencimento:v('v-venc')||null,
@@ -3751,7 +3755,7 @@ function renderMeuFunil(){
         onmouseover="this.style.borderColor='var(--gold-dim)'"
         onmouseout="this.style.borderColor='var(--border)'">
         <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
-        ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="opacity:.7">📞</span>${l.telefone}</div>`:''}
+        ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${l.telefone}</div>`:''}
         <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
         ${resp?`<div style="font-size:9.5px;color:var(--muted)">👤 ${resp.name}</div>`:''}
         <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:8px">
@@ -3997,8 +4001,8 @@ function renderCoordFunil(){
               onclick="event.stopPropagation()" onchange="updateCfCount()">
             <div style="flex:1">
               <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
-              ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="opacity:.7">📞</span>${l.telefone}</div>`:''}
-              <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
+              ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">📞 ${l.telefone}</div>`:''}
+              <div style="font-size:10.5px;color:var(--muted2)">${l.interesse||'—'}</div>
               ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">👤 ${u.name}</div>`:''}
             </div>
           </div>
@@ -4503,7 +4507,6 @@ function openFunilVendedor(userId){
             onmouseover="this.style.borderColor='var(--gold-dim)'"
             onmouseout="this.style.borderColor='var(--border)'">
             <div style="font-size:11.5px;font-weight:700;margin-bottom:2px">${l.nome}</div>
-            ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="opacity:.7">📞</span>${l.telefone}</div>`:''}
             <div style="font-size:10px;color:var(--muted2)">${l.interesse||'—'}</div>
           </div>`).join('')}
         </div>`;
