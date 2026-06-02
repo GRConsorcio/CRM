@@ -331,7 +331,12 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div class="topbar-right">
       <div class="user-chip">
         <div class="user-av" id="u-av">?</div>
-        <span id="u-name">—</span>
+        <span id="u-name"
+      style="
+      font-weight:600;
+      color:#fff;
+      ">
+</span>
       </div>
       <button class="btn-sm" onclick="doLogout()">Sair</button>
     </div>
@@ -1297,6 +1302,12 @@ async function doLogout(){
 async function initApp(user){
   if(CU&&CU.id===user.id&&CUProfile) return;
   CU=user;
+  document.getElementById('u-name').textContent =
+    CU.nome || CU.name || CU.email || '';
+  document.getElementById('u-av').textContent =
+    (CU.nome || CU.name || '?')
+    .charAt(0)
+    .toUpperCase();
   document.getElementById('auth-screen').style.display='none';
 
   // ── CACHE FIRST: mostra dados salvos instantaneamente
