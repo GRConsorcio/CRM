@@ -1006,9 +1006,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
         🪪 Documento com Foto <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
       </div>
       <div class="upload-zone" id="upload-zone" onclick="document.getElementById('v-doc-foto').click()" style="padding:16px">
-        <input type="file" id="v-doc-foto" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="handleCatFiles('foto',this.files)" style="display:none" multiple>
+        <input type="file" id="v-doc-foto" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('foto',this.files)" style="display:none">
         <div class="upload-icon" style="font-size:22px;margin-bottom:6px">📎</div>
-        <div class="upload-txt" style="font-size:11.5px">Clique para selecionar</div>
+        <div class="upload-txt" style="font-size:11.5px">Clique para selecionar (múltiplos permitidos)</div>
         <div class="upload-sub">RG, CNH ou Passaporte — PDF, JPG, PNG</div>
       </div>
       <div id="preview-foto" style="margin-top:6px"></div>
@@ -1020,9 +1020,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
         📄 Contrato <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
       </div>
       <div class="upload-zone" onclick="document.getElementById('v-contrato').click()" style="padding:16px">
-        <input type="file" id="v-contrato" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="handleCatFiles('contrato',this.files)" style="display:none" multiple>
+        <input type="file" id="v-contrato" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('contrato',this.files)" style="display:none">
         <div class="upload-icon" style="font-size:22px;margin-bottom:6px">📎</div>
-        <div class="upload-txt" style="font-size:11.5px">Clique para selecionar</div>
+        <div class="upload-txt" style="font-size:11.5px">Clique para selecionar (múltiplos permitidos)</div>
         <div class="upload-sub">Contrato assinado — PDF, JPG, PNG</div>
       </div>
       <div id="preview-contrato" style="margin-top:6px"></div>
@@ -1034,9 +1034,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
         🧾 Boleto <span style="font-size:9px;color:var(--muted2);background:var(--surface2);padding:1px 6px;border-radius:4px;border:1px solid var(--border)">opcional</span>
       </div>
       <div class="upload-zone" onclick="document.getElementById('v-boleto').click()" style="padding:16px">
-        <input type="file" id="v-boleto" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="handleCatFiles('boleto',this.files)" style="display:none" multiple>
+        <input type="file" id="v-boleto" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('boleto',this.files)" style="display:none">
         <div class="upload-icon" style="font-size:22px;margin-bottom:6px">📎</div>
-        <div class="upload-txt" style="font-size:11.5px">Clique para selecionar</div>
+        <div class="upload-txt" style="font-size:11.5px">Clique para selecionar (múltiplos permitidos)</div>
         <div class="upload-sub">Boleto bancário — PDF, JPG, PNG</div>
       </div>
       <div id="preview-boleto" style="margin-top:6px"></div>
@@ -1048,9 +1048,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
         ✅ Comprovante de Pagamento <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
       </div>
       <div class="upload-zone" onclick="document.getElementById('v-comprovante').click()" style="padding:16px">
-        <input type="file" id="v-comprovante" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="handleCatFiles('comprovante',this.files)" style="display:none" multiple>
+        <input type="file" id="v-comprovante" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('comprovante',this.files)" style="display:none">
         <div class="upload-icon" style="font-size:22px;margin-bottom:6px">📎</div>
-        <div class="upload-txt" style="font-size:11.5px">Clique para selecionar</div>
+        <div class="upload-txt" style="font-size:11.5px">Clique para selecionar (múltiplos permitidos)</div>
         <div class="upload-sub">Comprovante de pagamento — PDF, JPG, PNG</div>
       </div>
       <div id="preview-comprovante" style="margin-top:6px"></div>
@@ -2609,7 +2609,7 @@ function openModal(type){
       });
     }
     pendingFiles=[];
-    catFiles={foto:null,contrato:null,boleto:null,comprovante:null};
+    catFiles={foto:[],contrato:[],boleto:[],comprovante:[]};
     ['preview-foto','preview-contrato','preview-boleto','preview-comprovante'].forEach(id=>{
       const el=document.getElementById(id); if(el) el.innerHTML='';
     });
@@ -2797,37 +2797,38 @@ async function delTask(id){
 }
 
 /* ═══ VENDA ═══ */
-// catFiles: { foto: File|null, contrato: File|null, boleto: File|null, comprovante: File|null }
+// catFiles: { foto: File[], contrato: File[], boleto: File[], comprovante: File[] }
 let catFiles = {foto:[],contrato:[],boleto:[],comprovante:[]};
 
-function handleCatFiles(cat, files){
-  if(!files || files.length === 0) return;
-  for(let i=0; i<files.length; i++){
-    const file = files[i];
+function handleCatFile(cat, fileOrList){
+  if(!fileOrList) return;
+  const files = (fileOrList instanceof FileList || Array.isArray(fileOrList))
+    ? Array.from(fileOrList)
+    : [fileOrList];
+  let added=0;
+  for(const file of files){
     if(file.size>10*1024*1024){toast(`${file.name} excede 10MB`,'err');continue;}
     catFiles[cat].push(file);
+    added++;
   }
-  renderCatPreview(cat);
+  if(added) renderCatPreview(cat);
 }
 
 function renderCatPreview(cat){
   const files=catFiles[cat];
   const el=document.getElementById('preview-'+cat);
   if(!el) return;
-  if(!files || files.length === 0){el.innerHTML='';return;}
-  
-  el.innerHTML = files.map((f, idx) => `
-    <div class="doc-item">
-      <div class="doc-icon">${f.type==='application/pdf'?'📄':'🖼️'}</div>
-      <div class="doc-name">${f.name}</div>
-      <div class="doc-size">${fmtSize(f.size)}</div>
-      <button class="act red" onclick="removeCatFile('${cat}', ${idx})">✕</button>
-    </div>
-  `).join('');
+  if(!files.length){el.innerHTML='';return;}
+  el.innerHTML=files.map((f,i)=>`<div class="doc-item">
+    <div class="doc-icon">${f.type==='application/pdf'?'📄':'🖼️'}</div>
+    <div class="doc-name">${f.name}</div>
+    <div class="doc-size">${fmtSize(f.size)}</div>
+    <button class="act red" onclick="removeCatFile('${cat}',${i})">✕</button>
+  </div>`).join('');
 }
 
-function removeCatFile(cat, index){
-  catFiles[cat].splice(index, 1);
+function removeCatFile(cat,idx){
+  catFiles[cat].splice(idx,1);
   const inp=document.getElementById(`v-${cat==='foto'?'doc-foto':cat}`);
   if(inp) inp.value='';
   renderCatPreview(cat);
@@ -2848,9 +2849,9 @@ async function saveVenda(){
   if(!v('v-credito')){toast('Informe o Valor do Crédito','err');return;}
   if(!v('v-parcela')){toast('Informe a Parcela','err');return;}
   // Validate required docs
-  if(catFiles.foto.length === 0){toast('Anexe o Documento com Foto','err');return;}
-  if(catFiles.contrato.length === 0){toast('Anexe o Contrato','err');return;}
-  if(catFiles.comprovante.length === 0){toast('Anexe o Comprovante de Pagamento','err');return;}
+  if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
+  if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
+  if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
   const payload={
@@ -2882,7 +2883,6 @@ async function saveVenda(){
   const catLabels={foto:'Documento com Foto',contrato:'Contrato',boleto:'Boleto',comprovante:'Comprovante de Pagamento'};
   for(const [cat,files] of Object.entries(catFiles)){
     for(const file of files){
-      if(!file) continue;
       const path=`${vendaLeadId}/${vd.id}/${cat}-${Date.now()}-${file.name}`;
       const{error:ue}=await sb.storage.from('crm-documentos').upload(path,file);
       if(!ue){
@@ -2903,7 +2903,6 @@ async function saveVenda(){
   if(li>-1) allLeads[li].status='Fechado';
 
   catFiles={foto:[],contrato:[],boleto:[],comprovante:[]};
-  pendingFiles=[];
   closeModal('venda');
   toast('Venda registrada com sucesso!','ok');
   openDetail(vendaLeadId,fromPage);
@@ -3378,7 +3377,7 @@ async function runAutoReturnRules(){
       leadsToReturn.push({id:l.id, reason:'Perdido há 3 dias'});
       continue;
     }
-    // Regra 2: Leads com vendedores (Novo, Sem Contato, Em Negociação, Proposta) → volta para a base após 7 dias corridos
+    // Regra 2: Novo, Sem Contato, Em Negociação, Proposta → volta para a base após 7 dias corridos
     const statusAtivos = ['Novo', 'Sem Contato', 'Em Negociação', 'Proposta'];
     if(statusAtivos.includes(l.status) && daysSinceDist >= 7){
       leadsToReturn.push({id:l.id, reason:`${l.status} há 7 dias`});
@@ -5459,7 +5458,7 @@ document.getElementById('v-cpf').addEventListener('input',function(){
   zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));
   zone.addEventListener('drop',e=>{
     e.preventDefault();zone.classList.remove('drag');
-    const files=e.dataTransfer.files;if(files.length>0) handleCatFiles(cat,files);
+    const files=e.dataTransfer.files;if(files.length) handleCatFile(cat,files);
   });
 });
 const csvZone=document.getElementById('csv-zone');
