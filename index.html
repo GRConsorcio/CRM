@@ -189,6 +189,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 /* EMPTY */
 .empty{text-align:center;padding:36px 20px;color:var(--muted2);font-size:13px}
 .ei{font-size:34px;margin-bottom:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
 .back-btn{display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:7px;padding:6px 14px;font-size:11.5px;cursor:pointer;font-family:inherit;margin-bottom:16px;transition:all .13s}
 .back-btn:hover{border-color:var(--gold-dim);color:var(--gold2)}
 .cor-opt{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .13s;flex-shrink:0}
@@ -415,6 +416,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div id="mass-delete-btn-wrap"></div>
       <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="closeLeadsMass()">✕ Fechar</button>
     </div>
+    <!-- Smart search banner: shown when local search has no results -->
+    <div id="leads-search-banner" style="display:none"></div>
+
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title" id="l-title">Leads</div>
@@ -2055,9 +2059,33 @@ function renderLeads(resetPage){
   const dddLabel=fd?` · DDD ${fd}`:'';
   document.getElementById('l-title').textContent=`Leads — ${f.length.toLocaleString('pt-BR')} registro${f.length!==1?'s':''}${dddLabel}`;
 
+  // Smart search banner: only show when there's a search query and no local results
+  const searchBanner=document.getElementById('leads-search-banner');
+  if(searchBanner){
+    if(q && f.length===0){
+      searchBanner.innerHTML=`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:12px 18px;background:rgba(201,168,76,0.05);border:1px solid rgba(201,168,76,0.18);border-radius:10px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:20px">🔍</span>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--text)">Nenhum lead encontrado localmente.</div>
+              <div style="font-size:11.5px;color:var(--muted2);margin-top:2px">Procurar "<strong style="color:var(--gold2)">${q}</strong>" na base completa do Supabase?</div>
+            </div>
+          </div>
+          <button class="btn-primary" onclick="buscarNaBaseCompleta()" style="flex-shrink:0;display:flex;align-items:center;gap:6px">
+            🔍 Procurar na base completa
+          </button>
+        </div>`;
+      searchBanner.style.display='';
+    } else {
+      searchBanner.style.display='none';
+      searchBanner.innerHTML='';
+    }
+  }
+
   const showChk=_leadsMassMode;
   document.getElementById('l-tbody').innerHTML=pageItems.length===0
-    ?`<tr><td colspan="9"><div class="empty"><div class="ei">👥</div>Nenhum lead</div></td></tr>`
+    ?`<tr><td colspan="9"><div class="empty"><div class="ei">👥</div>${q?'Nenhum lead encontrado na sua base local.':'Nenhum lead'}</div></td></tr>`
     :pageItems.map(l=>{
       const u=allUsers.find(u=>u.user_id===l.responsavel_id);
       const isChecked=_selectedLeadIds.has(l.id);
@@ -2128,6 +2156,134 @@ function goLeadsPage(p){
   leadsCurrentPage=p;
   renderLeads(); // sem resetPage — mantém a página escolhida
   window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ═══ BUSCA NA BASE COMPLETA (Supabase) ═══ */
+async function buscarNaBaseCompleta(){
+  const q=(document.getElementById('l-srch')?.value||'').trim();
+  if(!q){notify('Digite algo para buscar','err');return;}
+
+  // Mostra modal de loading
+  const modal=document.getElementById('modal-busca-base');
+  if(!modal) return;
+  modal.classList.add('on');
+  const body=document.getElementById('busca-base-body');
+  body.innerHTML=`<div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:10px;color:var(--muted2);font-size:13px">Buscando "<strong style="color:var(--gold2)">${q}</strong>" na base completa…</div></div>`;
+  document.getElementById('busca-base-title').textContent=`🔍 Buscando na base completa…`;
+
+  try {
+    // Busca no Supabase com ilike em nome, telefone e interesse
+    const digits=q.replace(/\D/g,'');
+    let query=SB.from('leads').select('*').limit(50);
+    if(digits.length>=4){
+      // Busca por telefone (números) OU nome OU interesse
+      query=query.or(`nome.ilike.%${q}%,telefone.ilike.%${digits}%,interesse.ilike.%${q}%`);
+    } else {
+      query=query.or(`nome.ilike.%${q}%,interesse.ilike.%${q}%`);
+    }
+    const {data,error}=await query;
+    if(error) throw error;
+
+    // Filtra os que JÁ estão no allLeads (cache local)
+    const localIds=new Set(allLeads.map(l=>l.id));
+    const remote=data.filter(l=>!localIds.has(l.id));
+    const alreadyLocal=data.filter(l=>localIds.has(l.id));
+
+    document.getElementById('busca-base-title').textContent=`🔍 Resultado na base completa — "${q}"`;
+
+    if(data.length===0){
+      body.innerHTML=`<div class="empty"><div class="ei">🔭</div>Nenhum lead encontrado na base completa para "<strong>${q}</strong>".</div>`;
+      return;
+    }
+
+    let html='';
+
+    if(alreadyLocal.length>0){
+      html+=`<div style="font-size:11px;color:var(--muted2);margin-bottom:10px;padding:8px 12px;background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.15);border-radius:8px">
+        ✅ ${alreadyLocal.length} lead(s) já estão na sua base local.
+      </div>`;
+    }
+
+    if(remote.length>0){
+      html+=`<div style="font-size:11px;color:var(--muted2);margin-bottom:10px">
+        ${remote.length} lead(s) encontrado(s) fora da sua base. Importe ou assuma:
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>Nome</th><th>Telefone</th><th>Interesse</th><th>Status</th><th>Responsável atual</th><th></th>
+        </tr></thead>
+        <tbody>
+        ${remote.map(l=>{
+          const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+          const temDono=!!l.responsavel_id;
+          return`<tr>
+            <td style="font-weight:700;color:var(--gold2)">${l.nome}</td>
+            <td>${l.telefone||'—'}</td>
+            <td>${l.interesse||'—'}</td>
+            <td>${sBadge(l.status,l.tipo_lead,l.id)}</td>
+            <td>${resp?`<span style="font-size:11px">${resp.name}</span>`:'<span style="color:var(--orange);font-size:11px">Sem responsável</span>'}</td>
+            <td>
+              <div style="display:flex;gap:5px;flex-wrap:wrap">
+                <button class="act green" onclick="importarLeadParaCarteira('${l.id}')" title="Adiciona à sua base local sem alterar o responsável">
+                  ⬇️ Importar
+                </button>
+                ${!temDono||isAdminOrCoord()?`<button class="act" style="border-color:var(--blue);color:var(--blue)" onclick="assumirLead('${l.id}')" title="Assume o lead e define você como responsável">
+                  🤝 Assumir
+                </button>`:''}
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table></div>`;
+    } else {
+      html+=`<div class="empty" style="padding:20px 0"><div class="ei">✅</div>Todos os resultados já estão na sua base local.</div>`;
+    }
+
+    body.innerHTML=html;
+  } catch(e){
+    body.innerHTML=`<div class="empty"><div class="ei">❌</div><div style="color:var(--red);margin-top:8px">Erro ao buscar: ${e.message||'Falha de conexão'}</div></div>`;
+    console.error('buscarNaBaseCompleta error:',e);
+  }
+}
+
+async function importarLeadParaCarteira(leadId){
+  // Busca o lead completo no Supabase e adiciona ao allLeads local (sem alterar responsável)
+  try {
+    const {data,error}=await SB.from('leads').select('*').eq('id',leadId).single();
+    if(error) throw error;
+    if(!allLeads.find(l=>l.id===leadId)){
+      allLeads.push(data);
+    }
+    notify(`✅ Lead "${data.nome}" importado para sua base local!`,'ok');
+    renderLeads(true);
+    // Atualiza linha no modal
+    const btn=document.querySelector(`[onclick="importarLeadParaCarteira('${leadId}')"]`);
+    if(btn){
+      btn.textContent='✓ Importado';
+      btn.disabled=true;
+      btn.style.opacity='.5';
+    }
+  } catch(e){
+    notify('Erro ao importar: '+e.message,'err');
+  }
+}
+
+async function assumirLead(leadId){
+  if(!confirm('Assumir este lead e tornar-se responsável?')) return;
+  try {
+    const {data,error}=await SB.from('leads').update({responsavel_id:CU.id}).eq('id',leadId).select().single();
+    if(error) throw error;
+    // Atualiza no allLeads local
+    const idx=allLeads.findIndex(l=>l.id===leadId);
+    if(idx>=0) allLeads[idx]=data;
+    else allLeads.push(data);
+    notify(`🤝 Você assumiu o lead "${data.nome}"!`,'ok');
+    closeModal('busca-base');
+    renderLeads(true);
+  } catch(e){
+    notify('Erro ao assumir: '+e.message,'err');
+  }
 }
 
 /* ═══ MEUS LEADS (vendedor) ═══ */
@@ -5479,6 +5635,17 @@ if(csvZone){
   csvZone.addEventListener('drop',e=>{e.preventDefault();csvZone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)handleCSV(f);});
 }
 </script>
+
+<!-- ════ MODAL: BUSCA NA BASE COMPLETA ════ -->
+<div class="modal-bg" id="modal-busca-base">
+  <div class="modal" style="max-width:780px;width:100%">
+    <div class="modal-title" id="busca-base-title">🔍 Busca na base completa</div>
+    <div id="busca-base-body" style="min-height:120px"></div>
+    <div class="modal-btns" style="margin-top:14px">
+      <button class="btn-cancel" onclick="closeModal('busca-base')">Fechar</button>
+    </div>
+  </div>
+</div>
 
 <!-- ════ MODAL: RECOLHER TUDO PARA MIM ════ -->
 <div class="modal-bg" id="modal-recolher-tudo">
