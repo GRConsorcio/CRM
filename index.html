@@ -2330,7 +2330,17 @@ async function openDetail(id,from){
     }catch(e){toast('Erro ao buscar lead','err');return;}
   }
   const resp=allUsers.find(u=>u.user_id===lead.responsavel_id);
-  const hist=allHist.filter(h=>h.lead_id===id);
+  // Busca histórico sempre direto do Supabase (sem limite de cache) para não perder registros
+  let hist=allHist.filter(h=>h.lead_id===id);
+  try{
+    const{data:hFresh}=await sb.from('crm_historico').select('*').eq('lead_id',id).order('created_at',{ascending:false});
+    if(hFresh&&hFresh.length){
+      hist=hFresh;
+      // Atualiza cache local com registros frescos deste lead
+      allHist=allHist.filter(h=>h.lead_id!==id);
+      allHist.push(...hFresh);
+    }
+  }catch(e){console.warn('hist fetch error',e);}
   const tasks=allTasks.filter(t=>t.lead_id===id);
   const venda=allVendas.find(v=>v.lead_id===id);
   const docs=allDocs.filter(d=>d.lead_id===id);
@@ -2423,30 +2433,78 @@ async function openDetail(id,from){
 
   html+=`</div>`;
 
-  // Histórico
+  // Histórico — Linha do Tempo Completa
+  const histVisiveis=hist.filter(h=>isAdmin()||h.tipo!=='🔒 Interno (Adm)').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  // Mapeia tipo → cor e ícone da bolinha da timeline
+  function tipoConfig(tipo){
+    if(tipo==='🌟 Criação') return{cor:'#c9a84c',bg:'rgba(201,168,76,0.12)'};
+    if(tipo==='🔄 Status') return{cor:'#3b9eff',bg:'rgba(59,158,255,0.10)'};
+    if(tipo==='✏️ Edição') return{cor:'#a78bfa',bg:'rgba(167,139,250,0.10)'};
+    if(tipo==='👤 Atribuição') return{cor:'#34d399',bg:'rgba(52,211,153,0.10)'};
+    if(tipo==='🔒 Interno (Adm)') return{cor:'#c9a84c',bg:'rgba(201,168,76,0.06)'};
+    if(tipo==='🔄 Retorno Automático') return{cor:'#fb923c',bg:'rgba(251,146,60,0.10)'};
+    if(tipo==='📝 Anotação') return{cor:'var(--muted2)',bg:'transparent'};
+    // tipos de contato manuais
+    return{cor:'var(--gold2)',bg:'rgba(201,168,76,0.07)'};
+  }
   html+=`<div class="panel" style="margin-top:16px">
-    <div class="panel-head">
-      <div class="panel-title">📋 Histórico de Contatos</div>
-      ${canEdit?`<button class="btn-sm" onclick="openModal('hist')">+ Registrar</button>`:''}
+    <div class="panel-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="panel-title" style="margin:0">🕐 Linha do Tempo</div>
+        <span style="font-size:10px;color:var(--muted2);background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2px 9px">${histVisiveis.length} evento${histVisiveis.length!==1?'s':''}</span>
+      </div>
+      ${canEdit?`<button class="btn-sm" onclick="openModal('hist')">+ Registrar Contato</button>`:''}
     </div>
-    <div class="panel-body">
-      ${hist.filter(h=>isAdmin()||h.tipo!=='🔒 Interno (Adm)').length===0
-        ?'<div class="empty"><div class="ei">📋</div>Nenhum contato registrado</div>'
-        :hist.filter(h=>isAdmin()||h.tipo!=='🔒 Interno (Adm)').map(h=>{
-        const u=allUsers.find(u=>u.user_id===h.user_id);
-        const isInternal=h.tipo==='🔒 Interno (Adm)';
-        return`<div class="hist-item" style="${isInternal?'background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.15);border-radius:7px;padding:8px 10px;margin-bottom:4px':''}">
-          <div class="hist-dot" style="${isInternal?'background:var(--gold-dim)':''}"></div>
-          <div style="flex:1">
-            <div class="hist-text" style="${isInternal?'color:var(--gold-dim);font-size:11px':''}">
-              ${h.tipo}${isInternal?' <span style="background:#1a1505;color:var(--gold-dim);border:1px solid var(--gold-dim);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700">SÓ ADM</span>':''}
-            </div>
-            <div style="font-size:12.5px;color:${isInternal?'var(--muted2)':'var(--text)'};margin:3px 0">${h.descricao}</div>
-            <div class="hist-meta">${u?.name||'—'} · ${fmtDt(h.created_at)}</div>
-          </div>
-          ${isAdmin()?`<button class="act red" onclick="delHist('${h.id}')">🗑️</button>`:''}
-        </div>`;
-      }).join('')}
+    <div class="panel-body" style="padding:0">
+      ${histVisiveis.length===0
+        ?'<div class="empty" style="padding:24px"><div class="ei">📋</div>Nenhum evento registrado</div>'
+        :`<div style="position:relative;padding:16px 18px 8px">
+          <!-- linha vertical da timeline -->
+          <div style="position:absolute;left:33px;top:16px;bottom:8px;width:2px;background:var(--border);border-radius:2px"></div>
+          ${histVisiveis.map((h,idx)=>{
+            const u=allUsers.find(u=>u.user_id===h.user_id);
+            const isInternal=h.tipo==='🔒 Interno (Adm)';
+            const cfg=tipoConfig(h.tipo);
+            const dt=new Date(h.created_at);
+            const hoje2=new Date();
+            const diffMs=hoje2-dt;
+            const diffDias=Math.floor(diffMs/(1000*60*60*24));
+            const diffHoras=Math.floor(diffMs/(1000*60*60));
+            const diffMins=Math.floor(diffMs/(1000*60));
+            const relativo=diffMins<1?'agora':diffMins<60?`${diffMins}min atrás`:diffHoras<24?`${diffHoras}h atrás`:diffDias===1?'ontem':diffDias<7?`${diffDias} dias atrás`:fmtDt(h.created_at);
+            // Separador de data entre eventos de dias diferentes
+            const proximaDt=idx<histVisiveis.length-1?new Date(histVisiveis[idx+1].created_at):null;
+            const separador=proximaDt&&dt.toDateString()!==proximaDt.toDateString()
+              ?`<div style="display:flex;align-items:center;gap:8px;margin:12px 0 12px 44px">
+                  <div style="height:1px;width:24px;background:var(--border)"></div>
+                  <span style="font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em">${dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'})}</span>
+                  <div style="flex:1;height:1px;background:var(--border)"></div>
+                </div>`:''
+            return`<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:${idx===histVisiveis.length-1?'8':'14'}px;position:relative">
+              <!-- bolinha da timeline -->
+              <div style="flex-shrink:0;width:18px;height:18px;border-radius:50%;background:${cfg.cor};border:2px solid var(--bg);box-shadow:0 0 0 2px ${cfg.cor}40;margin-top:2px;z-index:1;display:flex;align-items:center;justify-content:center;font-size:8px"></div>
+              <!-- card do evento -->
+              <div style="flex:1;background:${cfg.bg};border:1px solid ${isInternal?'rgba(201,168,76,0.2)':'var(--border)'};border-radius:9px;padding:10px 12px;min-width:0">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                    <span style="font-size:11px;font-weight:700;color:${cfg.cor}">${h.tipo}</span>
+                    ${isInternal?'<span style="background:#1a1505;color:var(--gold-dim);border:1px solid var(--gold-dim);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700">SÓ ADM</span>':''}
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:10px;color:var(--muted2)" title="${fmtDt(h.created_at)}">${relativo}</span>
+                    ${isAdmin()?`<button class="act red" style="padding:2px 6px;font-size:10px" onclick="delHist('${h.id}')">🗑️</button>`:''}
+                  </div>
+                </div>
+                <div style="font-size:12.5px;color:var(--text);line-height:1.45;word-break:break-word">${h.descricao}</div>
+                <div style="font-size:10.5px;color:var(--muted2);margin-top:5px;display:flex;align-items:center;gap:5px">
+                  <span style="width:16px;height:16px;border-radius:50%;background:var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--gold2)">${(u?.name||'?')[0].toUpperCase()}</span>
+                  ${u?.name||'Usuário removido'} · ${fmtDt(h.created_at)}
+                </div>
+              </div>
+            </div>${separador}`;
+          }).join('')}
+        </div>`
+      }
     </div>
   </div>`;
 
@@ -2560,9 +2618,11 @@ async function moveStage(id,status){
   if(error){toast('Sem permissão para mover este lead','err');return;}
   const idx=allLeads.findIndex(l=>l.id===id);
   if(idx>-1) allLeads[idx].status=status;
-  await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'📝 Anotação',descricao:`Status → ${status}`,created_at:new Date().toISOString()});
-  const{data}=await sb.from('crm_historico').select('*').order('created_at',{ascending:false});
-  allHist=data||[];
+  const leadAtual=allLeads.find(l=>l.id===id);
+  const statusAnterior=leadAtual?.status||'?';
+  await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'🔄 Status',descricao:`Status: "${statusAnterior}" → "${status}"`,created_at:new Date().toISOString()});
+  const{data:hMv}=await sb.from('crm_historico').select('*').eq('lead_id',id).order('created_at',{ascending:false});
+  if(hMv){allHist=allHist.filter(h=>h.lead_id!==id);allHist.push(...hMv);}
   renderFunil();
   toast('Status atualizado!','ok');
 }
@@ -2630,6 +2690,7 @@ async function quickDist(leadId){
   await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()}).eq('id',dc.id);
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1){allLeads[i].responsavel_id=vend.user_id;}
+  await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'👤 Atribuição',descricao:`Lead atribuído ao vendedor: ${vend.name}`,created_at:new Date().toISOString()});
   toast(`Lead atribuído a ${vend.name}!`,'ok');
   renderDistribuicao();
 }
@@ -2857,7 +2918,37 @@ async function saveLead(){
   // Remove campos undefined do payload
   Object.keys(payload).forEach(k=>{if(payload[k]===undefined)delete payload[k];});
   if(editLeadId){
+    const leadAntes=allLeads.find(l=>l.id===editLeadId);
     await sb.from('crm_leads').update(payload).eq('id',editLeadId);
+    // Registra no histórico as alterações relevantes
+    const alteracoes=[];
+    if(leadAntes){
+      if(payload.status&&payload.status!==leadAntes.status)
+        alteracoes.push(`Status: "${leadAntes.status}" → "${payload.status}"`);
+      if('responsavel_id' in payload&&payload.responsavel_id!==leadAntes.responsavel_id){
+        const antesNome=allUsers.find(u=>u.user_id===leadAntes.responsavel_id)?.name||'Sem vendedor';
+        const depoisNome=allUsers.find(u=>u.user_id===payload.responsavel_id)?.name||'Sem vendedor';
+        alteracoes.push(`Vendedor: "${antesNome}" → "${depoisNome}"`);
+      }
+      if(payload.nome&&payload.nome!==leadAntes.nome)
+        alteracoes.push(`Nome: "${leadAntes.nome}" → "${payload.nome}"`);
+      if(payload.telefone&&payload.telefone!==leadAntes.telefone)
+        alteracoes.push(`Telefone atualizado`);
+      if(payload.interesse&&payload.interesse!==leadAntes.interesse)
+        alteracoes.push(`Interesse: "${leadAntes.interesse||'—'}" → "${payload.interesse}"`);
+      if(payload.origem&&payload.origem!==leadAntes.origem)
+        alteracoes.push(`Origem: "${leadAntes.origem||'—'}" → "${payload.origem}"`);
+    }
+    if(alteracoes.length){
+      await sb.from('crm_historico').insert({
+        lead_id:editLeadId,user_id:CU.id,
+        tipo:'✏️ Edição',
+        descricao:alteracoes.join(' | '),
+        created_at:new Date().toISOString()
+      });
+      const{data:hUpd}=await sb.from('crm_historico').select('*').eq('lead_id',editLeadId).order('created_at',{ascending:false});
+      if(hUpd){allHist=allHist.filter(h=>h.lead_id!==editLeadId);allHist.push(...hUpd);}
+    }
     // Update local immediately for snappy UX; realtime will confirm
     const i=allLeads.findIndex(l=>l.id===editLeadId);
     if(i>-1) Object.assign(allLeads[i],payload);
@@ -2881,6 +2972,13 @@ async function saveLead(){
     // Always add locally — realtime deduplicates via id check
     if(data){
       if(!allLeads.find(l=>l.id===data.id)) allLeads.unshift(data);
+      // Registra criação no histórico
+      await sb.from('crm_historico').insert({
+        lead_id:data.id,user_id:CU.id,
+        tipo:'🌟 Criação',
+        descricao:`Lead criado por ${CUProfile?.name||CU.email}. Origem: ${payload.origem||'não informada'}. Status inicial: ${payload.status||'Novo'}.`,
+        created_at:new Date().toISOString()
+      });
     }
     closeModal('lead');
     toast('Lead criado!','ok');
@@ -3106,7 +3204,20 @@ async function updateVendaStatus(id,status){
   const{error}=await sb.from('crm_vendas').update({status_venda:status}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   const i=allVendas.findIndex(v=>v.id===id);
+  const vendaAntes=allVendas[i];
   if(i>-1) allVendas[i].status_venda=status;
+  // Registra no histórico do lead
+  if(vendaAntes?.lead_id){
+    const emoji=status==='Aprovado'?'✅':'❌';
+    await sb.from('crm_historico').insert({
+      lead_id:vendaAntes.lead_id,user_id:CU.id,
+      tipo:`${emoji} Venda ${status}`,
+      descricao:`Venda ${status==='Aprovado'?'aprovada':'cancelada'} por ${CUProfile?.name||CU.email}. Crédito: ${vendaAntes.valor_credito?'R$ '+Number(vendaAntes.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}.`,
+      created_at:new Date().toISOString()
+    });
+    const{data:hVs}=await sb.from('crm_historico').select('*').eq('lead_id',vendaAntes.lead_id).order('created_at',{ascending:false});
+    if(hVs){allHist=allHist.filter(h=>h.lead_id!==vendaAntes.lead_id);allHist.push(...hVs);}
+  }
   saveCache();
   toast('Venda '+status.toLowerCase()+'!','ok');
   renderDashboard();
@@ -3380,10 +3491,18 @@ function openInlineEditEmailObs(leadId){
 async function saveInlineEmailObs(leadId){
   const email=(document.getElementById('ie-email-'+leadId)?.value||'').trim();
   const obs=(document.getElementById('ie-obs-'+leadId)?.value||'').trim();
+  const leadAntes=allLeads.find(l=>l.id===leadId);
   const{error}=await sb.from('crm_leads').update({email:email||null,observacoes:obs||null}).eq('id',leadId);
   if(error){toast('Erro ao salvar: '+error.message,'err');return;}
   const li=allLeads.findIndex(l=>l.id===leadId);
   if(li>-1){allLeads[li].email=email||null;allLeads[li].observacoes=obs||null;}
+  // Log apenas se algo mudou
+  const mudancas=[];
+  if(leadAntes&&(email||'')!==(leadAntes.email||'')) mudancas.push('E-mail atualizado');
+  if(leadAntes&&(obs||'')!==(leadAntes.observacoes||'')) mudancas.push('Observações atualizadas');
+  if(mudancas.length){
+    await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:mudancas.join(' | '),created_at:new Date().toISOString()});
+  }
   saveCache();
   toast('E-mail e observações salvos!','ok');
   openDetail(leadId,fromPage);
