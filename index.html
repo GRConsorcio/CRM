@@ -2315,8 +2315,17 @@ function renderMeusLeads(){
 async function openDetail(id,from){
   fromPage=from;
   detailLeadId=id;
-  const lead=allLeads.find(l=>l.id===id);
-  if(!lead)return;
+  let lead=allLeads.find(l=>l.id===id);
+  // Se o lead nao esta em memoria (ex: coordenador acessando venda de lead fora do seu escopo),
+  // busca diretamente do Supabase e adiciona ao allLeads temporariamente
+  if(!lead){
+    try{
+      const{data,error}=await sb.from('crm_leads').select('*').eq('id',id).maybeSingle();
+      if(error||!data){toast('Lead nao encontrado','err');return;}
+      lead=data;
+      allLeads.push(lead); // cache temporario para evitar re-fetch
+    }catch(e){toast('Erro ao buscar lead','err');return;}
+  }
   const resp=allUsers.find(u=>u.user_id===lead.responsavel_id);
   const hist=allHist.filter(h=>h.lead_id===id);
   const tasks=allTasks.filter(t=>t.lead_id===id);
@@ -3306,8 +3315,11 @@ function renderVendasPage(){
     const vendedor=allUsers.find(u=>u.user_id===v.vendedor_id);
     const badgeCls=v.status_venda==='Aprovado'?'b-aprov':v.status_venda==='Cancelado'?'b-canc':'b-pend';
     const canManage=isAdmin()||isCoordenador();
+    // Se o lead não está em allLeads (ex: coordenador vendo venda de lead fora do seu escopo),
+    // exibe CPF ou grupo como referência e ainda permite abrir o detalhe via fetch on-demand
+    const leadNome=lead?.nome||(v.cpf?v.cpf:(v.grupo?`Grupo ${v.grupo}`:'(sem nome)'));
     return`<tr>
-      <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${v.lead_id}','vendas')">${lead?.nome||'—'}</td>
+      <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${v.lead_id}','vendas')">${leadNome}</td>
       <td style="font-size:11.5px">${vendedor?.name||'—'}</td>
       <td style="color:var(--gold2);font-weight:700">${v.valor_credito?brl(v.valor_credito):'—'}</td>
       <td style="font-size:11.5px">${v.parcela?brl(v.parcela):'—'}</td>
