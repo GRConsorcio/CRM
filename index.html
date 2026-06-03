@@ -383,7 +383,6 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <input type="date" id="l-f-data-fim" onchange="renderLeads(true)" title="Data final" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark">
       <button class="btn-sm" onclick="document.getElementById('l-f-data-ini').value='';document.getElementById('l-f-data-fim').value='';renderLeads(true)" title="Limpar datas" style="padding:7px 10px;font-size:11px">✕ Data</button>
       <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openRecolherTudo()">↩️ Recolher tudo para mim</button>
-      <button class="btn-sm" id="leads-avaliar-perdidos-btn" style="display:none;border-color:var(--red);color:var(--red)" onclick="openAvaliarPerdidos()">🔍 Avaliar Perdidos</button>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
       <span id="new-lead-btn-wrap"></span>
     </div>
@@ -2030,8 +2029,6 @@ function renderLeads(resetPage){
   if(nlw) nlw.innerHTML=isAdmin()?'<button class="btn-primary" onclick="openModal(\'lead\')">+ Novo Lead</button>':'';
   const rtb=document.getElementById('leads-recolher-tudo-btn');
   if(rtb) rtb.style.display=isAdmin()?'':'none';
-  const apb=document.getElementById('leads-avaliar-perdidos-btn');
-  if(apb) apb.style.display=isAdmin()?'':'none';
   // Populate DDD filter (admin only)
   populateDDDFilter();
   const q=(document.getElementById('l-srch')?.value||'').toLowerCase();
@@ -2429,22 +2426,29 @@ async function openDetail(id,from){
       <div class="panel-title">📋 Histórico de Contatos</div>
       ${canEdit?`<button class="btn-sm" onclick="openModal('hist')">+ Registrar</button>`:''}
     </div>
-    <div class="panel-body">
-      ${hist.filter(h=>isAdmin()||h.tipo!=='🔒 Interno (Adm)').length===0
-        ?'<div class="empty"><div class="ei">📋</div>Nenhum contato registrado</div>'
-        :hist.filter(h=>isAdmin()||h.tipo!=='🔒 Interno (Adm)').map(h=>{
+    <div class="panel-body" style="padding-left:30px; position:relative;">
+      <div style="position:absolute; left:18px; top:20px; bottom:20px; width:2px; background:var(--border2);"></div>
+      ${hist.length===0?'<div class="empty"><div class="ei">📋</div>Nenhum contato registrado</div>':hist.map(h=>{
         const u=allUsers.find(u=>u.user_id===h.user_id);
-        const isInternal=h.tipo==='🔒 Interno (Adm)';
-        return`<div class="hist-item" style="${isInternal?'background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.15);border-radius:7px;padding:8px 10px;margin-bottom:4px':''}">
-          <div class="hist-dot" style="${isInternal?'background:var(--gold-dim)':''}"></div>
+        let dotColor = 'var(--gold)';
+        if(h.tipo.includes('Status')) dotColor = 'var(--blue)';
+        if(h.tipo.includes('Venda')) dotColor = 'var(--green)';
+        if(h.tipo.includes('Equipe')) dotColor = 'var(--purple)';
+        if(h.tipo.includes('Recolher')) dotColor = 'var(--orange)';
+        
+        return`<div class="hist-item" style="margin-bottom:20px; position:relative;">
+          <div class="hist-dot" style="position:absolute; left:-16px; top:4px; width:10px; height:10px; border-radius:50%; background:${dotColor}; box-shadow:0 0 8px ${dotColor}; z-index:2;"></div>
           <div style="flex:1">
-            <div class="hist-text" style="${isInternal?'color:var(--gold-dim);font-size:11px':''}">
-              ${h.tipo}${isInternal?' <span style="background:#1a1505;color:var(--gold-dim);border:1px solid var(--gold-dim);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700">SÓ ADM</span>':''}
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+              <div class="hist-text" style="font-weight:700; color:${dotColor}; font-size:12px; text-transform:uppercase; letter-spacing:0.05em;">${h.tipo}</div>
+              <div class="hist-meta" style="font-size:11px; color:var(--muted2);">${fmtDt(h.created_at)}</div>
             </div>
-            <div style="font-size:12.5px;color:${isInternal?'var(--muted2)':'var(--text)'};margin:3px 0">${h.descricao}</div>
-            <div class="hist-meta">${u?.name||'—'} · ${fmtDt(h.created_at)}</div>
+            <div style="font-size:13px; color:var(--text); margin:4px 0; line-height:1.4;">${h.descricao}</div>
+            <div style="font-size:11px; color:var(--muted2); display:flex; align-items:center; gap:4px;">
+              <span style="opacity:0.6;">👤 Executado por:</span> <span style="color:var(--gold-dim); font-weight:600;">${u?.name||'Sistema'}</span>
+            </div>
           </div>
-          ${isAdmin()?`<button class="act red" onclick="delHist('${h.id}')">🗑️</button>`:''}
+          ${isAdmin()?`<button class="act red" style="margin-left:10px; padding:4px 8px;" onclick="delHist('${h.id}')">🗑️</button>`:''}
         </div>`;
       }).join('')}
     </div>
@@ -2555,16 +2559,30 @@ async function onDropStage(e,newStage){
 }
 
 async function moveStage(id,status){
-  // Coordinator and admin can move any lead; vendedor only their own
+  const lead=allLeads.find(l=>l.id===id);
+  const oldStatus=lead?lead.status:'Novo';
+  if(oldStatus===status) return;
+
   const{error}=await sb.from('crm_leads').update({status}).eq('id',id);
   if(error){toast('Sem permissão para mover este lead','err');return;}
+  
   const idx=allLeads.findIndex(l=>l.id===id);
   if(idx>-1) allLeads[idx].status=status;
-  await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'📝 Anotação',descricao:`Status → ${status}`,created_at:new Date().toISOString()});
+
+  await sb.from('crm_historico').insert({
+    lead_id:id,
+    user_id:CU.id,
+    tipo:'🔄 Movimentação',
+    descricao:`Lead movido de "${oldStatus}" para "${status}"`,
+    created_at:new Date().toISOString()
+  });
+
   const{data}=await sb.from('crm_historico').select('*').order('created_at',{ascending:false});
   allHist=data||[];
+  
   renderFunil();
   toast('Status atualizado!','ok');
+  if(detailLeadId===id) openDetail(id,fromPage);
 }
 
 /* ═══ DISTRIBUIÇÃO ═══ */
@@ -3588,115 +3606,6 @@ async function runAutoReturnRules(){
   saveCache();
   if(leadsToReturn.length) toast(`${leadsToReturn.length} lead(s) retornado(s) automaticamente à base`, 'ok');
   reRenderCurrent();
-}
-
-/* ═══ AVALIAR PERDIDOS SEM COMENTÁRIO ═══ */
-async function openAvaliarPerdidos(){
-  // Calcula preview: quantos perdidos sem comentário real
-  const perdidos = allLeads.filter(l => l.status === 'Perdido');
-  let semComentario = 0;
-  for(const l of perdidos){
-    const hist = allHist.filter(h => h.lead_id === l.id);
-    // Comentário real = qualquer entrada que NÃO seja mudança de status automática
-    const temComentarioReal = hist.some(h => {
-      const desc = (h.descricao || '').trim();
-      // Ignora: "Status → X", "Retornado automaticamente: X"
-      if(desc.startsWith('Status →')) return false;
-      if(desc.startsWith('Retornado automaticamente')) return false;
-      if(desc.startsWith('Venda revertida')) return false;
-      // Qualquer outro texto com ao menos 3 chars é comentário real
-      return desc.length >= 3;
-    });
-    if(!temComentarioReal) semComentario++;
-  }
-  const prev = document.getElementById('avaliar-perdidos-preview');
-  const prevTxt = document.getElementById('avaliar-perdidos-preview-txt');
-  if(semComentario > 0){
-    prevTxt.textContent = `${semComentario} lead(s) perdido(s) sem comentário serão reciclados para a base como Novo.`;
-    prev.style.display = '';
-  } else {
-    prevTxt.textContent = `Nenhum lead perdido sem comentário encontrado.`;
-    prev.style.background = 'rgba(74,222,128,0.08)';
-    prev.style.borderColor = 'rgba(74,222,128,0.25)';
-    prevTxt.style.color = 'var(--green)';
-    prev.style.display = '';
-  }
-  document.getElementById('avaliar-perdidos-btn-confirmar').disabled = semComentario === 0;
-  document.getElementById('modal-avaliar-perdidos').classList.add('on');
-}
-
-async function confirmarAvaliarPerdidos(){
-  const btn = document.getElementById('avaliar-perdidos-btn-confirmar');
-  const loading = document.getElementById('avaliar-perdidos-loading');
-  btn.disabled = true;
-  loading.style.display = '';
-  try{
-    const perdidos = allLeads.filter(l => l.status === 'Perdido');
-    const paraReciclar = [];
-    for(const l of perdidos){
-      const hist = allHist.filter(h => h.lead_id === l.id);
-      const temComentarioReal = hist.some(h => {
-        const desc = (h.descricao || '').trim();
-        if(desc.startsWith('Status →')) return false;
-        if(desc.startsWith('Retornado automaticamente')) return false;
-        if(desc.startsWith('Venda revertida')) return false;
-        return desc.length >= 3;
-      });
-      if(!temComentarioReal) paraReciclar.push(l);
-    }
-    if(!paraReciclar.length){
-      toast('Nenhum lead para reciclar.','ok');
-      closeModal('avaliar-perdidos');
-      return;
-    }
-    const ids = paraReciclar.map(l => l.id);
-    // 1. Atualiza os leads: status Novo, sem vendedor, sem equipe
-    const { error } = await sb.from('crm_leads').update({
-      status: 'Novo',
-      responsavel_id: null,
-      equipe_id: null,
-      distribuido_em: null
-    }).in('id', ids);
-    if(error){ toast('Erro ao atualizar leads: ' + error.message, 'err'); return; }
-    // 2. Atualiza cache local
-    ids.forEach(id => {
-      const i = allLeads.findIndex(l => l.id === id);
-      if(i > -1){
-        allLeads[i].status = 'Novo';
-        allLeads[i].responsavel_id = null;
-        allLeads[i].equipe_id = null;
-        allLeads[i].distribuido_em = null;
-      }
-    });
-    // 3. Registra no histórico (visível só para adm — tipo especial) o status anterior e o vendedor
-    for(const l of paraReciclar){
-      const vendAnterior = allUsers.find(u => u.user_id === l.responsavel_id);
-      const nomeVend = vendAnterior?.name || 'Sem vendedor';
-      const equipeAnterior = allEquipes.find(e => e.id === l.equipe_id);
-      const nomeEquipe = equipeAnterior?.nome || 'Sem equipe';
-      try{
-        await sb.from('crm_historico').insert({
-          lead_id: l.id,
-          user_id: CU.id,
-          tipo: '🔒 Interno (Adm)',
-          descricao: `[RECICLADO] Status anterior: Perdido | Vendedor: ${nomeVend} | Equipe: ${nomeEquipe} | Motivo: sem comentário explicativo`,
-          created_at: new Date().toISOString()
-        });
-      } catch(e){ console.warn('Hist insert error:', e); }
-    }
-    // 4. Atualiza historico em cache
-    const { data: newHist } = await sb.from('crm_historico').select('*').order('created_at', { ascending: false }).limit(2000);
-    if(newHist) allHist = newHist;
-    saveCache();
-    closeModal('avaliar-perdidos');
-    reRenderCurrent();
-    toast(`✅ ${paraReciclar.length} lead(s) reciclado(s) para a base como Novo!`, 'ok');
-  } catch(e){
-    toast('Erro: ' + e.message, 'err');
-  } finally {
-    btn.disabled = false;
-    loading.style.display = 'none';
-  }
 }
 
 /* ═══ REALTIME SUBSCRIPTIONS ═══ */
@@ -5054,8 +4963,19 @@ async function recolherLead(leadId){
   if(lead?.status==='Fechado'){toast('Lead fechado não pode ser recolhido','err');return;}
   const{error}=await sb.from('crm_leads').update({equipe_id:null,responsavel_id:null,distribuido_em:null}).eq('id',leadId);
   if(error){toast('Erro: '+error.message,'err');return;}
+  
+  await sb.from('crm_historico').insert({
+    lead_id:leadId, user_id:CU.id, tipo:'↩️ Recolher',
+    descricao:`Lead recolhido para a base global de distribuição`,
+    created_at:new Date().toISOString()
+  });
+
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1){allLeads[i].equipe_id=null;allLeads[i].responsavel_id=null;allLeads[i].distribuido_em=null;}
+  
+  const {data:h}=await sb.from('crm_historico').select('*').order('created_at',{ascending:false});
+  allHist=h||[];
+
   saveCache();populateSelects();
   toast('Lead recolhido — aparecerá na Distribuição!','ok');
   openDetail(leadId,fromPage);
@@ -5765,43 +5685,6 @@ if(csvZone){
   csvZone.addEventListener('drop',e=>{e.preventDefault();csvZone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)handleCSV(f);});
 }
 </script>
-
-<!-- ════ MODAL: AVALIAR PERDIDOS SEM COMENTÁRIO ════ -->
-<div class="modal-bg" id="modal-avaliar-perdidos">
-  <div class="modal" style="max-width:560px;width:100%">
-    <div class="modal-title">🔍 Avaliar Leads Perdidos</div>
-    <div style="font-size:13px;color:var(--muted2);margin-bottom:16px;line-height:1.6">
-      Esta ação irá analisar todos os leads com status <span style="color:var(--red);font-weight:700">Perdido</span>.<br>
-      Leads que <strong style="color:var(--text)">não possuem nenhum comentário real</strong> (apenas mudanças de status não contam) serão:
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-      <div style="display:flex;align-items:flex-start;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-        <div style="font-size:18px;flex-shrink:0">🔄</div>
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--text)">Retornados à base geral como Novo</div>
-          <div style="font-size:11.5px;color:var(--muted2);margin-top:3px">Sem vendedor, sem equipe — voltam para distribuição</div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-        <div style="font-size:18px;flex-shrink:0">🔒</div>
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--text)">Registro interno visível só para adm</div>
-          <div style="font-size:11.5px;color:var(--muted2);margin-top:3px">Status anterior e vendedor responsável ficam registrados no histórico</div>
-        </div>
-      </div>
-    </div>
-    <div id="avaliar-perdidos-preview" style="background:rgba(229,85,85,0.08);border:1px solid rgba(229,85,85,0.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--red);margin-bottom:14px;display:none">
-      <span id="avaliar-perdidos-preview-txt"></span>
-    </div>
-    <div id="avaliar-perdidos-loading" style="text-align:center;padding:12px;color:var(--muted2);font-size:12px;display:none">⏳ Analisando leads...</div>
-    <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal('avaliar-perdidos')">Cancelar</button>
-      <button id="avaliar-perdidos-btn-confirmar" class="btn-save" style="background:var(--red);border-color:var(--red)" onclick="confirmarAvaliarPerdidos()">
-        🔍 Avaliar e Reciclar
-      </button>
-    </div>
-  </div>
-</div>
 
 <!-- ════ MODAL: BUSCA NA BASE COMPLETA ════ -->
 <div class="modal-bg" id="modal-busca-base">
