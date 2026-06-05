@@ -339,7 +339,6 @@ tr:hover td{background:rgba(255,255,255,.015)}
       ">
 </span>
       </div>
-      <button class="btn-sm" title="Limpar cache e recarregar dados" onclick="clearCacheAndReload()" style="font-size:10px">🔄</button>
       <button class="btn-sm" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -1316,22 +1315,16 @@ async function initApp(user){
     .toUpperCase();
   document.getElementById('auth-screen').style.display='none';
 
-  // ── CACHE FIRST: mostra dados salvos instantaneamente (TTL: 30min)
-  // Admin nunca usa cache — base grande demais, sempre carrega do banco
-  const CACHE_TTL_MS=30*60*1000;
-  const _cachedProfileQuick=(()=>{try{const d=sessionStorage.getItem('crm_data_'+CU.id);if(!d)return null;return JSON.parse(d)?.profile||null;}catch(e){return null;}})();
-  const _isAdminQuick=_cachedProfileQuick?.role==='admin';
-  if(!_isAdminQuick){
+  // ── CACHE FIRST: mostra dados salvos instantaneamente
   const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
   if(cacheData){
     try{
       const cached=JSON.parse(cacheData);
-      const cacheAge=cached.ts?Date.now()-cached.ts:Infinity;
-      const cacheInvalid=
-        cacheAge>CACHE_TTL_MS ||
-        !cached.profile||!cached.profile.role;
-      if(cacheInvalid){
-        console.log('Cache expirado ('+Math.round(cacheAge/60000)+'min) — recarregando...');
+      // Invalida cache incompleto só para admin:
+      // Supabase retorna no máximo 1000 por query sem .range()
+      // Se admin tem ≤1000 leads em cache, a carga paralela provavelmente falhou
+      if(cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin'){
+        console.log('Cache admin com '+cached.leads.length+' leads — incompleto, recarregando...');
         sessionStorage.removeItem('crm_data_'+CU.id);
         // Cai no fluxo de primeira vez abaixo
       } else {
@@ -1357,14 +1350,10 @@ async function initApp(user){
         refreshInBackground();
         return;
       }
-    } catch(e){
-      console.warn('Cache corrompido, limpando:',e.message);
-      sessionStorage.removeItem('crm_data_'+CU.id);
-    }
+    } catch(e){ sessionStorage.removeItem('crm_data_'+CU.id); }
   }
-  } // end if(!_isAdminQuick)
 
-  // ── PRIMEIRA VEZ / ADMIN: carrega normalmente do banco
+  // ── PRIMEIRA VEZ: carrega normalmente
   try{
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
     await ensureProfile();
@@ -1388,12 +1377,9 @@ async function initApp(user){
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
       document.getElementById('setup-warning').style.display='flex';
     } else {
-      // Limpa cache possivelmente corrompido antes de mostrar erro
-      try{ sessionStorage.removeItem('crm_data_'+CU.id); }catch(_){}
-      toast('Erro ao carregar dados. Verifique sua conexão.','err');
+      toast('Erro: '+(e?.message||e),'err');
       document.getElementById('auth-screen').style.display='flex';
-      document.getElementById('a-err').innerHTML=
-        'Erro ao carregar. <a href="javascript:location.reload()" style="color:var(--gold2);text-decoration:underline">Clique aqui para tentar novamente</a>.';
+      document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
     }
   }
 }
@@ -2356,26 +2342,8 @@ async function openDetail(id,from){
     }
   }catch(e){console.warn('hist fetch error',e);}
   const tasks=allTasks.filter(t=>t.lead_id===id);
-  // Sempre busca venda e docs frescos do banco para garantir dados atualizados
-  let venda=allVendas.find(v=>v.lead_id===id);
-  let docs=allDocs.filter(d=>d.lead_id===id);
-  try{
-    const[vRes,dRes]=await Promise.all([
-      sb.from('crm_vendas').select('*').eq('lead_id',id).maybeSingle(),
-      sb.from('crm_documentos').select('*').eq('lead_id',id).order('created_at',{ascending:false})
-    ]);
-    if(vRes.data!==undefined){
-      venda=vRes.data;
-      const vi=allVendas.findIndex(v=>v.lead_id===id);
-      if(venda){vi>-1?allVendas[vi]=venda:allVendas.unshift(venda);}
-      else if(vi>-1) allVendas.splice(vi,1);
-    }
-    if(dRes.data){
-      docs=dRes.data;
-      allDocs=allDocs.filter(d=>d.lead_id!==id);
-      allDocs.push(...dRes.data);
-    }
-  }catch(e){console.warn('openDetail: falha ao buscar venda/docs frescos',e.message);}
+  const venda=allVendas.find(v=>v.lead_id===id);
+  const docs=allDocs.filter(d=>d.lead_id===id);
   const hoje=new Date().toISOString().slice(0,10);
   // canEditData: admin can edit all fields; vendedor can edit basic info (tipo_lead hidden in modal)
   const canEditData=isAdmin()||lead.responsavel_id===CU.id||isAdminOrCoord();
@@ -2698,7 +2666,7 @@ function renderDistribuicao(){
       </div>`;
     }).join('');
 
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  const semVend=allLeads.filter(l=>!l.responsavel_id);
   document.getElementById('dist-tbody').innerHTML=semVend.length===0
     ?`<tr><td colspan="5"><div class="empty"><div class="ei">✅</div>Todos os leads têm vendedor</div></td></tr>`
     :semVend.map(l=>`<tr>
@@ -2728,8 +2696,8 @@ async function quickDist(leadId){
 }
 
 async function distAutoAll(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
-  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
+  const semVend=allLeads.filter(l=>!l.responsavel_id);
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
@@ -3315,10 +3283,10 @@ async function distManual(){
 async function distAuto(){
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  let semVend=allLeads.filter(l=>!l.responsavel_id);
   const qtd=parseInt(v('da-qtd'))||semVend.length;
   semVend=semVend.slice(0,qtd);
-  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
@@ -3673,24 +3641,12 @@ function goToDashboard(){
   document.getElementById('topbar-title').textContent='Dashboard';
 }
 
-function clearCacheAndReload(){
-  try{
-    Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
-    Object.keys(localStorage).forEach(k=>{ if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k); });
-  }catch(e){}
-  toast('Cache limpo! Recarregando...','ok');
-  setTimeout(()=>location.reload(),800);
-}
-
 function saveCache(){
   if(!CU||!CUProfile) return;
   try{
-    // Admin: nunca cacheia leads (base grande demais, causaria quota exceeded e loop)
-    // Leads do admin sempre carregam do banco na inicialização
-    const leadsToCache = CUProfile.role==='admin' ? [] : allLeads;
     const data={
       profile:CUProfile,
-      leads:leadsToCache,
+      leads:allLeads, // todos os leads — necessário para KPIs corretos
       users:allUsers,
       hist:allHist.slice(0,200),
       tasks:allTasks.slice(0,200),
@@ -3700,21 +3656,27 @@ function saveCache(){
       membros:allMembroEquipes,
       ts:Date.now()
     };
-    sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
-    console.log('Cache salvo: '+leadsToCache.length+' leads, role='+CUProfile.role);
+    try{
+      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
+    } catch(quota){
+      // Se a base for muito grande (>5MB), salva sem leads (carrega ao iniciar)
+      console.warn('Cache quota exceeded, saving without leads');
+      const slim={...data, leads:allLeads.slice(0,500)};
+      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(slim));
+    }
   } catch(e){ console.warn('Cache save error:',e.message); }
 }
 
 async function refreshInBackground(){
   try{
-    // Admin sempre recarrega do banco (não usa cache de leads)
-    if(isAdmin()){
-      console.log('refreshInBackground: admin — recarregando do banco...');
+    // Admin com poucos leads = carga incompleta, refaz
+    if(isAdmin()&&allLeads.length<=1000){
+      console.log('refreshInBackground: admin com leads incompletos, recarregando...');
       await loadAll();
       saveCache();
       reRenderCurrent();
       populateSelects();
-      await runAutoReturnRules();
+      if(isAdmin()) await runAutoReturnRules();
       return;
     }
     // Admin com base grande: atualiza só dados secundários (leads chegam via realtime)
@@ -3740,11 +3702,7 @@ async function refreshInBackground(){
     saveCache();
     reRenderCurrent();
     populateSelects();
-  } catch(e){
-    console.warn('Background refresh error:',e.message);
-    // Não propaga o erro — UI já está visível com dados do cache
-    // Não salva cache corrompido em caso de falha parcial
-  }
+  } catch(e){ console.warn('Background refresh error:',e.message); }
 }
 
 async function runAutoReturnRules(){
@@ -4361,7 +4319,7 @@ async function confirmDistPicker(){
 }
 
 function openDistAllPicker(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  const semVend=allLeads.filter(l=>!l.responsavel_id);
   document.getElementById('dist-all-info').textContent=semVend.length+' lead'+(semVend.length!==1?'s':'')+' sem vendedor';
   const vends=getDistVendors();
   document.getElementById('dist-all-vend').innerHTML=vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
@@ -4385,9 +4343,9 @@ async function confirmDistAll(){
   const vends=getDistVendors();
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   if(mode==='one'&&!specificVend){toast('Selecione um vendedor','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  let semVend=allLeads.filter(l=>!l.responsavel_id);
   if(qty) semVend=semVend.slice(0,qty);
-  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   let{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
