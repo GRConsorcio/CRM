@@ -1305,8 +1305,11 @@ async function doLogout(){
 
 /* ═══ INIT ═══ */
 /* ═══ INICIALIZAÇÃO DO APP ═══ */
+let _initAppRunning=false;
 async function initApp(user){
+  if(_initAppRunning) return; // evita chamada paralela (getSession + onAuthStateChange)
   if(CU&&CU.id===user.id&&CUProfile) return;
+  _initAppRunning=true;
   CU=user;
   document.getElementById('u-name').textContent=CU.nome||CU.name||CU.email||'';
   document.getElementById('u-av').textContent=(CU.nome||CU.name||'?').charAt(0).toUpperCase();
@@ -1339,6 +1342,7 @@ async function initApp(user){
         if(_taskAlertInterval) clearInterval(_taskAlertInterval);
         _taskAlertInterval=setInterval(checkTaskAlerts,60000);
         refreshInBackground();
+        _initAppRunning=false;
         return; // ← saída antecipada só quando cache válido
       }
       // Cache inválido/expirado/admin — limpa e carrega do banco
@@ -1354,12 +1358,13 @@ async function initApp(user){
   try{
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
     await ensureProfile();
+    _initAppRunning=false; // libera lock antes do loadAll (admin faz return interno)
     await loadAll();
     clearTimeout(t);
-    saveCache();
-    // loadAll já inicializa UI para admin internamente (return antecipado)
-    // Para outros perfis, inicializa aqui
+    // Para não-admin: loadAll não inicializa UI (sem return antecipado), então fazemos aqui
+    // Para admin: loadAll já inicializou UI e o saveCache é feito internamente após a carga paralela
     if(!document.getElementById('page-dashboard')?.classList.contains('on')){
+      saveCache(); // só salva aqui para não-admin (admin já salvou internamente com leads completos)
       populateSelects();renderNav();goToDashboard();
       renderDashboard().catch(()=>{});
       setupRealtime();
@@ -1367,6 +1372,7 @@ async function initApp(user){
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
     }
+    _initAppRunning=false;
   }catch(e){
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
@@ -1378,6 +1384,7 @@ async function initApp(user){
       document.getElementById('a-err').innerHTML=
         'Erro ao carregar. <a href="javascript:location.reload()" style="color:var(--gold2);text-decoration:underline">Clique aqui para tentar novamente</a>.';
     }
+    _initAppRunning=false;
   }
 }
 
@@ -1423,34 +1430,6 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
 
 async function ensureProfile(){
   const name=CU.user_metadata?.full_name||CU.email.split('@')[0];
-  const cacheKey='crm_profile_'+CU.id;
-  // Always try cache first for instant load
-  const cached=sessionStorage.getItem(cacheKey);
-  if(cached){
-    try{
-      const p=JSON.parse(cached);
-      if(p&&p.role&&p.user_id===CU.id){
-        CUProfile=p;
-        console.log('Profile from cache, role:',CUProfile.role);
-        // Atualiza sidebar com dados do profile cacheado
-        const initials=(CUProfile.name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
-        const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor'};
-        const sbName=document.getElementById('sb-name');
-        const sbRole=document.getElementById('sb-role');
-        const uName=document.getElementById('u-name');
-        const uAv=document.getElementById('u-av');
-        if(sbName) sbName.textContent=CUProfile.name||'';
-        if(sbRole) sbRole.textContent=roleLabels[CUProfile.role]||CUProfile.role;
-        if(uName) uName.textContent=CUProfile.name||'';
-        if(uAv) uAv.textContent=initials;
-        // Refresh silently in background
-        sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle()
-          .then(({data})=>{ if(data){ CUProfile=data; try{sessionStorage.setItem(cacheKey,JSON.stringify(data));}catch(e){} }})
-          .catch(()=>{});
-        return;
-      }
-    } catch(e){ sessionStorage.removeItem(cacheKey); }
-  }
   // No cache — fetch from DB with 12s timeout
   const withTimeout=(promise,ms)=>Promise.race([
     promise,
@@ -1466,12 +1445,7 @@ async function ensureProfile(){
     if(e.message==='timeout_profile'){
       console.warn('ensureProfile timeout — usando fallback');
       // Check sessionStorage cache first
-      const cacheKey='crm_profile_'+CU.id;
-      const cached=sessionStorage.getItem(cacheKey);
-      if(cached){
-        try{ CUProfile=JSON.parse(cached); console.log('Profile from cache:',CUProfile.role); return; }
-        catch(ce){ sessionStorage.removeItem(cacheKey); }
-      }
+      // sem cache de profile — usa fallback vendedor e retenta
       // Use temporary profile and retry in background
       CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
       // Retry after 3s — when it succeeds, re-initialize with correct role
@@ -1481,7 +1455,6 @@ async function ensureProfile(){
           if(data&&data.role!==CUProfile.role){
             console.log('Profile retry OK, role:',data.role);
             CUProfile=data;
-            sessionStorage.setItem(cacheKey,JSON.stringify(data));
             // Re-init with correct role
             await loadAll();
             saveCache();
@@ -1490,7 +1463,6 @@ async function ensureProfile(){
             toast('Perfil carregado: '+data.role,'ok');
           } else if(data){
             CUProfile=data;
-            sessionStorage.setItem(cacheKey,JSON.stringify(data));
           }
         } catch(re){ console.warn('Profile retry failed:',re.message); }
       },3000);
@@ -1508,7 +1480,7 @@ async function ensureProfile(){
     CUProfile=d2||{user_id:CU.id,name,email:CU.email,role:'vendedor'};
   } else {
     CUProfile=data;
-    try{ sessionStorage.setItem('crm_profile_'+CU.id,JSON.stringify(data)); }catch(e){}
+    // profile salvo apenas no crm_data_ pelo saveCache
   }
   const initials=CUProfile.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
   document.getElementById('sb-name').textContent=CUProfile.name;
