@@ -339,6 +339,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       ">
 </span>
       </div>
+      <button class="btn-sm" title="Limpar cache e recarregar dados" onclick="clearCacheAndReload()" style="font-size:10px">🔄</button>
       <button class="btn-sm" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -1315,16 +1316,20 @@ async function initApp(user){
     .toUpperCase();
   document.getElementById('auth-screen').style.display='none';
 
-  // ── CACHE FIRST: mostra dados salvos instantaneamente
+  // ── CACHE FIRST: mostra dados salvos instantaneamente (TTL: 30min)
+  const CACHE_TTL_MS=30*60*1000;
   const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
   if(cacheData){
     try{
       const cached=JSON.parse(cacheData);
-      // Invalida cache incompleto só para admin:
-      // Supabase retorna no máximo 1000 por query sem .range()
-      // Se admin tem ≤1000 leads em cache, a carga paralela provavelmente falhou
-      if(cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin'){
-        console.log('Cache admin com '+cached.leads.length+' leads — incompleto, recarregando...');
+      const cacheAge=cached.ts?Date.now()-cached.ts:Infinity;
+      const cacheInvalid=
+        cacheAge>CACHE_TTL_MS ||
+        !cached.profile||!cached.profile.role ||
+        (cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin');
+      if(cacheInvalid){
+        console.log('Cache inválido/expirado ('+Math.round(cacheAge/60000)+'min, '+
+          (cached.leads?.length||0)+' leads, role='+cached.profile?.role+') — recarregando...');
         sessionStorage.removeItem('crm_data_'+CU.id);
         // Cai no fluxo de primeira vez abaixo
       } else {
@@ -1350,7 +1355,10 @@ async function initApp(user){
         refreshInBackground();
         return;
       }
-    } catch(e){ sessionStorage.removeItem('crm_data_'+CU.id); }
+    } catch(e){
+      console.warn('Cache corrompido, limpando:',e.message);
+      sessionStorage.removeItem('crm_data_'+CU.id);
+    }
   }
 
   // ── PRIMEIRA VEZ: carrega normalmente
@@ -1377,9 +1385,12 @@ async function initApp(user){
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
       document.getElementById('setup-warning').style.display='flex';
     } else {
-      toast('Erro: '+(e?.message||e),'err');
+      // Limpa cache possivelmente corrompido antes de mostrar erro
+      try{ sessionStorage.removeItem('crm_data_'+CU.id); }catch(_){}
+      toast('Erro ao carregar dados. Verifique sua conexão.','err');
       document.getElementById('auth-screen').style.display='flex';
-      document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
+      document.getElementById('a-err').innerHTML=
+        'Erro ao carregar. <a href="javascript:location.reload()" style="color:var(--gold2);text-decoration:underline">Clique aqui para tentar novamente</a>.';
     }
   }
 }
@@ -3641,6 +3652,15 @@ function goToDashboard(){
   document.getElementById('topbar-title').textContent='Dashboard';
 }
 
+function clearCacheAndReload(){
+  try{
+    Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
+    Object.keys(localStorage).forEach(k=>{ if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k); });
+  }catch(e){}
+  toast('Cache limpo! Recarregando...','ok');
+  setTimeout(()=>location.reload(),800);
+}
+
 function saveCache(){
   if(!CU||!CUProfile) return;
   try{
@@ -3702,7 +3722,11 @@ async function refreshInBackground(){
     saveCache();
     reRenderCurrent();
     populateSelects();
-  } catch(e){ console.warn('Background refresh error:',e.message); }
+  } catch(e){
+    console.warn('Background refresh error:',e.message);
+    // Não propaga o erro — UI já está visível com dados do cache
+    // Não salva cache corrompido em caso de falha parcial
+  }
 }
 
 async function runAutoReturnRules(){
