@@ -1317,21 +1317,21 @@ async function initApp(user){
   document.getElementById('auth-screen').style.display='none';
 
   // ── CACHE FIRST: mostra dados salvos instantaneamente (TTL: 30min)
+  // Admin nunca usa cache — base grande demais, sempre carrega do banco
   const CACHE_TTL_MS=30*60*1000;
+  const _cachedProfileQuick=(()=>{try{const d=sessionStorage.getItem('crm_data_'+CU.id);if(!d)return null;return JSON.parse(d)?.profile||null;}catch(e){return null;}})();
+  const _isAdminQuick=_cachedProfileQuick?.role==='admin';
+  if(!_isAdminQuick){
   const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
   if(cacheData){
     try{
       const cached=JSON.parse(cacheData);
       const cacheAge=cached.ts?Date.now()-cached.ts:Infinity;
-      // Admin nunca usa cache de leads — sempre busca do banco (base muito grande para sessionStorage)
-      const adminRole = cached.profile?.role==='admin';
       const cacheInvalid=
         cacheAge>CACHE_TTL_MS ||
-        !cached.profile||!cached.profile.role ||
-        adminRole;
+        !cached.profile||!cached.profile.role;
       if(cacheInvalid){
-        console.log('Cache inválido/expirado ('+Math.round(cacheAge/60000)+'min, '+
-          (cached.leads?.length||0)+' leads, role='+cached.profile?.role+') — recarregando...');
+        console.log('Cache expirado ('+Math.round(cacheAge/60000)+'min) — recarregando...');
         sessionStorage.removeItem('crm_data_'+CU.id);
         // Cai no fluxo de primeira vez abaixo
       } else {
@@ -1362,8 +1362,9 @@ async function initApp(user){
       sessionStorage.removeItem('crm_data_'+CU.id);
     }
   }
+  } // end if(!_isAdminQuick)
 
-  // ── PRIMEIRA VEZ: carrega normalmente
+  // ── PRIMEIRA VEZ / ADMIN: carrega normalmente do banco
   try{
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
     await ensureProfile();
@@ -2355,8 +2356,26 @@ async function openDetail(id,from){
     }
   }catch(e){console.warn('hist fetch error',e);}
   const tasks=allTasks.filter(t=>t.lead_id===id);
-  const venda=allVendas.find(v=>v.lead_id===id);
-  const docs=allDocs.filter(d=>d.lead_id===id);
+  // Sempre busca venda e docs frescos do banco para garantir dados atualizados
+  let venda=allVendas.find(v=>v.lead_id===id);
+  let docs=allDocs.filter(d=>d.lead_id===id);
+  try{
+    const[vRes,dRes]=await Promise.all([
+      sb.from('crm_vendas').select('*').eq('lead_id',id).maybeSingle(),
+      sb.from('crm_documentos').select('*').eq('lead_id',id).order('created_at',{ascending:false})
+    ]);
+    if(vRes.data!==undefined){
+      venda=vRes.data;
+      const vi=allVendas.findIndex(v=>v.lead_id===id);
+      if(venda){vi>-1?allVendas[vi]=venda:allVendas.unshift(venda);}
+      else if(vi>-1) allVendas.splice(vi,1);
+    }
+    if(dRes.data){
+      docs=dRes.data;
+      allDocs=allDocs.filter(d=>d.lead_id!==id);
+      allDocs.push(...dRes.data);
+    }
+  }catch(e){console.warn('openDetail: falha ao buscar venda/docs frescos',e.message);}
   const hoje=new Date().toISOString().slice(0,10);
   // canEditData: admin can edit all fields; vendedor can edit basic info (tipo_lead hidden in modal)
   const canEditData=isAdmin()||lead.responsavel_id===CU.id||isAdminOrCoord();
