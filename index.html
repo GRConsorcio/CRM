@@ -1306,10 +1306,13 @@ async function doLogout(){
 /* ═══ INIT ═══ */
 /* ═══ INICIALIZAÇÃO DO APP ═══ */
 let _initAppRunning=false;
+let _initAppUserId=null;
 async function initApp(user){
   if(_initAppRunning) return; // evita chamada paralela (getSession + onAuthStateChange)
+  if(_initAppUserId===user.id&&CU&&CUProfile) return; // já inicializado para este usuário
   if(CU&&CU.id===user.id&&CUProfile) return;
   _initAppRunning=true;
+  _initAppUserId=user.id;
   CU=user;
   document.getElementById('u-name').textContent=CU.nome||CU.name||CU.email||'';
   document.getElementById('u-av').textContent=(CU.nome||CU.name||'?').charAt(0).toUpperCase();
@@ -1358,7 +1361,6 @@ async function initApp(user){
   try{
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
     await ensureProfile();
-    _initAppRunning=false; // libera lock antes do loadAll (admin faz return interno)
     await loadAll();
     clearTimeout(t);
     // Para não-admin: loadAll não inicializa UI (sem return antecipado), então fazemos aqui
