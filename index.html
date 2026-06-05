@@ -2177,7 +2177,7 @@ async function buscarNaBaseCompleta(){
   try {
     // Busca no Supabase com ilike em nome, telefone e interesse
     const digits=q.replace(/\D/g,'');
-    let query=SB.from('leads').select('*').limit(50);
+    let query=sb.from('crm_leads').select('*').limit(50);
     if(digits.length>=4){
       // Busca por telefone (números) OU nome OU interesse
       query=query.or(`nome.ilike.%${q}%,telefone.ilike.%${digits}%,interesse.ilike.%${q}%`);
@@ -2253,7 +2253,7 @@ async function buscarNaBaseCompleta(){
 async function importarLeadParaCarteira(leadId){
   // Busca o lead completo no Supabase e adiciona ao allLeads local (sem alterar responsável)
   try {
-    const {data,error}=await SB.from('leads').select('*').eq('id',leadId).single();
+    const {data,error}=await sb.from('crm_leads').select('*').eq('id',leadId).single();
     if(error) throw error;
     if(!allLeads.find(l=>l.id===leadId)){
       allLeads.push(data);
@@ -2275,7 +2275,7 @@ async function importarLeadParaCarteira(leadId){
 async function assumirLead(leadId){
   if(!confirm('Assumir este lead e tornar-se responsável?')) return;
   try {
-    const {data,error}=await SB.from('leads').update({responsavel_id:CU.id}).eq('id',leadId).select().single();
+    const {data,error}=await sb.from('crm_leads').update({responsavel_id:CU.id}).eq('id',leadId).select().single();
     if(error) throw error;
     // Atualiza no allLeads local
     const idx=allLeads.findIndex(l=>l.id===leadId);
