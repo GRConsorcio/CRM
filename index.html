@@ -1243,8 +1243,7 @@ const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const {createClient}=supabase;
 const sb=createClient(SUPA_URL,SUPA_KEY);
 
-// ── Acorda o Supabase imediatamente (plano gratuito hiberna após inatividade) ──
-// Essa query dispara ANTES de qualquer autenticação para o banco já estar ativo
+// Acorda o Supabase imediatamente (plano gratuito hiberna após inatividade)
 (async()=>{ try{ await sb.from('crm_users').select('id').limit(1).maybeSingle(); }catch(_){} })();
 
 let CU=null,CUProfile=null;
@@ -1441,34 +1440,31 @@ async function ensureProfile(){
   let data,error;
   try{
     const r=await withTimeout(
-      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),30000
+      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),12000
     );
     data=r.data; error=r.error;
   } catch(e){
     if(e.message==='timeout_profile'){
-      console.warn('ensureProfile timeout — usando fallback');
-      // Check sessionStorage cache first
-      // sem cache de profile — usa fallback vendedor e retenta
-      // Use temporary profile and retry in background
-      CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
-      // Retry after 3s — when it succeeds, re-initialize with correct role
-      setTimeout(async()=>{
+      console.warn('ensureProfile timeout — aguardando banco acordar...');
+      for(let attempt=1;attempt<=3;attempt++){
+        await new Promise(r=>setTimeout(r,attempt*4000));
         try{
-          const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
-          if(data&&data.role!==CUProfile.role){
-            console.log('Profile retry OK, role:',data.role);
-            CUProfile=data;
-            // Re-init with correct role
-            await loadAll();
-            saveCache();
-            renderNav();
-            renderDashboard();
-            toast('Perfil carregado: '+data.role,'ok');
-          } else if(data){
-            CUProfile=data;
+          const{data:d}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
+          if(d){
+            console.log('ensureProfile retry OK (tentativa '+attempt+'), role:',d.role);
+            CUProfile=d;
+            const initials=d.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+            document.getElementById('sb-name').textContent=d.name;
+            document.getElementById('u-name').textContent=d.name;
+            document.getElementById('u-av').textContent=initials;
+            const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor'};
+            document.getElementById('sb-role').textContent=roleLabels[d.role]||d.role;
+            return;
           }
-        } catch(re){ console.warn('Profile retry failed:',re.message); }
-      },3000);
+        } catch(re){ console.warn('Retry '+attempt+' falhou:',re.message); }
+      }
+      console.warn('ensureProfile usando fallback após 3 tentativas');
+      CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
       return;
     }
     throw e;
