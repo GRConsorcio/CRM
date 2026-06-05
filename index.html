@@ -2903,8 +2903,8 @@ function openModal(type){
       sv('v-obs',existingVenda.observacoes||'');
       // Update button label
       document.querySelector('#modal-venda .btn-save').textContent='Atualizar Venda';
-      // Check if user can edit: admin, coordenador, supervisor only
-      const canEditVenda=isAdmin()||isCoordenador()||isSupervisor();
+      // Check if user can edit: admin, coordenador, supervisor e o próprio vendedor responsável
+      const canEditVenda=isAdmin()||isCoordenador()||isSupervisor()||lead?.responsavel_id===CU.id;
       document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
       ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs'].forEach(id=>{
         const el=document.getElementById(id);
@@ -3198,10 +3198,13 @@ async function saveVenda(){
   if(!v('v-venc')){toast('Informe a Data de Vencimento','err');return;}
   if(!v('v-credito')){toast('Informe o Valor do Crédito','err');return;}
   if(!v('v-parcela')){toast('Informe a Parcela','err');return;}
-  // Validate required docs
-  if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
-  if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
-  if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
+  // Docs obrigatórios apenas na criação — na atualização, novos são opcionais (antigos permanecem)
+  const _isNovaVenda=!allVendas.find(v=>v.lead_id===vendaLeadId);
+  if(_isNovaVenda){
+    if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
+    if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
+    if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
+  }
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
   const payload={
@@ -3223,16 +3226,7 @@ async function saveVenda(){
     const vi=allVendas.findIndex(v=>v.id===existingV.id);
     if(vi>-1) Object.assign(allVendas[vi],payload);
 
-    // FIX 1: Ao atualizar venda existente, apaga documentos antigos para evitar duplicação
-    const hasNewFiles=Object.values(catFiles).some(arr=>arr.length>0);
-    if(hasNewFiles){
-      const oldDocs=allDocs.filter(d=>d.venda_id===existingV.id);
-      for(const od of oldDocs){
-        await sb.storage.from('crm-documentos').remove([od.storage_path]);
-      }
-      await sb.from('crm_documentos').delete().eq('venda_id',existingV.id);
-      allDocs=allDocs.filter(d=>d.venda_id!==existingV.id);
-    }
+    // Docs antigos são mantidos — novos arquivos são adicionados sem apagar os existentes
   } else {
     const{data:ins,error}=await sb.from('crm_vendas').insert(payload).select().maybeSingle();
     if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
