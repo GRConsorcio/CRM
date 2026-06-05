@@ -2666,7 +2666,7 @@ function renderDistribuicao(){
       </div>`;
     }).join('');
 
-  const semVend=allLeads.filter(l=>!l.responsavel_id);
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
   document.getElementById('dist-tbody').innerHTML=semVend.length===0
     ?`<tr><td colspan="5"><div class="empty"><div class="ei">✅</div>Todos os leads têm vendedor</div></td></tr>`
     :semVend.map(l=>`<tr>
@@ -2696,8 +2696,8 @@ async function quickDist(leadId){
 }
 
 async function distAutoAll(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id);
-  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
@@ -3283,10 +3283,10 @@ async function distManual(){
 async function distAuto(){
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id);
+  let semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
   const qtd=parseInt(v('da-qtd'))||semVend.length;
   semVend=semVend.slice(0,qtd);
-  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
@@ -4319,7 +4319,7 @@ async function confirmDistPicker(){
 }
 
 function openDistAllPicker(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id);
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
   document.getElementById('dist-all-info').textContent=semVend.length+' lead'+(semVend.length!==1?'s':'')+' sem vendedor';
   const vends=getDistVendors();
   document.getElementById('dist-all-vend').innerHTML=vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
@@ -4343,9 +4343,9 @@ async function confirmDistAll(){
   const vends=getDistVendors();
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   if(mode==='one'&&!specificVend){toast('Selecione um vendedor','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id);
+  let semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
   if(qty) semVend=semVend.slice(0,qty);
-  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
   let{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
