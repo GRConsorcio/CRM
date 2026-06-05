@@ -1323,10 +1323,12 @@ async function initApp(user){
     try{
       const cached=JSON.parse(cacheData);
       const cacheAge=cached.ts?Date.now()-cached.ts:Infinity;
+      // Admin nunca usa cache de leads — sempre busca do banco (base muito grande para sessionStorage)
+      const adminRole = cached.profile?.role==='admin';
       const cacheInvalid=
         cacheAge>CACHE_TTL_MS ||
         !cached.profile||!cached.profile.role ||
-        (cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin');
+        adminRole;
       if(cacheInvalid){
         console.log('Cache inválido/expirado ('+Math.round(cacheAge/60000)+'min, '+
           (cached.leads?.length||0)+' leads, role='+cached.profile?.role+') — recarregando...');
@@ -3664,9 +3666,12 @@ function clearCacheAndReload(){
 function saveCache(){
   if(!CU||!CUProfile) return;
   try{
+    // Admin: nunca cacheia leads (base grande demais, causaria quota exceeded e loop)
+    // Leads do admin sempre carregam do banco na inicialização
+    const leadsToCache = CUProfile.role==='admin' ? [] : allLeads;
     const data={
       profile:CUProfile,
-      leads:allLeads, // todos os leads — necessário para KPIs corretos
+      leads:leadsToCache,
       users:allUsers,
       hist:allHist.slice(0,200),
       tasks:allTasks.slice(0,200),
@@ -3676,27 +3681,21 @@ function saveCache(){
       membros:allMembroEquipes,
       ts:Date.now()
     };
-    try{
-      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
-    } catch(quota){
-      // Se a base for muito grande (>5MB), salva sem leads (carrega ao iniciar)
-      console.warn('Cache quota exceeded, saving without leads');
-      const slim={...data, leads:allLeads.slice(0,500)};
-      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(slim));
-    }
+    sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
+    console.log('Cache salvo: '+leadsToCache.length+' leads, role='+CUProfile.role);
   } catch(e){ console.warn('Cache save error:',e.message); }
 }
 
 async function refreshInBackground(){
   try{
-    // Admin com poucos leads = carga incompleta, refaz
-    if(isAdmin()&&allLeads.length<=1000){
-      console.log('refreshInBackground: admin com leads incompletos, recarregando...');
+    // Admin sempre recarrega do banco (não usa cache de leads)
+    if(isAdmin()){
+      console.log('refreshInBackground: admin — recarregando do banco...');
       await loadAll();
       saveCache();
       reRenderCurrent();
       populateSelects();
-      if(isAdmin()) await runAutoReturnRules();
+      await runAutoReturnRules();
       return;
     }
     // Admin com base grande: atualiza só dados secundários (leads chegam via realtime)
