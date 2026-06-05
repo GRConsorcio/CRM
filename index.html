@@ -1308,8 +1308,8 @@ async function doLogout(){
 let _initAppRunning=false;
 let _initAppUserId=null;
 async function initApp(user){
-  if(_initAppRunning) return; // evita chamada paralela (getSession + onAuthStateChange)
-  if(_initAppUserId===user.id&&CU&&CUProfile) return; // já inicializado para este usuário
+  if(_initAppRunning) return;
+  if(_initAppUserId===user.id&&CU&&CUProfile) return;
   if(CU&&CU.id===user.id&&CUProfile) return;
   _initAppRunning=true;
   _initAppUserId=user.id;
@@ -1432,7 +1432,7 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
 
 async function ensureProfile(){
   const name=CU.user_metadata?.full_name||CU.email.split('@')[0];
-  // No cache — fetch from DB with 12s timeout
+  // No cache — fetch from DB with 30s timeout (Supabase free tier wakes up slowly)
   const withTimeout=(promise,ms)=>Promise.race([
     promise,
     new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_profile')),ms))
@@ -1440,34 +1440,57 @@ async function ensureProfile(){
   let data,error;
   try{
     const r=await withTimeout(
-      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),12000
+      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),30000
     );
     data=r.data; error=r.error;
   } catch(e){
     if(e.message==='timeout_profile'){
       console.warn('ensureProfile timeout — usando fallback');
-      // Check sessionStorage cache first
-      // sem cache de profile — usa fallback vendedor e retenta
-      // Use temporary profile and retry in background
+      // Fallback temporário: assume vendedor para não travar a UI
       CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
-      // Retry after 3s — when it succeeds, re-initialize with correct role
-      setTimeout(async()=>{
+      // Retry robusto: tenta a cada 5s por até 3 vezes
+      let retries=0;
+      const retryProfile=async()=>{
+        retries++;
         try{
-          const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
-          if(data&&data.role!==CUProfile.role){
-            console.log('Profile retry OK, role:',data.role);
-            CUProfile=data;
-            // Re-init with correct role
-            await loadAll();
-            saveCache();
-            renderNav();
-            renderDashboard();
-            toast('Perfil carregado: '+data.role,'ok');
-          } else if(data){
-            CUProfile=data;
+          const{data:d}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
+          if(d){
+            console.log('Profile retry OK (tentativa '+retries+'), role:',d.role);
+            const roleChanged=d.role!==CUProfile.role;
+            CUProfile=d;
+            // Atualiza UI do sidebar sempre
+            const initials=d.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+            document.getElementById('sb-name').textContent=d.name;
+            document.getElementById('u-name').textContent=d.name;
+            document.getElementById('u-av').textContent=initials;
+            const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor'};
+            document.getElementById('sb-role').textContent=roleLabels[d.role]||d.role;
+            if(roleChanged){
+              // Role diferente do fallback: recarrega tudo com permissões corretas
+              toast('Conectado como '+roleLabels[d.role]+'. Recarregando...','ok');
+              _initAppRunning=false;
+              _initAppUserId=null;
+              CU=CU; // mantém o user
+              CUProfile=d;
+              await loadAll();
+              saveCache();
+              renderNav();
+              populateSelects();
+              goToDashboard();
+              renderDashboard().catch(()=>{});
+              setupRealtime();
+            } else {
+              toast('Perfil carregado: '+roleLabels[d.role],'ok');
+              saveCache();
+            }
+            return; // sucesso
           }
-        } catch(re){ console.warn('Profile retry failed:',re.message); }
-      },3000);
+        } catch(re){ console.warn('Profile retry '+retries+' falhou:',re.message); }
+        // Tenta de novo se não passou do limite
+        if(retries<3) setTimeout(retryProfile, 5000);
+        else console.warn('Profile retry esgotado após 3 tentativas');
+      };
+      setTimeout(retryProfile, 5000);
       return;
     }
     throw e;
