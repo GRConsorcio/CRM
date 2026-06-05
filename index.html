@@ -1243,8 +1243,8 @@ const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const {createClient}=supabase;
 const sb=createClient(SUPA_URL,SUPA_KEY);
 
-// Acorda o Supabase imediatamente (plano gratuito hiberna após inatividade)
-(async()=>{ try{ await sb.from('crm_users').select('id').limit(1).maybeSingle(); }catch(_){} })();
+// Acorda o Supabase — guarda a Promise para que initApp aguarde o banco estar pronto
+const _sbReady=(async()=>{ try{ await sb.from('crm_users').select('id').limit(1).maybeSingle(); }catch(_){} })();
 
 let CU=null,CUProfile=null;
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
@@ -1360,6 +1360,7 @@ async function initApp(user){
   // ── Carrega do banco ──
   try{
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
+    await _sbReady; // garante que o banco respondeu ao ping antes de qualquer query
     console.log('[initApp] ensureProfile...');
     await ensureProfile();
     console.log('[initApp] profile ok, role='+CUProfile?.role+' | loadAll...');
@@ -1441,7 +1442,21 @@ async function ensureProfile(){
   // No cache — fetch from DB with 12s timeout
   let data,error;
   {
-    const r=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
+    // Timeout de 60s com aviso visível — Supabase free pode demorar para acordar
+    const toastId=setTimeout(()=>toast('⏳ Banco de dados acordando, aguarde...','ok'),8000);
+    const withTimeout=p=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('CONN_TIMEOUT')),60000))]);
+    let r;
+    try{
+      r=await withTimeout(sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle());
+    } catch(te){
+      clearTimeout(toastId);
+      if(te.message==='CONN_TIMEOUT'){
+        toast('❌ Sem resposta do servidor. Verifique sua internet e recarregue.','err');
+        throw new Error('Servidor não respondeu em 60s. Verifique a conexão.');
+      }
+      throw te;
+    }
+    clearTimeout(toastId);
     data=r.data; error=r.error;
   }
   if(error?.message?.includes('does not exist')){
