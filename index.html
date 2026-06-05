@@ -339,7 +339,6 @@ tr:hover td{background:rgba(255,255,255,.015)}
       ">
 </span>
       </div>
-      <button class="btn-sm" title="Limpar cache e recarregar dados" onclick="clearCacheAndReload()" style="font-size:10px">🔄</button>
       <button class="btn-sm" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -1243,9 +1242,6 @@ const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const {createClient}=supabase;
 const sb=createClient(SUPA_URL,SUPA_KEY);
 
-// Acorda o Supabase imediatamente (plano gratuito hiberna após inatividade)
-(async()=>{ try{ await sb.from('crm_users').select('id').limit(1).maybeSingle(); }catch(_){} })();
-
 let CU=null,CUProfile=null;
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
@@ -1308,27 +1304,30 @@ async function doLogout(){
 
 /* ═══ INIT ═══ */
 /* ═══ INICIALIZAÇÃO DO APP ═══ */
-let _initAppRunning=false;
 async function initApp(user){
-  if(_initAppRunning) return; // evita chamada paralela (getSession + onAuthStateChange)
   if(CU&&CU.id===user.id&&CUProfile) return;
-  _initAppRunning=true;
   CU=user;
-  document.getElementById('u-name').textContent=CU.nome||CU.name||CU.email||'';
-  document.getElementById('u-av').textContent=(CU.nome||CU.name||'?').charAt(0).toUpperCase();
+  document.getElementById('u-name').textContent =
+    CU.nome || CU.name || CU.email || '';
+  document.getElementById('u-av').textContent =
+    (CU.nome || CU.name || '?')
+    .charAt(0)
+    .toUpperCase();
   document.getElementById('auth-screen').style.display='none';
 
-  // ── Tenta usar cache (apenas não-admin, TTL 30min) ──
-  const CACHE_TTL_MS=30*60*1000;
-  try{
-    const raw=sessionStorage.getItem('crm_data_'+CU.id);
-    if(raw){
-      const cached=JSON.parse(raw);
-      const age=cached.ts?Date.now()-cached.ts:Infinity;
-      const role=cached.profile?.role;
-      // Admin nunca usa cache de leads (base > sessionStorage quota)
-      const valid=cached.profile&&role&&role!=='admin'&&age<=CACHE_TTL_MS;
-      if(valid){
+  // ── CACHE FIRST: mostra dados salvos instantaneamente
+  const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
+  if(cacheData){
+    try{
+      const cached=JSON.parse(cacheData);
+      // Invalida cache incompleto só para admin:
+      // Supabase retorna no máximo 1000 por query sem .range()
+      // Se admin tem ≤1000 leads em cache, a carga paralela provavelmente falhou
+      if(cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin'){
+        console.log('Cache admin com '+cached.leads.length+' leads — incompleto, recarregando...');
+        sessionStorage.removeItem('crm_data_'+CU.id);
+        // Cai no fluxo de primeira vez abaixo
+      } else {
         CUProfile=cached.profile;
         allLeads=cached.leads||[];
         allUsers=cached.users||[];
@@ -1338,55 +1337,50 @@ async function initApp(user){
         allDocs=cached.docs||[];
         allEquipes=cached.equipes||[];
         allMembroEquipes=cached.membros||[];
-        populateSelects();renderNav();goToDashboard();
+        populateSelects();
+        renderNav();
+        goToDashboard();
         renderDashboard().catch(()=>{});
         setupRealtime();
+        // Start task alert system
         setTimeout(checkTaskAlerts,2000);
         if(_taskAlertInterval) clearInterval(_taskAlertInterval);
         _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+        // Atualiza dados em background sem bloquear a UI
         refreshInBackground();
-        _initAppRunning=false;
-        return; // ← saída antecipada só quando cache válido
+        return;
       }
-      // Cache inválido/expirado/admin — limpa e carrega do banco
-      sessionStorage.removeItem('crm_data_'+CU.id);
-      console.log('Cache ignorado: role='+role+', age='+Math.round(age/60000)+'min');
-    }
-  }catch(e){
-    console.warn('Cache erro, ignorando:',e.message);
-    try{sessionStorage.removeItem('crm_data_'+CU.id);}catch(_){}
+    } catch(e){ sessionStorage.removeItem('crm_data_'+CU.id); }
   }
 
-  // ── Carrega do banco ──
+  // ── PRIMEIRA VEZ: carrega normalmente
   try{
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
     await ensureProfile();
     await loadAll();
     clearTimeout(t);
-    // Para não-admin: loadAll não inicializa UI (sem return antecipado), então fazemos aqui
-    // Para admin: loadAll já inicializou UI e o saveCache é feito internamente após a carga paralela
+    saveCache();
+    // loadAll já inicializa UI para admin (retorno antecipado)
+    // Para outros perfis, inicializa aqui
     if(!document.getElementById('page-dashboard')?.classList.contains('on')){
-      saveCache(); // só salva aqui para não-admin (admin já salvou internamente com leads completos)
-      populateSelects();renderNav();goToDashboard();
+      populateSelects();
+      renderNav();
+      goToDashboard();
       renderDashboard().catch(()=>{});
       setupRealtime();
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
     }
-    _initAppRunning=false;
-  }catch(e){
+  } catch(e){
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
       document.getElementById('setup-warning').style.display='flex';
-    }else{
-      try{sessionStorage.removeItem('crm_data_'+CU.id);}catch(_){}
-      toast('Erro ao carregar dados. Verifique sua conexão.','err');
+    } else {
+      toast('Erro: '+(e?.message||e),'err');
       document.getElementById('auth-screen').style.display='flex';
-      document.getElementById('a-err').innerHTML=
-        'Erro ao carregar. <a href="javascript:location.reload()" style="color:var(--gold2);text-decoration:underline">Clique aqui para tentar novamente</a>.';
+      document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
     }
-    _initAppRunning=false;
   }
 }
 
@@ -1432,6 +1426,23 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
 
 async function ensureProfile(){
   const name=CU.user_metadata?.full_name||CU.email.split('@')[0];
+  const cacheKey='crm_profile_'+CU.id;
+  // Always try cache first for instant load
+  const cached=sessionStorage.getItem(cacheKey);
+  if(cached){
+    try{
+      const p=JSON.parse(cached);
+      if(p&&p.role&&p.user_id===CU.id){
+        CUProfile=p;
+        console.log('Profile from cache, role:',CUProfile.role);
+        // Refresh silently in background
+        sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle()
+          .then(({data})=>{ if(data){ CUProfile=data; try{sessionStorage.setItem(cacheKey,JSON.stringify(data));}catch(e){} }})
+          .catch(()=>{});
+        return;
+      }
+    } catch(e){ sessionStorage.removeItem(cacheKey); }
+  }
   // No cache — fetch from DB with 12s timeout
   const withTimeout=(promise,ms)=>Promise.race([
     promise,
@@ -1445,26 +1456,36 @@ async function ensureProfile(){
     data=r.data; error=r.error;
   } catch(e){
     if(e.message==='timeout_profile'){
-      console.warn('ensureProfile timeout — aguardando banco acordar...');
-      for(let attempt=1;attempt<=3;attempt++){
-        await new Promise(r=>setTimeout(r,attempt*4000));
-        try{
-          const{data:d}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
-          if(d){
-            console.log('ensureProfile retry OK (tentativa '+attempt+'), role:',d.role);
-            CUProfile=d;
-            const initials=d.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
-            document.getElementById('sb-name').textContent=d.name;
-            document.getElementById('u-name').textContent=d.name;
-            document.getElementById('u-av').textContent=initials;
-            const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor'};
-            document.getElementById('sb-role').textContent=roleLabels[d.role]||d.role;
-            return;
-          }
-        } catch(re){ console.warn('Retry '+attempt+' falhou:',re.message); }
+      console.warn('ensureProfile timeout — usando fallback');
+      // Check sessionStorage cache first
+      const cacheKey='crm_profile_'+CU.id;
+      const cached=sessionStorage.getItem(cacheKey);
+      if(cached){
+        try{ CUProfile=JSON.parse(cached); console.log('Profile from cache:',CUProfile.role); return; }
+        catch(ce){ sessionStorage.removeItem(cacheKey); }
       }
-      console.warn('ensureProfile usando fallback após 3 tentativas');
+      // Use temporary profile and retry in background
       CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
+      // Retry after 3s — when it succeeds, re-initialize with correct role
+      setTimeout(async()=>{
+        try{
+          const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
+          if(data&&data.role!==CUProfile.role){
+            console.log('Profile retry OK, role:',data.role);
+            CUProfile=data;
+            sessionStorage.setItem(cacheKey,JSON.stringify(data));
+            // Re-init with correct role
+            await loadAll();
+            saveCache();
+            renderNav();
+            renderDashboard();
+            toast('Perfil carregado: '+data.role,'ok');
+          } else if(data){
+            CUProfile=data;
+            sessionStorage.setItem(cacheKey,JSON.stringify(data));
+          }
+        } catch(re){ console.warn('Profile retry failed:',re.message); }
+      },3000);
       return;
     }
     throw e;
@@ -1479,7 +1500,7 @@ async function ensureProfile(){
     CUProfile=d2||{user_id:CU.id,name,email:CU.email,role:'vendedor'};
   } else {
     CUProfile=data;
-    // profile salvo apenas no crm_data_ pelo saveCache
+    try{ sessionStorage.setItem('crm_profile_'+CU.id,JSON.stringify(data)); }catch(e){}
   }
   const initials=CUProfile.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
   document.getElementById('sb-name').textContent=CUProfile.name;
@@ -1552,22 +1573,7 @@ async function loadAll(){
     // ════════════════════════════════════════════
     if(isAdm){
       // Fase 1: primeiro lote de 1000 para liberar a UI imediatamente
-      let first1k=null;
-      try{
-        const r=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,999);
-        if(r.error) throw new Error(r.error.message);
-        first1k=r.data;
-      } catch(e){
-        console.error('Falha ao carregar leads (fase 1):',e.message);
-        toast('Erro ao carregar leads. Verifique a conexão.','err');
-        // Inicializa UI mesmo sem leads para não travar tela em branco
-        populateSelects(); renderNav(); goToDashboard(); renderDashboard().catch(()=>{}); setupRealtime();
-        setTimeout(checkTaskAlerts,2000);
-        if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-        _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-        loadEquipes().catch(()=>{});
-        return;
-      }
+      const{data:first1k}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,999);
       allLeads=first1k||[];
       populateSelects();
       renderNav();
@@ -2336,26 +2342,8 @@ async function openDetail(id,from){
     }
   }catch(e){console.warn('hist fetch error',e);}
   const tasks=allTasks.filter(t=>t.lead_id===id);
-  // Sempre busca venda e docs frescos do banco para garantir dados atualizados
-  let venda=allVendas.find(v=>v.lead_id===id);
-  let docs=allDocs.filter(d=>d.lead_id===id);
-  try{
-    const[vRes,dRes]=await Promise.all([
-      sb.from('crm_vendas').select('*').eq('lead_id',id).maybeSingle(),
-      sb.from('crm_documentos').select('*').eq('lead_id',id).order('created_at',{ascending:false})
-    ]);
-    if(vRes.data!==undefined){
-      venda=vRes.data;
-      const vi=allVendas.findIndex(v=>v.lead_id===id);
-      if(venda){vi>-1?allVendas[vi]=venda:allVendas.unshift(venda);}
-      else if(vi>-1) allVendas.splice(vi,1);
-    }
-    if(dRes.data){
-      docs=dRes.data;
-      allDocs=allDocs.filter(d=>d.lead_id!==id);
-      allDocs.push(...dRes.data);
-    }
-  }catch(e){console.warn('openDetail: falha ao buscar venda/docs frescos',e.message);}
+  const venda=allVendas.find(v=>v.lead_id===id);
+  const docs=allDocs.filter(d=>d.lead_id===id);
   const hoje=new Date().toISOString().slice(0,10);
   // canEditData: admin can edit all fields; vendedor can edit basic info (tipo_lead hidden in modal)
   const canEditData=isAdmin()||lead.responsavel_id===CU.id||isAdminOrCoord();
@@ -2678,7 +2666,7 @@ function renderDistribuicao(){
       </div>`;
     }).join('');
 
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  const semVend=allLeads.filter(l=>!l.responsavel_id);
   document.getElementById('dist-tbody').innerHTML=semVend.length===0
     ?`<tr><td colspan="5"><div class="empty"><div class="ei">✅</div>Todos os leads têm vendedor</div></td></tr>`
     :semVend.map(l=>`<tr>
@@ -2708,8 +2696,8 @@ async function quickDist(leadId){
 }
 
 async function distAutoAll(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
-  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
+  const semVend=allLeads.filter(l=>!l.responsavel_id);
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
@@ -2848,8 +2836,8 @@ function openModal(type){
       sv('v-obs',existingVenda.observacoes||'');
       // Update button label
       document.querySelector('#modal-venda .btn-save').textContent='Atualizar Venda';
-      // Check if user can edit: admin, coordenador, supervisor e o próprio vendedor responsável
-      const canEditVenda=isAdmin()||isCoordenador()||isSupervisor()||lead?.responsavel_id===CU.id;
+      // Check if user can edit: admin, coordenador, supervisor only
+      const canEditVenda=isAdmin()||isCoordenador()||isSupervisor();
       document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
       ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs'].forEach(id=>{
         const el=document.getElementById(id);
@@ -3143,13 +3131,10 @@ async function saveVenda(){
   if(!v('v-venc')){toast('Informe a Data de Vencimento','err');return;}
   if(!v('v-credito')){toast('Informe o Valor do Crédito','err');return;}
   if(!v('v-parcela')){toast('Informe a Parcela','err');return;}
-  // Docs obrigatórios apenas na criação — na atualização, novos são opcionais (antigos permanecem)
-  const _isNovaVenda=!allVendas.find(v=>v.lead_id===vendaLeadId);
-  if(_isNovaVenda){
-    if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
-    if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
-    if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
-  }
+  // Validate required docs
+  if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
+  if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
+  if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
   const payload={
@@ -3171,7 +3156,16 @@ async function saveVenda(){
     const vi=allVendas.findIndex(v=>v.id===existingV.id);
     if(vi>-1) Object.assign(allVendas[vi],payload);
 
-    // Docs antigos são mantidos — novos arquivos são adicionados sem apagar os existentes
+    // FIX 1: Ao atualizar venda existente, apaga documentos antigos para evitar duplicação
+    const hasNewFiles=Object.values(catFiles).some(arr=>arr.length>0);
+    if(hasNewFiles){
+      const oldDocs=allDocs.filter(d=>d.venda_id===existingV.id);
+      for(const od of oldDocs){
+        await sb.storage.from('crm-documentos').remove([od.storage_path]);
+      }
+      await sb.from('crm_documentos').delete().eq('venda_id',existingV.id);
+      allDocs=allDocs.filter(d=>d.venda_id!==existingV.id);
+    }
   } else {
     const{data:ins,error}=await sb.from('crm_vendas').insert(payload).select().maybeSingle();
     if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
@@ -3289,10 +3283,10 @@ async function distManual(){
 async function distAuto(){
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  let semVend=allLeads.filter(l=>!l.responsavel_id);
   const qtd=parseInt(v('da-qtd'))||semVend.length;
   semVend=semVend.slice(0,qtd);
-  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
@@ -3647,24 +3641,12 @@ function goToDashboard(){
   document.getElementById('topbar-title').textContent='Dashboard';
 }
 
-function clearCacheAndReload(){
-  try{
-    Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
-    Object.keys(localStorage).forEach(k=>{ if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k); });
-  }catch(e){}
-  toast('Cache limpo! Recarregando...','ok');
-  setTimeout(()=>location.reload(),800);
-}
-
 function saveCache(){
   if(!CU||!CUProfile) return;
   try{
-    // Admin: nunca cacheia leads (base grande demais, causaria quota exceeded e loop)
-    // Leads do admin sempre carregam do banco na inicialização
-    const leadsToCache = CUProfile.role==='admin' ? [] : allLeads;
     const data={
       profile:CUProfile,
-      leads:leadsToCache,
+      leads:allLeads, // todos os leads — necessário para KPIs corretos
       users:allUsers,
       hist:allHist.slice(0,200),
       tasks:allTasks.slice(0,200),
@@ -3674,21 +3656,27 @@ function saveCache(){
       membros:allMembroEquipes,
       ts:Date.now()
     };
-    sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
-    console.log('Cache salvo: '+leadsToCache.length+' leads, role='+CUProfile.role);
+    try{
+      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
+    } catch(quota){
+      // Se a base for muito grande (>5MB), salva sem leads (carrega ao iniciar)
+      console.warn('Cache quota exceeded, saving without leads');
+      const slim={...data, leads:allLeads.slice(0,500)};
+      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(slim));
+    }
   } catch(e){ console.warn('Cache save error:',e.message); }
 }
 
 async function refreshInBackground(){
   try{
-    // Admin sempre recarrega do banco (não usa cache de leads)
-    if(isAdmin()){
-      console.log('refreshInBackground: admin — recarregando do banco...');
+    // Admin com poucos leads = carga incompleta, refaz
+    if(isAdmin()&&allLeads.length<=1000){
+      console.log('refreshInBackground: admin com leads incompletos, recarregando...');
       await loadAll();
       saveCache();
       reRenderCurrent();
       populateSelects();
-      await runAutoReturnRules();
+      if(isAdmin()) await runAutoReturnRules();
       return;
     }
     // Admin com base grande: atualiza só dados secundários (leads chegam via realtime)
@@ -3714,11 +3702,7 @@ async function refreshInBackground(){
     saveCache();
     reRenderCurrent();
     populateSelects();
-  } catch(e){
-    console.warn('Background refresh error:',e.message);
-    // Não propaga o erro — UI já está visível com dados do cache
-    // Não salva cache corrompido em caso de falha parcial
-  }
+  } catch(e){ console.warn('Background refresh error:',e.message); }
 }
 
 async function runAutoReturnRules(){
@@ -4335,7 +4319,7 @@ async function confirmDistPicker(){
 }
 
 function openDistAllPicker(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  const semVend=allLeads.filter(l=>!l.responsavel_id);
   document.getElementById('dist-all-info').textContent=semVend.length+' lead'+(semVend.length!==1?'s':'')+' sem vendedor';
   const vends=getDistVendors();
   document.getElementById('dist-all-vend').innerHTML=vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
@@ -4359,9 +4343,9 @@ async function confirmDistAll(){
   const vends=getDistVendors();
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   if(mode==='one'&&!specificVend){toast('Selecione um vendedor','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  let semVend=allLeads.filter(l=>!l.responsavel_id);
   if(qty) semVend=semVend.slice(0,qty);
-  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   let{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
