@@ -1308,42 +1308,21 @@ async function doLogout(){
 async function initApp(user){
   if(CU&&CU.id===user.id&&CUProfile) return;
   CU=user;
-  document.getElementById('u-name').textContent =
-    CU.nome || CU.name || CU.email || '';
-  document.getElementById('u-av').textContent =
-    (CU.nome || CU.name || '?')
-    .charAt(0)
-    .toUpperCase();
+  document.getElementById('u-name').textContent=CU.nome||CU.name||CU.email||'';
+  document.getElementById('u-av').textContent=(CU.nome||CU.name||'?').charAt(0).toUpperCase();
   document.getElementById('auth-screen').style.display='none';
 
-  // ── CACHE FIRST: mostra dados salvos instantaneamente (TTL: 30min)
-  // Admin nunca usa cache — base grande demais, sempre carrega do banco
+  // ── Tenta usar cache (apenas não-admin, TTL 30min) ──
   const CACHE_TTL_MS=30*60*1000;
-  // Detecta admin via crm_data_ OU crm_profile_ (evita loop mesmo sem crm_data_)
-  const _cachedProfileQuick=(()=>{
-    try{
-      const d=sessionStorage.getItem('crm_data_'+CU.id);
-      if(d) return JSON.parse(d)?.profile||null;
-      const p=sessionStorage.getItem('crm_profile_'+CU.id);
-      if(p) return JSON.parse(p)||null;
-      return null;
-    }catch(e){return null;}
-  })();
-  const _isAdminQuick=_cachedProfileQuick?.role==='admin';
-  if(!_isAdminQuick){
-  const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
-  if(cacheData){
-    try{
-      const cached=JSON.parse(cacheData);
-      const cacheAge=cached.ts?Date.now()-cached.ts:Infinity;
-      const cacheInvalid=
-        cacheAge>CACHE_TTL_MS ||
-        !cached.profile||!cached.profile.role;
-      if(cacheInvalid){
-        console.log('Cache expirado ('+Math.round(cacheAge/60000)+'min) — recarregando...');
-        sessionStorage.removeItem('crm_data_'+CU.id);
-        // Cai no fluxo de primeira vez abaixo
-      } else {
+  try{
+    const raw=sessionStorage.getItem('crm_data_'+CU.id);
+    if(raw){
+      const cached=JSON.parse(raw);
+      const age=cached.ts?Date.now()-cached.ts:Infinity;
+      const role=cached.profile?.role;
+      // Admin nunca usa cache de leads (base > sessionStorage quota)
+      const valid=cached.profile&&role&&role!=='admin'&&age<=CACHE_TTL_MS;
+      if(valid){
         CUProfile=cached.profile;
         allLeads=cached.leads||[];
         allUsers=cached.users||[];
@@ -1353,52 +1332,47 @@ async function initApp(user){
         allDocs=cached.docs||[];
         allEquipes=cached.equipes||[];
         allMembroEquipes=cached.membros||[];
-        populateSelects();
-        renderNav();
-        goToDashboard();
+        populateSelects();renderNav();goToDashboard();
         renderDashboard().catch(()=>{});
         setupRealtime();
-        // Start task alert system
         setTimeout(checkTaskAlerts,2000);
         if(_taskAlertInterval) clearInterval(_taskAlertInterval);
         _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-        // Atualiza dados em background sem bloquear a UI
         refreshInBackground();
-        return;
+        return; // ← saída antecipada só quando cache válido
       }
-    } catch(e){
-      console.warn('Cache corrompido, limpando:',e.message);
+      // Cache inválido/expirado/admin — limpa e carrega do banco
       sessionStorage.removeItem('crm_data_'+CU.id);
+      console.log('Cache ignorado: role='+role+', age='+Math.round(age/60000)+'min');
     }
+  }catch(e){
+    console.warn('Cache erro, ignorando:',e.message);
+    try{sessionStorage.removeItem('crm_data_'+CU.id);}catch(_){}
   }
-  } // end if(!_isAdminQuick)
 
-  // ── PRIMEIRA VEZ / ADMIN: carrega normalmente do banco
+  // ── Carrega do banco ──
   try{
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
     await ensureProfile();
     await loadAll();
     clearTimeout(t);
     saveCache();
-    // loadAll já inicializa UI para admin (retorno antecipado)
+    // loadAll já inicializa UI para admin internamente (return antecipado)
     // Para outros perfis, inicializa aqui
     if(!document.getElementById('page-dashboard')?.classList.contains('on')){
-      populateSelects();
-      renderNav();
-      goToDashboard();
+      populateSelects();renderNav();goToDashboard();
       renderDashboard().catch(()=>{});
       setupRealtime();
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
     }
-  } catch(e){
+  }catch(e){
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
       document.getElementById('setup-warning').style.display='flex';
-    } else {
-      // Limpa cache possivelmente corrompido antes de mostrar erro
-      try{ sessionStorage.removeItem('crm_data_'+CU.id); }catch(_){}
+    }else{
+      try{sessionStorage.removeItem('crm_data_'+CU.id);}catch(_){}
       toast('Erro ao carregar dados. Verifique sua conexão.','err');
       document.getElementById('auth-screen').style.display='flex';
       document.getElementById('a-err').innerHTML=
