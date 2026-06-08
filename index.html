@@ -112,7 +112,6 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .b-remalho{background:#1a0a2e;color:#c084fc;border:1px solid rgba(192,132,252,0.3)}
 .b-contato{background:#1a0d2e;color:var(--purple)}
 .b-proposta{background:#1e1a05;color:var(--gold2)}
-.b-quente{background:#2a0d00;color:#ff6b2b;border:1px solid rgba(255,107,43,0.35)}
 .b-fechado{background:#0a1f0a;color:var(--green)}
 .b-perdido{background:#1f0a0a;color:var(--red)}
 .b-admin{background:#1a1505;color:var(--gold2)}
@@ -369,7 +368,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <select id="l-f-status" onchange="renderLeads(true)">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
-        <option>Proposta Quente</option><option>Fechado</option><option>Perdido</option>
+        <option>Fechado</option><option>Perdido</option>
       </select>
       <select id="l-f-resp" onchange="renderLeads(true)">
         <option value="">Todos os vendedores</option>
@@ -425,7 +424,6 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <option value="Sem Contato">📵 Sem Contato</option>
         <option value="Em Negociação">🤝 Em Negociação</option>
         <option value="Proposta">📋 Proposta</option>
-        <option value="Proposta Quente">🔥 Proposta Quente</option>
         <option value="Perdido">❌ Perdido</option>
       </select>
       <button class="btn-sm" style="border-color:var(--orange);color:var(--orange)" onclick="leadsMassChangeStatus()">🔄 Aplicar status</button>
@@ -476,7 +474,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <select id="ml-f-status" onchange="renderMeusLeads()">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
-        <option>Proposta Quente</option><option>Fechado</option><option>Perdido</option>
+        <option>Fechado</option><option>Perdido</option>
       </select>
     </div>
     <div class="panel">
@@ -762,7 +760,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <select id="cl-f-status" onchange="renderCoordLeads()">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
-        <option>Proposta Quente</option><option>Fechado</option><option>Perdido</option>
+        <option>Fechado</option><option>Perdido</option>
       </select>
       <select id="cl-f-vend" onchange="renderCoordLeads()">
         <option value="">Todos os vendedores</option>
@@ -903,7 +901,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div class="fld-row" id="ld-status-wrap">
       <div class="fld"><label>Status</label>
         <select class="inp" id="ld-status">
-          <option>Novo</option><option>Em Negociação</option><option>Proposta</option><option>Proposta Quente</option><option>Fechado</option><option>Perdido</option>
+          <option>Novo</option><option>Em Negociação</option><option>Proposta</option><option>Fechado</option><option>Perdido</option>
         </select>
       </div>
       <div class="fld" id="ld-origem-wrap"><label>Origem</label>
@@ -2483,7 +2481,17 @@ async function openDetail(id,from){
   }catch(e){console.warn('hist fetch error',e);}
   const tasks=allTasks.filter(t=>t.lead_id===id);
   const venda=allVendas.find(v=>v.lead_id===id);
-  const docs=allDocs.filter(d=>d.lead_id===id);
+  // Busca documentos direto do Supabase — allDocs é limitado a 100 no cache
+  // e documentos recém-enviados podem não estar no slice
+  let docs=allDocs.filter(d=>d.lead_id===id);
+  try{
+    const{data:freshDocs}=await sb.from('crm_documentos').select('*').eq('lead_id',id).order('created_at',{ascending:false});
+    if(freshDocs){
+      docs=freshDocs;
+      allDocs=allDocs.filter(d=>d.lead_id!==id);
+      allDocs.push(...freshDocs);
+    }
+  }catch(docErr){console.warn('docs fetch error',docErr);}
   const hoje=new Date().toISOString().slice(0,10);
   // canEditData: admin can edit all fields; vendedor can edit basic info (tipo_lead hidden in modal)
   const canEditData=isAdmin()||lead.responsavel_id===CU.id||isAdminOrCoord();
@@ -2506,8 +2514,6 @@ async function openDetail(id,from){
         ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
         ${canEditData?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
         ${isAdmin()?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >🗑️ Apagar</button>`:''}
-        ${(isAdmin()||isCoordenador()||isSupervisor())&&lead.status!=='Proposta Quente'&&lead.status!=='Fechado'?`<button class="act" onclick="setPropostaQuente('${id}')" style="border-color:#ff6b2b;color:#ff6b2b" title="Marcar como Proposta Quente">🔥 Proposta Quente</button>`:''}
-        ${(isAdmin()||isCoordenador()||isSupervisor())&&lead.status==='Proposta Quente'?`<button class="act" onclick="setPropostaQuente('${id}',true)" style="border-color:var(--gold-dim);color:var(--muted2)" title="Remover Proposta Quente">↩️ Desfazer Quente</button>`:''}
         ${isAdminOrCoord()&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">🏅 Enviar p/ Equipe</button>`:''}
         ${isAdminOrCoord()&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">↩️ Recolher</button>`:''}
       </div>
@@ -2679,8 +2685,8 @@ function goBackLeads(){
 }
 
 /* ═══ FUNIL ═══ */
-const STAGES=['Novo','Sem Contato','Em Negociação','Proposta','Proposta Quente','Fechado','Perdido'];
-const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Em Negociação':'var(--purple)','Proposta':'var(--gold2)','Proposta Quente':'#ff6b2b','Fechado':'var(--green)','Perdido':'var(--red)'};
+const STAGES=['Novo','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
+const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Em Negociação':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
 function renderFunil(){
   const isAdmin=isAdminOrCoord();
   document.getElementById('funil-grid').innerHTML=STAGES.map(s=>{
@@ -3187,10 +3193,6 @@ function editLead(id){
   if(statusVendWrap) statusVendWrap.style.display=canEditAll?'none':'block';
   // Sincroniza o valor no select do vendedor
   if(!canEditAll&&statusVendSel) statusVendSel.value=l.status||'Novo';
-  // Proposta Quente: visível no ld-status apenas para adm/coord/supervisor
-  const pqOpt=document.querySelector('#ld-status option[value="Proposta Quente"]')
-    ||[...document.querySelectorAll('#ld-status option')].find(o=>o.textContent==='Proposta Quente');
-  if(pqOpt) pqOpt.style.display=canEditAll?'':'none';
   document.getElementById('modal-lead').classList.add('on');
 }
 
@@ -3305,17 +3307,18 @@ async function saveVenda(){
   if(!v('v-venc')){toast('Informe a Data de Vencimento','err');return;}
   if(!v('v-credito')){toast('Informe o Valor do Crédito','err');return;}
   if(!v('v-parcela')){toast('Informe a Parcela','err');return;}
-  const existingVCheck=allVendas.find(v=>v.lead_id===vendaLeadId);
-  if(!existingVCheck){
-    // Nova venda: documentos obrigatórios
+
+  const existingV=allVendas.find(vx=>vx.lead_id===vendaLeadId);
+  const totalNewFiles=Object.values(catFiles).reduce((s,a)=>s+a.length,0);
+
+  // Nova venda: documentos obrigatórios
+  if(!existingV){
     if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
     if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
     if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
   }
-  // Edição: documentos são opcionais — só faz upload se novos foram selecionados
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
-  const existingV=allVendas.find(v=>v.lead_id===vendaLeadId);
   const updatePayload={
     cpf:v('v-cpf'),data_nascimento:v('v-nasc')||null,
     grupo:v('v-grupo')||null,cota:v('v-cota')||null,
@@ -3324,64 +3327,88 @@ async function saveVenda(){
     parcela:parseBrl(v('v-parcela'))||null,
     observacoes:v('v-obs')||null,
   };
-  const payload=existingV
-    ? updatePayload
-    : {...updatePayload, lead_id:vendaLeadId, vendedor_id:lead?.responsavel_id||CU.id, status_venda:'Pendente', created_at:new Date().toISOString()};
-  let vd;
+  const insertPayload={...updatePayload,
+    lead_id:vendaLeadId,vendedor_id:lead?.responsavel_id||CU.id,
+    status_venda:'Pendente',created_at:new Date().toISOString()
+  };
+
+  // ── Salva/atualiza registro da venda ──
+  let vd=null;
   if(existingV){
-    const{data:upd,error}=await sb.from('crm_vendas').update(payload).eq('id',existingV.id).select().maybeSingle();
+    const{data:upd,error}=await sb.from('crm_vendas').update(updatePayload).eq('id',existingV.id).select().maybeSingle();
     if(error){toast('Erro ao atualizar venda: '+error.message,'err');return;}
     vd=upd||existingV;
-    const vi=allVendas.findIndex(v=>v.id===existingV.id);
-    if(vi>-1) Object.assign(allVendas[vi],payload);
-
-    // Edição: NÃO apaga documentos anteriores — novos são adicionados ao existente
+    const vi=allVendas.findIndex(vx=>vx.id===existingV.id);
+    if(vi>-1) Object.assign(allVendas[vi],updatePayload);
   } else {
-    const{data:ins,error}=await sb.from('crm_vendas').insert(payload).select().maybeSingle();
+    const{data:ins,error}=await sb.from('crm_vendas').insert(insertPayload).select().maybeSingle();
     if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
     vd=ins;
     if(vd) allVendas.unshift(vd);
   }
 
-  if(!vd){toast('Erro interno: venda não retornou ID. Tente novamente.','err');return;}
-
-  // Upload categorized docs
-  const catLabels={foto:'Documento com Foto',contrato:'Contrato',boleto:'Boleto',comprovante:'Comprovante de Pagamento'};
-  const uploadErrors=[];
-  let fileCounter=0;
-  for(const [cat,files] of Object.entries(catFiles)){
-    for(const file of files){
-      // Contador único por arquivo para evitar colisão de path mesmo em uploads simultâneos
-      fileCounter++;
-      const safeFilename=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-      const path=`${vendaLeadId}/${vd.id}/${cat}-${Date.now()}-${fileCounter}-${Math.random().toString(36).slice(2,9)}-${safeFilename}`;
-      const{error:ue}=await sb.storage.from('crm-documentos').upload(path,file,{upsert:false});
-      if(ue){
-        console.error('Upload error for',file.name,':',ue.message);
-        uploadErrors.push(file.name);
-        continue;
-      }
-      const tipo=file.type==='application/pdf'?'pdf':'imagem';
-      const nomeExibicao=`[${catLabels[cat]}] ${file.name}`;
-      const{data:dc,error:dbErr}=await sb.from('crm_documentos').insert({
-        venda_id:vd.id,lead_id:vendaLeadId,nome:nomeExibicao,
-        tipo,storage_path:path,tamanho:file.size,
-        uploaded_by:CU.id,created_at:new Date().toISOString()
-      }).select().single();
-      if(dbErr){console.error('DB insert doc error:',dbErr.message);uploadErrors.push(file.name+'(db)');}
-      else if(dc) allDocs.push(dc);
-    }
+  // ── Guarda de segurança: vd deve ter id antes de qualquer upload ──
+  if(!vd||!vd.id){
+    toast('Erro crítico: venda sem ID. Tente novamente.','err');
+    return;
   }
-  if(uploadErrors.length) toast('⚠️ Erro ao enviar: '+uploadErrors.join(', '),'err');
-  // FIX 3: Recarrega allDocs do banco para garantir que o cache local está sincronizado
-  try{
-    const{data:freshDocs}=await sb.from('crm_documentos').select('*').eq('lead_id',vendaLeadId);
-    if(freshDocs){
-      allDocs=allDocs.filter(d=>d.lead_id!==vendaLeadId);
-      allDocs.push(...freshDocs);
+
+  // ── Upload de documentos novos (sem apagar os existentes) ──
+  if(totalNewFiles>0){
+    const catLabels={foto:'Documento com Foto',contrato:'Contrato',boleto:'Boleto',comprovante:'Comprovante de Pagamento'};
+    const uploadErrors=[];
+    let seq=0;
+
+    for(const [cat,files] of Object.entries(catFiles)){
+      for(const file of files){
+        seq++;
+        // Nome de arquivo saneado: remove caracteres problemáticos para o storage
+        const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80);
+        const uniq=`${Date.now()}-${seq}-${Math.random().toString(36).slice(2,8)}`;
+        const storagePath=`${vendaLeadId}/${vd.id}/${cat}-${uniq}-${safeName}`;
+
+        const{error:ueErr}=await sb.storage.from('crm-documentos').upload(storagePath,file,{upsert:false});
+        if(ueErr){
+          console.error('Storage upload error ['+file.name+']:', ueErr.message);
+          uploadErrors.push(file.name);
+          continue;
+        }
+
+        const tipo=file.type==='application/pdf'?'pdf':'imagem';
+        const nomeExibicao=`[${catLabels[cat]}] ${file.name}`;
+        const{data:dc,error:dbErr}=await sb.from('crm_documentos').insert({
+          venda_id:vd.id,lead_id:vendaLeadId,
+          nome:nomeExibicao,tipo,
+          storage_path:storagePath,
+          tamanho:file.size,
+          uploaded_by:CU.id,
+          created_at:new Date().toISOString()
+        }).select().single();
+
+        if(dbErr){
+          console.error('DB insert doc error ['+file.name+']:', dbErr.message);
+          uploadErrors.push(file.name+' (db)');
+        } else if(dc){
+          allDocs.push(dc);
+        }
+      }
     }
-  }catch(e){console.warn('Erro ao recarregar documentos',e);}
-  // Só muda status para Fechado na criação de nova venda (não na edição)
+
+    if(uploadErrors.length){
+      toast('⚠️ Falha ao enviar: '+uploadErrors.slice(0,3).join(', ')+(uploadErrors.length>3?' e mais...':''),'err');
+    }
+
+    // Sincroniza allDocs com banco para garantir consistência
+    try{
+      const{data:freshDocs}=await sb.from('crm_documentos').select('*').eq('lead_id',vendaLeadId);
+      if(freshDocs){
+        allDocs=allDocs.filter(d=>d.lead_id!==vendaLeadId);
+        allDocs.push(...freshDocs);
+      }
+    }catch(syncErr){console.warn('Sync docs error:',syncErr.message);}
+  }
+
+  // ── Atualiza status do lead (só na criação) ──
   if(!existingV){
     await sb.from('crm_leads').update({status:'Fechado'}).eq('id',vendaLeadId);
     const li=allLeads.findIndex(l=>l.id===vendaLeadId);
@@ -3389,8 +3416,9 @@ async function saveVenda(){
   }
 
   catFiles={foto:[],contrato:[],boleto:[],comprovante:[]};
+  saveCache();
   closeModal('venda');
-  toast('Venda registrada com sucesso!','ok');
+  toast(existingV?'Venda atualizada com sucesso!':'Venda registrada com sucesso!','ok');
   openDetail(vendaLeadId,fromPage);
 }
 
@@ -3541,7 +3569,7 @@ function fmtBrlInput(el){
 }
 function fmtCPF(c){if(!c)return'';const d=c.replace(/\D/g,'');return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');}
 function sBadge(s,tipo,leadId){
-  const m={Novo:"b-novo","Em Negociação":"b-contato",Proposta:"b-proposta","Proposta Quente":"b-quente",Fechado:"b-fechado",Perdido:"b-perdido"};
+  const m={Novo:"b-novo","Em Negociação":"b-contato",Proposta:"b-proposta",Fechado:"b-fechado",Perdido:"b-perdido"};
   let html=`<span class="badge ${m[s]||"b-novo"}">${s}</span>`;
   // Mostra badge de tipo para TODOS os usuários
   if(tipo==="Remalho"){
@@ -3559,24 +3587,6 @@ function sBadge(s,tipo,leadId){
   }
   return html;
 }
-async function setPropostaQuente(leadId, desfazer=false){
-  const novoStatus = desfazer ? 'Proposta' : 'Proposta Quente';
-  const{error}=await sb.from('crm_leads').update({status:novoStatus}).eq('id',leadId);
-  if(error){toast('Erro: '+error.message,'err');return;}
-  const idx=allLeads.findIndex(l=>l.id===leadId);
-  const anterior=allLeads[idx]?.status||'?';
-  if(idx>-1) allLeads[idx].status=novoStatus;
-  await sb.from('crm_historico').insert({
-    lead_id:leadId,user_id:CU.id,
-    tipo:'🔄 Status',
-    descricao:`Status: "${anterior}" → "${novoStatus}" (marcado por ${CUProfile?.name||CU.email})`,
-    created_at:new Date().toISOString()
-  });
-  saveCache();
-  toast(desfazer?'Proposta Quente removida':'🔥 Lead marcado como Proposta Quente!','ok');
-  openDetail(leadId,fromPage);
-}
-
 async function quickTipoToggle(leadId,novoTipo,el){
   const emoji=novoTipo==='Remalho'?'♻️':'🆕';
   el.textContent='...';
@@ -3865,7 +3875,7 @@ function saveCache(){
       hist:allHist.slice(0,200),
       tasks:allTasks.slice(0,200),
       vendas:allVendas.slice(0,200),
-      docs:allDocs.slice(0,100),
+      docs:[], // documentos sempre buscados frescos do Supabase em openDetail
       equipes:allEquipes,
       membros:allMembroEquipes,
       ts:Date.now()
@@ -3939,7 +3949,7 @@ async function runAutoReturnRules(){
       continue;
     }
     // Regra 2: Novo, Sem Contato, Em Negociação, Proposta → volta para a base após 7 dias corridos
-    const statusAtivos = ['Novo', 'Sem Contato', 'Em Negociação', 'Proposta', 'Proposta Quente'];
+    const statusAtivos = ['Novo', 'Sem Contato', 'Em Negociação', 'Proposta'];
     if(statusAtivos.includes(l.status) && daysSinceDist >= 7){
       leadsToReturn.push({id:l.id, reason:`${l.status} há 7 dias`});
     }
