@@ -339,7 +339,6 @@ tr:hover td{background:rgba(255,255,255,.015)}
       ">
 </span>
       </div>
-      <button class="btn-sm" title="Limpar cache e recarregar dados" onclick="clearCacheAndReload()" style="font-size:10px">🔄</button>
       <button class="btn-sm" onclick="doLogout()">Sair</button>
     </div>
   </div>
@@ -384,7 +383,6 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <input type="date" id="l-f-data-fim" onchange="renderLeads(true)" title="Data final" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark">
       <button class="btn-sm" onclick="document.getElementById('l-f-data-ini').value='';document.getElementById('l-f-data-fim').value='';renderLeads(true)" title="Limpar datas" style="padding:7px 10px;font-size:11px">✕ Data</button>
       <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openRecolherTudo()">↩️ Recolher tudo para mim</button>
-      <button class="btn-sm" id="leads-avaliar-perdidos-btn" style="display:none;border-color:var(--red);color:var(--red)" onclick="openAvaliarPerdidos()">🔍 Avaliar Perdidos</button>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
       <span id="new-lead-btn-wrap"></span>
     </div>
@@ -1004,9 +1002,9 @@ tr:hover td{background:rgba(255,255,255,.015)}
     </div>
     <div class="fld-row">
       <div class="fld"><label>Data de Vencimento * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-venc" type="date"></div>
-      <div class="fld"><label>Valor do Crédito (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-credito" type="text" inputmode="numeric" placeholder="Ex: 90.000,00 ou 90000" oninput="fmtBrlInput(this)"></div>
+      <div class="fld"><label>Valor do Crédito (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-credito" type="number" placeholder="60000"></div>
     </div>
-    <div class="fld"><label>Parcela (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-parcela" type="text" inputmode="numeric" placeholder="Ex: 700,00 ou 700" oninput="fmtBrlInput(this)"></div>
+    <div class="fld"><label>Parcela (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-parcela" type="number" placeholder="700"></div>
     <div class="fld"><label>Observações</label><textarea class="inp" id="v-obs" placeholder="Anotações sobre a venda..."></textarea></div>
 
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin:18px 0 12px">📎 Documentos</div>
@@ -1243,9 +1241,6 @@ const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const {createClient}=supabase;
 const sb=createClient(SUPA_URL,SUPA_KEY);
 
-// Acorda o Supabase — guarda a Promise para que initApp aguarde o banco estar pronto
-const _sbReady=(async()=>{ try{ await sb.from('crm_users').select('id').limit(1).maybeSingle(); }catch(_){} })();
-
 let CU=null,CUProfile=null;
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
@@ -1308,92 +1303,114 @@ async function doLogout(){
 
 /* ═══ INIT ═══ */
 /* ═══ INICIALIZAÇÃO DO APP ═══ */
-let _initAppRunning=false;
 async function initApp(user){
-  if(_initAppRunning) return; // evita chamada paralela (getSession + onAuthStateChange)
   if(CU&&CU.id===user.id&&CUProfile) return;
-  _initAppRunning=true;
   CU=user;
-  document.getElementById('u-name').textContent=CU.nome||CU.name||CU.email||'';
-  document.getElementById('u-av').textContent=(CU.nome||CU.name||'?').charAt(0).toUpperCase();
+  document.getElementById('u-name').textContent =
+    CU.nome || CU.name || CU.email || '';
+  document.getElementById('u-av').textContent =
+    (CU.nome || CU.name || '?')
+    .charAt(0)
+    .toUpperCase();
   document.getElementById('auth-screen').style.display='none';
 
-  // ── Tenta usar cache (apenas não-admin, TTL 30min) ──
-  const CACHE_TTL_MS=30*60*1000;
-  try{
-    const raw=sessionStorage.getItem('crm_data_'+CU.id);
-    if(raw){
-      const cached=JSON.parse(raw);
-      const age=cached.ts?Date.now()-cached.ts:Infinity;
-      const role=cached.profile?.role;
-      // Admin nunca usa cache de leads (base > sessionStorage quota)
-      const valid=cached.profile&&role&&role!=='admin'&&age<=CACHE_TTL_MS;
-      if(valid){
-        CUProfile=cached.profile;
-        allLeads=cached.leads||[];
-        allUsers=cached.users||[];
-        allHist=cached.hist||[];
-        allTasks=cached.tasks||[];
-        allVendas=cached.vendas||[];
-        allDocs=cached.docs||[];
-        allEquipes=cached.equipes||[];
-        allMembroEquipes=cached.membros||[];
-        populateSelects();renderNav();goToDashboard();
-        renderDashboard().catch(()=>{});
-        setupRealtime();
-        setTimeout(checkTaskAlerts,2000);
-        if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-        _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-        refreshInBackground();
-        _initAppRunning=false;
-        return; // ← saída antecipada só quando cache válido
+  // ── CACHE FIRST: mostra dados salvos instantaneamente
+  const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
+  if(cacheData){
+    try{
+      const cached=JSON.parse(cacheData);
+      // Se cache incompleto (admin com ≤1000 leads), renderiza com o que tem
+      // e recarrega os leads em background — evita tela em branco no F5
+      const cacheIncompleto=cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin';
+      if(cacheIncompleto){
+        console.log('Cache admin com '+cached.leads.length+' leads — incompleto, renderizando e recarregando em background...');
       }
-      // Cache inválido/expirado/admin — limpa e carrega do banco
-      sessionStorage.removeItem('crm_data_'+CU.id);
-      console.log('Cache ignorado: role='+role+', age='+Math.round(age/60000)+'min');
-    }
-  }catch(e){
-    console.warn('Cache erro, ignorando:',e.message);
-    try{sessionStorage.removeItem('crm_data_'+CU.id);}catch(_){}
+      CUProfile=cached.profile;
+      allLeads=cached.leads||[];
+      allUsers=cached.users||[];
+      allHist=cached.hist||[];
+      allTasks=cached.tasks||[];
+      allVendas=cached.vendas||[];
+      allDocs=cached.docs||[];
+      allEquipes=cached.equipes||[];
+      allMembroEquipes=cached.membros||[];
+      populateSelects();
+      renderNav();
+      goToDashboard();
+      renderDashboard().catch(()=>{});
+      setupRealtime();
+      // Start task alert system
+      setTimeout(checkTaskAlerts,2000);
+      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      if(cacheIncompleto){
+        // Remove cache inválido e recarrega leads em background mantendo a UI visível
+        sessionStorage.removeItem('crm_data_'+CU.id);
+        (async()=>{
+          try{
+            const{count}=await sb.from('crm_leads').select('*',{count:'exact',head:true});
+            const total=count||0;
+            const BATCH=5000;const CONCURRENT=8;
+            const loadingToast=showLoadingProgress(allLeads.length);
+            // Busca tudo do zero em paralelo
+            const batches=[];
+            for(let from=0;from<total;from+=BATCH) batches.push({from,to:Math.min(from+BATCH-1,total-1)});
+            let newLeads=[];
+            for(let i=0;i<batches.length;i+=CONCURRENT){
+              const grupo=batches.slice(i,i+CONCURRENT);
+              const results=await Promise.all(
+                grupo.map(b=>sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(b.from,b.to))
+              );
+              results.forEach(r=>{ if(r.data&&r.data.length>0) newLeads=[...newLeads,...r.data]; });
+              updateLoadingProgress(loadingToast,newLeads.length);
+            }
+            if(newLeads.length>0) allLeads=newLeads;
+            hideLoadingProgress(loadingToast,allLeads.length);
+            saveCache();
+            populateSelects();
+            if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads(true);
+            if(document.getElementById('page-dashboard')?.classList.contains('on')) renderDashboard().catch(()=>{});
+            console.log('Recarga em background completa: '+allLeads.length+' leads');
+          } catch(e){
+            console.warn('Background reload error:',e.message);
+          }
+        })();
+      } else {
+        // Atualiza dados em background sem bloquear a UI
+        refreshInBackground();
+      }
+      return;
+    } catch(e){ sessionStorage.removeItem('crm_data_'+CU.id); }
   }
 
-  // ── Carrega do banco ──
+  // ── PRIMEIRA VEZ: carrega normalmente
   try{
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
-    await _sbReady; // garante que o banco respondeu ao ping antes de qualquer query
-    console.log('[initApp] ensureProfile...');
     await ensureProfile();
-    console.log('[initApp] profile ok, role='+CUProfile?.role+' | loadAll...');
     await loadAll();
-    console.log('[initApp] loadAll ok');
     clearTimeout(t);
-    // Garante que a UI está sempre inicializada após loadAll
+    saveCache();
+    // loadAll já inicializa UI para admin (retorno antecipado)
+    // Para outros perfis, inicializa aqui
     if(!document.getElementById('page-dashboard')?.classList.contains('on')){
-      // Não-admin: loadAll não inicializa UI, fazemos aqui
-      saveCache();
-      populateSelects();renderNav();goToDashboard();
+      populateSelects();
+      renderNav();
+      goToDashboard();
       renderDashboard().catch(()=>{});
       setupRealtime();
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-    } else {
-      // Admin: loadAll já inicializou, mas re-renderiza o dashboard por segurança
-      renderDashboard().catch(()=>{});
     }
-    _initAppRunning=false;
-  }catch(e){
+  } catch(e){
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
       document.getElementById('setup-warning').style.display='flex';
-    }else{
-      try{sessionStorage.removeItem('crm_data_'+CU.id);}catch(_){}
-      toast('Erro ao carregar dados. Verifique sua conexão.','err');
+    } else {
+      toast('Erro: '+(e?.message||e),'err');
       document.getElementById('auth-screen').style.display='flex';
-      document.getElementById('a-err').innerHTML=
-        'Erro ao carregar. <a href="javascript:location.reload()" style="color:var(--gold2);text-decoration:underline">Clique aqui para tentar novamente</a>.';
+      document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
     }
-    _initAppRunning=false;
   }
 }
 
@@ -1439,25 +1456,69 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
 
 async function ensureProfile(){
   const name=CU.user_metadata?.full_name||CU.email.split('@')[0];
-  // No cache — fetch from DB with 12s timeout
-  let data,error;
-  {
-    // Timeout de 60s com aviso visível — Supabase free pode demorar para acordar
-    const toastId=setTimeout(()=>toast('⏳ Banco de dados acordando, aguarde...','ok'),8000);
-    const withTimeout=p=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('CONN_TIMEOUT')),60000))]);
-    let r;
+  const cacheKey='crm_profile_'+CU.id;
+  // Always try cache first for instant load
+  const cached=sessionStorage.getItem(cacheKey);
+  if(cached){
     try{
-      r=await withTimeout(sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle());
-    } catch(te){
-      clearTimeout(toastId);
-      if(te.message==='CONN_TIMEOUT'){
-        toast('❌ Sem resposta do servidor. Verifique sua internet e recarregue.','err');
-        throw new Error('Servidor não respondeu em 60s. Verifique a conexão.');
+      const p=JSON.parse(cached);
+      if(p&&p.role&&p.user_id===CU.id){
+        CUProfile=p;
+        console.log('Profile from cache, role:',CUProfile.role);
+        // Refresh silently in background
+        sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle()
+          .then(({data})=>{ if(data){ CUProfile=data; try{sessionStorage.setItem(cacheKey,JSON.stringify(data));}catch(e){} }})
+          .catch(()=>{});
+        return;
       }
-      throw te;
-    }
-    clearTimeout(toastId);
+    } catch(e){ sessionStorage.removeItem(cacheKey); }
+  }
+  // No cache — fetch from DB with 12s timeout
+  const withTimeout=(promise,ms)=>Promise.race([
+    promise,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_profile')),ms))
+  ]);
+  let data,error;
+  try{
+    const r=await withTimeout(
+      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),12000
+    );
     data=r.data; error=r.error;
+  } catch(e){
+    if(e.message==='timeout_profile'){
+      console.warn('ensureProfile timeout — usando fallback');
+      // Check sessionStorage cache first
+      const cacheKey='crm_profile_'+CU.id;
+      const cached=sessionStorage.getItem(cacheKey);
+      if(cached){
+        try{ CUProfile=JSON.parse(cached); console.log('Profile from cache:',CUProfile.role); return; }
+        catch(ce){ sessionStorage.removeItem(cacheKey); }
+      }
+      // Use temporary profile and retry in background
+      CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
+      // Retry after 3s — when it succeeds, re-initialize with correct role
+      setTimeout(async()=>{
+        try{
+          const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
+          if(data&&data.role!==CUProfile.role){
+            console.log('Profile retry OK, role:',data.role);
+            CUProfile=data;
+            sessionStorage.setItem(cacheKey,JSON.stringify(data));
+            // Re-init with correct role
+            await loadAll();
+            saveCache();
+            renderNav();
+            renderDashboard();
+            toast('Perfil carregado: '+data.role,'ok');
+          } else if(data){
+            CUProfile=data;
+            sessionStorage.setItem(cacheKey,JSON.stringify(data));
+          }
+        } catch(re){ console.warn('Profile retry failed:',re.message); }
+      },3000);
+      return;
+    }
+    throw e;
   }
   if(error?.message?.includes('does not exist')){
     throw new Error('Tabela crm_users não existe. Execute o crm-setup-completo.sql no Supabase SQL Editor.');
@@ -1469,7 +1530,7 @@ async function ensureProfile(){
     CUProfile=d2||{user_id:CU.id,name,email:CU.email,role:'vendedor'};
   } else {
     CUProfile=data;
-    // profile salvo apenas no crm_data_ pelo saveCache
+    try{ sessionStorage.setItem('crm_profile_'+CU.id,JSON.stringify(data)); }catch(e){}
   }
   const initials=CUProfile.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
   document.getElementById('sb-name').textContent=CUProfile.name;
@@ -1542,22 +1603,7 @@ async function loadAll(){
     // ════════════════════════════════════════════
     if(isAdm){
       // Fase 1: primeiro lote de 1000 para liberar a UI imediatamente
-      let first1k=null;
-      try{
-        const r=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,999);
-        if(r.error) throw new Error(r.error.message);
-        first1k=r.data;
-      } catch(e){
-        console.error('Falha ao carregar leads (fase 1):',e.message);
-        toast('Erro ao carregar leads. Verifique a conexão.','err');
-        // Inicializa UI mesmo sem leads para não travar tela em branco
-        populateSelects(); renderNav(); goToDashboard(); renderDashboard().catch(()=>{}); setupRealtime();
-        setTimeout(checkTaskAlerts,2000);
-        if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-        _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-        loadEquipes().catch(()=>{});
-        return;
-      }
+      const{data:first1k}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,999);
       allLeads=first1k||[];
       populateSelects();
       renderNav();
@@ -2014,8 +2060,6 @@ function renderLeads(resetPage){
   if(nlw) nlw.innerHTML=isAdmin()?'<button class="btn-primary" onclick="openModal(\'lead\')">+ Novo Lead</button>':'';
   const rtb=document.getElementById('leads-recolher-tudo-btn');
   if(rtb) rtb.style.display=isAdmin()?'':'none';
-  const apb=document.getElementById('leads-avaliar-perdidos-btn');
-  if(apb) apb.style.display=isAdmin()?'':'none';
   // Populate DDD filter (admin only)
   populateDDDFilter();
   const q=(document.getElementById('l-srch')?.value||'').toLowerCase();
@@ -2161,7 +2205,7 @@ async function buscarNaBaseCompleta(){
   try {
     // Busca no Supabase com ilike em nome, telefone e interesse
     const digits=q.replace(/\D/g,'');
-    let query=sb.from('crm_leads').select('*').limit(50);
+    let query=SB.from('leads').select('*').limit(50);
     if(digits.length>=4){
       // Busca por telefone (números) OU nome OU interesse
       query=query.or(`nome.ilike.%${q}%,telefone.ilike.%${digits}%,interesse.ilike.%${q}%`);
@@ -2237,7 +2281,7 @@ async function buscarNaBaseCompleta(){
 async function importarLeadParaCarteira(leadId){
   // Busca o lead completo no Supabase e adiciona ao allLeads local (sem alterar responsável)
   try {
-    const {data,error}=await sb.from('crm_leads').select('*').eq('id',leadId).single();
+    const {data,error}=await SB.from('leads').select('*').eq('id',leadId).single();
     if(error) throw error;
     if(!allLeads.find(l=>l.id===leadId)){
       allLeads.push(data);
@@ -2259,7 +2303,7 @@ async function importarLeadParaCarteira(leadId){
 async function assumirLead(leadId){
   if(!confirm('Assumir este lead e tornar-se responsável?')) return;
   try {
-    const {data,error}=await sb.from('crm_leads').update({responsavel_id:CU.id}).eq('id',leadId).select().single();
+    const {data,error}=await SB.from('leads').update({responsavel_id:CU.id}).eq('id',leadId).select().single();
     if(error) throw error;
     // Atualiza no allLeads local
     const idx=allLeads.findIndex(l=>l.id===leadId);
@@ -2302,50 +2346,13 @@ function renderMeusLeads(){
 async function openDetail(id,from){
   fromPage=from;
   detailLeadId=id;
-  let lead=allLeads.find(l=>l.id===id);
-  // Se o lead nao esta em memoria (ex: coordenador acessando venda de lead fora do seu escopo),
-  // busca diretamente do Supabase e adiciona ao allLeads temporariamente
-  if(!lead){
-    try{
-      const{data,error}=await sb.from('crm_leads').select('*').eq('id',id).maybeSingle();
-      if(error||!data){toast('Lead nao encontrado','err');return;}
-      lead=data;
-      allLeads.push(lead); // cache temporario para evitar re-fetch
-    }catch(e){toast('Erro ao buscar lead','err');return;}
-  }
+  const lead=allLeads.find(l=>l.id===id);
+  if(!lead)return;
   const resp=allUsers.find(u=>u.user_id===lead.responsavel_id);
-  // Busca histórico sempre direto do Supabase (sem limite de cache) para não perder registros
-  let hist=allHist.filter(h=>h.lead_id===id);
-  try{
-    const{data:hFresh}=await sb.from('crm_historico').select('*').eq('lead_id',id).order('created_at',{ascending:false});
-    if(hFresh&&hFresh.length){
-      hist=hFresh;
-      // Atualiza cache local com registros frescos deste lead
-      allHist=allHist.filter(h=>h.lead_id!==id);
-      allHist.push(...hFresh);
-    }
-  }catch(e){console.warn('hist fetch error',e);}
+  const hist=allHist.filter(h=>h.lead_id===id);
   const tasks=allTasks.filter(t=>t.lead_id===id);
-  // Sempre busca venda e docs frescos do banco para garantir dados atualizados
-  let venda=allVendas.find(v=>v.lead_id===id);
-  let docs=allDocs.filter(d=>d.lead_id===id);
-  try{
-    const[vRes,dRes]=await Promise.all([
-      sb.from('crm_vendas').select('*').eq('lead_id',id).maybeSingle(),
-      sb.from('crm_documentos').select('*').eq('lead_id',id).order('created_at',{ascending:false})
-    ]);
-    if(vRes.data!==undefined){
-      venda=vRes.data;
-      const vi=allVendas.findIndex(v=>v.lead_id===id);
-      if(venda){vi>-1?allVendas[vi]=venda:allVendas.unshift(venda);}
-      else if(vi>-1) allVendas.splice(vi,1);
-    }
-    if(dRes.data){
-      docs=dRes.data;
-      allDocs=allDocs.filter(d=>d.lead_id!==id);
-      allDocs.push(...dRes.data);
-    }
-  }catch(e){console.warn('openDetail: falha ao buscar venda/docs frescos',e.message);}
+  const venda=allVendas.find(v=>v.lead_id===id);
+  const docs=allDocs.filter(d=>d.lead_id===id);
   const hoje=new Date().toISOString().slice(0,10);
   // canEditData: admin can edit all fields; vendedor can edit basic info (tipo_lead hidden in modal)
   const canEditData=isAdmin()||lead.responsavel_id===CU.id||isAdminOrCoord();
@@ -2435,78 +2442,24 @@ async function openDetail(id,from){
 
   html+=`</div>`;
 
-  // Histórico — Linha do Tempo Completa
-  const histVisiveis=hist.filter(h=>isAdmin()||h.tipo!=='🔒 Interno (Adm)').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-  // Mapeia tipo → cor e ícone da bolinha da timeline
-  function tipoConfig(tipo){
-    if(tipo==='🌟 Criação') return{cor:'#c9a84c',bg:'rgba(201,168,76,0.12)'};
-    if(tipo==='🔄 Status') return{cor:'#3b9eff',bg:'rgba(59,158,255,0.10)'};
-    if(tipo==='✏️ Edição') return{cor:'#a78bfa',bg:'rgba(167,139,250,0.10)'};
-    if(tipo==='👤 Atribuição') return{cor:'#34d399',bg:'rgba(52,211,153,0.10)'};
-    if(tipo==='🔒 Interno (Adm)') return{cor:'#c9a84c',bg:'rgba(201,168,76,0.06)'};
-    if(tipo==='🔄 Retorno Automático') return{cor:'#fb923c',bg:'rgba(251,146,60,0.10)'};
-    if(tipo==='📝 Anotação') return{cor:'var(--muted2)',bg:'transparent'};
-    // tipos de contato manuais
-    return{cor:'var(--gold2)',bg:'rgba(201,168,76,0.07)'};
-  }
+  // Histórico
   html+=`<div class="panel" style="margin-top:16px">
-    <div class="panel-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="panel-title" style="margin:0">🕐 Linha do Tempo</div>
-        <span style="font-size:10px;color:var(--muted2);background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2px 9px">${histVisiveis.length} evento${histVisiveis.length!==1?'s':''}</span>
-      </div>
-      ${canEdit?`<button class="btn-sm" onclick="openModal('hist')">+ Registrar Contato</button>`:''}
+    <div class="panel-head">
+      <div class="panel-title">📋 Histórico de Contatos</div>
+      ${canEdit?`<button class="btn-sm" onclick="openModal('hist')">+ Registrar</button>`:''}
     </div>
-    <div class="panel-body" style="padding:0">
-      ${histVisiveis.length===0
-        ?'<div class="empty" style="padding:24px"><div class="ei">📋</div>Nenhum evento registrado</div>'
-        :`<div style="position:relative;padding:16px 18px 8px">
-          <!-- linha vertical da timeline -->
-          <div style="position:absolute;left:33px;top:16px;bottom:8px;width:2px;background:var(--border);border-radius:2px"></div>
-          ${histVisiveis.map((h,idx)=>{
-            const u=allUsers.find(u=>u.user_id===h.user_id);
-            const isInternal=h.tipo==='🔒 Interno (Adm)';
-            const cfg=tipoConfig(h.tipo);
-            const dt=new Date(h.created_at);
-            const hoje2=new Date();
-            const diffMs=hoje2-dt;
-            const diffDias=Math.floor(diffMs/(1000*60*60*24));
-            const diffHoras=Math.floor(diffMs/(1000*60*60));
-            const diffMins=Math.floor(diffMs/(1000*60));
-            const relativo=diffMins<1?'agora':diffMins<60?`${diffMins}min atrás`:diffHoras<24?`${diffHoras}h atrás`:diffDias===1?'ontem':diffDias<7?`${diffDias} dias atrás`:fmtDt(h.created_at);
-            // Separador de data entre eventos de dias diferentes
-            const proximaDt=idx<histVisiveis.length-1?new Date(histVisiveis[idx+1].created_at):null;
-            const separador=proximaDt&&dt.toDateString()!==proximaDt.toDateString()
-              ?`<div style="display:flex;align-items:center;gap:8px;margin:12px 0 12px 44px">
-                  <div style="height:1px;width:24px;background:var(--border)"></div>
-                  <span style="font-size:9.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em">${dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric'})}</span>
-                  <div style="flex:1;height:1px;background:var(--border)"></div>
-                </div>`:''
-            return`<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:${idx===histVisiveis.length-1?'8':'14'}px;position:relative">
-              <!-- bolinha da timeline -->
-              <div style="flex-shrink:0;width:18px;height:18px;border-radius:50%;background:${cfg.cor};border:2px solid var(--bg);box-shadow:0 0 0 2px ${cfg.cor}40;margin-top:2px;z-index:1;display:flex;align-items:center;justify-content:center;font-size:8px"></div>
-              <!-- card do evento -->
-              <div style="flex:1;background:${cfg.bg};border:1px solid ${isInternal?'rgba(201,168,76,0.2)':'var(--border)'};border-radius:9px;padding:10px 12px;min-width:0">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px">
-                  <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-                    <span style="font-size:11px;font-weight:700;color:${cfg.cor}">${h.tipo}</span>
-                    ${isInternal?'<span style="background:#1a1505;color:var(--gold-dim);border:1px solid var(--gold-dim);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700">SÓ ADM</span>':''}
-                  </div>
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <span style="font-size:10px;color:var(--muted2)" title="${fmtDt(h.created_at)}">${relativo}</span>
-                    ${isAdmin()?`<button class="act red" style="padding:2px 6px;font-size:10px" onclick="delHist('${h.id}')">🗑️</button>`:''}
-                  </div>
-                </div>
-                <div style="font-size:12.5px;color:var(--text);line-height:1.45;word-break:break-word">${h.descricao}</div>
-                <div style="font-size:10.5px;color:var(--muted2);margin-top:5px;display:flex;align-items:center;gap:5px">
-                  <span style="width:16px;height:16px;border-radius:50%;background:var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--gold2)">${(u?.name||'?')[0].toUpperCase()}</span>
-                  ${u?.name||'Usuário removido'} · ${fmtDt(h.created_at)}
-                </div>
-              </div>
-            </div>${separador}`;
-          }).join('')}
-        </div>`
-      }
+    <div class="panel-body">
+      ${hist.length===0?'<div class="empty"><div class="ei">📋</div>Nenhum contato registrado</div>':hist.map(h=>{
+        const u=allUsers.find(u=>u.user_id===h.user_id);
+        return`<div class="hist-item"><div class="hist-dot"></div>
+          <div style="flex:1">
+            <div class="hist-text">${h.tipo}</div>
+            <div style="font-size:12.5px;color:var(--text);margin:3px 0">${h.descricao}</div>
+            <div class="hist-meta">${u?.name||'—'} · ${fmtDt(h.created_at)}</div>
+          </div>
+          ${isAdmin()?`<button class="act red" onclick="delHist('${h.id}')">🗑️</button>`:''}
+        </div>`;
+      }).join('')}
     </div>
   </div>`;
 
@@ -2620,11 +2573,9 @@ async function moveStage(id,status){
   if(error){toast('Sem permissão para mover este lead','err');return;}
   const idx=allLeads.findIndex(l=>l.id===id);
   if(idx>-1) allLeads[idx].status=status;
-  const leadAtual=allLeads.find(l=>l.id===id);
-  const statusAnterior=leadAtual?.status||'?';
-  await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'🔄 Status',descricao:`Status: "${statusAnterior}" → "${status}"`,created_at:new Date().toISOString()});
-  const{data:hMv}=await sb.from('crm_historico').select('*').eq('lead_id',id).order('created_at',{ascending:false});
-  if(hMv){allHist=allHist.filter(h=>h.lead_id!==id);allHist.push(...hMv);}
+  await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'📝 Anotação',descricao:`Status → ${status}`,created_at:new Date().toISOString()});
+  const{data}=await sb.from('crm_historico').select('*').order('created_at',{ascending:false});
+  allHist=data||[];
   renderFunil();
   toast('Status atualizado!','ok');
 }
@@ -2668,7 +2619,7 @@ function renderDistribuicao(){
       </div>`;
     }).join('');
 
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  const semVend=allLeads.filter(l=>!l.responsavel_id);
   document.getElementById('dist-tbody').innerHTML=semVend.length===0
     ?`<tr><td colspan="5"><div class="empty"><div class="ei">✅</div>Todos os leads têm vendedor</div></td></tr>`
     :semVend.map(l=>`<tr>
@@ -2692,14 +2643,13 @@ async function quickDist(leadId){
   await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()}).eq('id',dc.id);
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1){allLeads[i].responsavel_id=vend.user_id;}
-  await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'👤 Atribuição',descricao:`Lead atribuído ao vendedor: ${vend.name}`,created_at:new Date().toISOString()});
   toast(`Lead atribuído a ${vend.name}!`,'ok');
   renderDistribuicao();
 }
 
 async function distAutoAll(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
-  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
+  const semVend=allLeads.filter(l=>!l.responsavel_id);
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
@@ -2833,13 +2783,13 @@ function openModal(type){
       sv('v-grupo',existingVenda.grupo||'');
       sv('v-cota',existingVenda.cota||'');
       sv('v-venc',existingVenda.data_vencimento||'');
-      sv('v-credito',existingVenda.valor_credito?Number(existingVenda.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'');
-      sv('v-parcela',existingVenda.parcela?Number(existingVenda.parcela).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'');
+      sv('v-credito',existingVenda.valor_credito||'');
+      sv('v-parcela',existingVenda.parcela||'');
       sv('v-obs',existingVenda.observacoes||'');
       // Update button label
       document.querySelector('#modal-venda .btn-save').textContent='Atualizar Venda';
-      // Check if user can edit: admin, coordenador, supervisor e o próprio vendedor responsável
-      const canEditVenda=isAdmin()||isCoordenador()||isSupervisor()||lead?.responsavel_id===CU.id;
+      // Check if user can edit: admin, coordenador, supervisor only
+      const canEditVenda=isAdmin()||isCoordenador()||isSupervisor();
       document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
       ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs'].forEach(id=>{
         const el=document.getElementById(id);
@@ -2920,37 +2870,7 @@ async function saveLead(){
   // Remove campos undefined do payload
   Object.keys(payload).forEach(k=>{if(payload[k]===undefined)delete payload[k];});
   if(editLeadId){
-    const leadAntes=allLeads.find(l=>l.id===editLeadId);
     await sb.from('crm_leads').update(payload).eq('id',editLeadId);
-    // Registra no histórico as alterações relevantes
-    const alteracoes=[];
-    if(leadAntes){
-      if(payload.status&&payload.status!==leadAntes.status)
-        alteracoes.push(`Status: "${leadAntes.status}" → "${payload.status}"`);
-      if('responsavel_id' in payload&&payload.responsavel_id!==leadAntes.responsavel_id){
-        const antesNome=allUsers.find(u=>u.user_id===leadAntes.responsavel_id)?.name||'Sem vendedor';
-        const depoisNome=allUsers.find(u=>u.user_id===payload.responsavel_id)?.name||'Sem vendedor';
-        alteracoes.push(`Vendedor: "${antesNome}" → "${depoisNome}"`);
-      }
-      if(payload.nome&&payload.nome!==leadAntes.nome)
-        alteracoes.push(`Nome: "${leadAntes.nome}" → "${payload.nome}"`);
-      if(payload.telefone&&payload.telefone!==leadAntes.telefone)
-        alteracoes.push(`Telefone atualizado`);
-      if(payload.interesse&&payload.interesse!==leadAntes.interesse)
-        alteracoes.push(`Interesse: "${leadAntes.interesse||'—'}" → "${payload.interesse}"`);
-      if(payload.origem&&payload.origem!==leadAntes.origem)
-        alteracoes.push(`Origem: "${leadAntes.origem||'—'}" → "${payload.origem}"`);
-    }
-    if(alteracoes.length){
-      await sb.from('crm_historico').insert({
-        lead_id:editLeadId,user_id:CU.id,
-        tipo:'✏️ Edição',
-        descricao:alteracoes.join(' | '),
-        created_at:new Date().toISOString()
-      });
-      const{data:hUpd}=await sb.from('crm_historico').select('*').eq('lead_id',editLeadId).order('created_at',{ascending:false});
-      if(hUpd){allHist=allHist.filter(h=>h.lead_id!==editLeadId);allHist.push(...hUpd);}
-    }
     // Update local immediately for snappy UX; realtime will confirm
     const i=allLeads.findIndex(l=>l.id===editLeadId);
     if(i>-1) Object.assign(allLeads[i],payload);
@@ -2974,13 +2894,6 @@ async function saveLead(){
     // Always add locally — realtime deduplicates via id check
     if(data){
       if(!allLeads.find(l=>l.id===data.id)) allLeads.unshift(data);
-      // Registra criação no histórico
-      await sb.from('crm_historico').insert({
-        lead_id:data.id,user_id:CU.id,
-        tipo:'🌟 Criação',
-        descricao:`Lead criado por ${CUProfile?.name||CU.email}. Origem: ${payload.origem||'não informada'}. Status inicial: ${payload.status||'Novo'}.`,
-        created_at:new Date().toISOString()
-      });
     }
     closeModal('lead');
     toast('Lead criado!','ok');
@@ -3133,13 +3046,10 @@ async function saveVenda(){
   if(!v('v-venc')){toast('Informe a Data de Vencimento','err');return;}
   if(!v('v-credito')){toast('Informe o Valor do Crédito','err');return;}
   if(!v('v-parcela')){toast('Informe a Parcela','err');return;}
-  // Docs obrigatórios apenas na criação — na atualização, novos são opcionais (antigos permanecem)
-  const _isNovaVenda=!allVendas.find(v=>v.lead_id===vendaLeadId);
-  if(_isNovaVenda){
-    if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
-    if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
-    if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
-  }
+  // Validate required docs
+  if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
+  if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
+  if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
   const payload={
@@ -3147,8 +3057,8 @@ async function saveVenda(){
     cpf:v('v-cpf'),data_nascimento:v('v-nasc')||null,
     grupo:v('v-grupo')||null,cota:v('v-cota')||null,
     data_vencimento:v('v-venc')||null,
-    valor_credito:parseBrl(v('v-credito'))||null,
-    parcela:parseBrl(v('v-parcela'))||null,
+    valor_credito:parseFloat(v('v-credito'))||null,
+    parcela:parseFloat(v('v-parcela'))||null,
     observacoes:v('v-obs')||null,
     status_venda:'Pendente',created_at:new Date().toISOString()
   };
@@ -3160,8 +3070,6 @@ async function saveVenda(){
     vd=upd||existingV;
     const vi=allVendas.findIndex(v=>v.id===existingV.id);
     if(vi>-1) Object.assign(allVendas[vi],payload);
-
-    // Docs antigos são mantidos — novos arquivos são adicionados sem apagar os existentes
   } else {
     const{data:ins,error}=await sb.from('crm_vendas').insert(payload).select().maybeSingle();
     if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
@@ -3173,8 +3081,7 @@ async function saveVenda(){
   const catLabels={foto:'Documento com Foto',contrato:'Contrato',boleto:'Boleto',comprovante:'Comprovante de Pagamento'};
   for(const [cat,files] of Object.entries(catFiles)){
     for(const file of files){
-      // FIX 2: usa índice + timestamp para evitar colisão de nomes em uploads simultâneos
-      const path=`${vendaLeadId}/${vd.id}/${cat}-${Date.now()}-${Math.random().toString(36).slice(2,7)}-${file.name}`;
+      const path=`${vendaLeadId}/${vd.id}/${cat}-${Date.now()}-${file.name}`;
       const{error:ue}=await sb.storage.from('crm-documentos').upload(path,file);
       if(!ue){
         const tipo=file.type==='application/pdf'?'pdf':'imagem';
@@ -3188,14 +3095,6 @@ async function saveVenda(){
       }
     }
   }
-  // FIX 3: Recarrega allDocs do banco para garantir que o cache local está sincronizado
-  try{
-    const{data:freshDocs}=await sb.from('crm_documentos').select('*').eq('lead_id',vendaLeadId);
-    if(freshDocs){
-      allDocs=allDocs.filter(d=>d.lead_id!==vendaLeadId);
-      allDocs.push(...freshDocs);
-    }
-  }catch(e){console.warn('Erro ao recarregar documentos',e);}
   // Update lead status
   await sb.from('crm_leads').update({status:'Fechado'}).eq('id',vendaLeadId);
   const li=allLeads.findIndex(l=>l.id===vendaLeadId);
@@ -3220,20 +3119,7 @@ async function updateVendaStatus(id,status){
   const{error}=await sb.from('crm_vendas').update({status_venda:status}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
   const i=allVendas.findIndex(v=>v.id===id);
-  const vendaAntes=allVendas[i];
   if(i>-1) allVendas[i].status_venda=status;
-  // Registra no histórico do lead
-  if(vendaAntes?.lead_id){
-    const emoji=status==='Aprovado'?'✅':'❌';
-    await sb.from('crm_historico').insert({
-      lead_id:vendaAntes.lead_id,user_id:CU.id,
-      tipo:`${emoji} Venda ${status}`,
-      descricao:`Venda ${status==='Aprovado'?'aprovada':'cancelada'} por ${CUProfile?.name||CU.email}. Crédito: ${vendaAntes.valor_credito?'R$ '+Number(vendaAntes.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}.`,
-      created_at:new Date().toISOString()
-    });
-    const{data:hVs}=await sb.from('crm_historico').select('*').eq('lead_id',vendaAntes.lead_id).order('created_at',{ascending:false});
-    if(hVs){allHist=allHist.filter(h=>h.lead_id!==vendaAntes.lead_id);allHist.push(...hVs);}
-  }
   saveCache();
   toast('Venda '+status.toLowerCase()+'!','ok');
   renderDashboard();
@@ -3279,10 +3165,10 @@ async function distManual(){
 async function distAuto(){
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  let semVend=allLeads.filter(l=>!l.responsavel_id);
   const qtd=parseInt(v('da-qtd'))||semVend.length;
   semVend=semVend.slice(0,qtd);
-  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
@@ -3320,25 +3206,6 @@ function fmtDt(iso){if(!iso)return'—';return new Date(iso).toLocaleDateString(
 function fmtDateStr(s){if(!s)return'';const[y,m,d]=s.split('-');return`${d}/${m}/${y}`;}
 function fmtSize(b){if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
 function brl(n){return'R$ '+Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
-function parseBrl(str){
-  if(str===null||str===undefined||str==="") return null;
-  const s=String(str).trim();
-  if(!s) return null;
-  if(s.includes(",")){
-    const n=parseFloat(s.replace(/\./g,"").replace(",","."));
-    return isNaN(n)?null:n;
-  }
-  const dotIdx=s.lastIndexOf(".");
-  if(dotIdx!==-1&&s.length-dotIdx-1===3){
-    const n=parseFloat(s.replace(/\./g,""));
-    return isNaN(n)?null:n;
-  }
-  const n=parseFloat(s);
-  return isNaN(n)?null:n;
-}
-function fmtBrlInput(el){
-  el.value=el.value.replace(/[^\d.,]/g,"");
-}
 function fmtCPF(c){if(!c)return'';const d=c.replace(/\D/g,'');return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');}
 function sBadge(s,tipo,leadId){
   const m={Novo:"b-novo","Em Negociação":"b-contato",Proposta:"b-proposta",Fechado:"b-fechado",Perdido:"b-perdido"};
@@ -3470,11 +3337,8 @@ function renderVendasPage(){
     const vendedor=allUsers.find(u=>u.user_id===v.vendedor_id);
     const badgeCls=v.status_venda==='Aprovado'?'b-aprov':v.status_venda==='Cancelado'?'b-canc':'b-pend';
     const canManage=isAdmin()||isCoordenador();
-    // Se o lead não está em allLeads (ex: coordenador vendo venda de lead fora do seu escopo),
-    // exibe CPF ou grupo como referência e ainda permite abrir o detalhe via fetch on-demand
-    const leadNome=lead?.nome||(v.cpf?v.cpf:(v.grupo?`Grupo ${v.grupo}`:'(sem nome)'));
     return`<tr>
-      <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${v.lead_id}','vendas')">${leadNome}</td>
+      <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${v.lead_id}','vendas')">${lead?.nome||'—'}</td>
       <td style="font-size:11.5px">${vendedor?.name||'—'}</td>
       <td style="color:var(--gold2);font-weight:700">${v.valor_credito?brl(v.valor_credito):'—'}</td>
       <td style="font-size:11.5px">${v.parcela?brl(v.parcela):'—'}</td>
@@ -3526,18 +3390,10 @@ function openInlineEditEmailObs(leadId){
 async function saveInlineEmailObs(leadId){
   const email=(document.getElementById('ie-email-'+leadId)?.value||'').trim();
   const obs=(document.getElementById('ie-obs-'+leadId)?.value||'').trim();
-  const leadAntes=allLeads.find(l=>l.id===leadId);
   const{error}=await sb.from('crm_leads').update({email:email||null,observacoes:obs||null}).eq('id',leadId);
   if(error){toast('Erro ao salvar: '+error.message,'err');return;}
   const li=allLeads.findIndex(l=>l.id===leadId);
   if(li>-1){allLeads[li].email=email||null;allLeads[li].observacoes=obs||null;}
-  // Log apenas se algo mudou
-  const mudancas=[];
-  if(leadAntes&&(email||'')!==(leadAntes.email||'')) mudancas.push('E-mail atualizado');
-  if(leadAntes&&(obs||'')!==(leadAntes.observacoes||'')) mudancas.push('Observações atualizadas');
-  if(mudancas.length){
-    await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:mudancas.join(' | '),created_at:new Date().toISOString()});
-  }
   saveCache();
   toast('E-mail e observações salvos!','ok');
   openDetail(leadId,fromPage);
@@ -3637,24 +3493,12 @@ function goToDashboard(){
   document.getElementById('topbar-title').textContent='Dashboard';
 }
 
-function clearCacheAndReload(){
-  try{
-    Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
-    Object.keys(localStorage).forEach(k=>{ if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k); });
-  }catch(e){}
-  toast('Cache limpo! Recarregando...','ok');
-  setTimeout(()=>location.reload(),800);
-}
-
 function saveCache(){
   if(!CU||!CUProfile) return;
   try{
-    // Admin: nunca cacheia leads (base grande demais, causaria quota exceeded e loop)
-    // Leads do admin sempre carregam do banco na inicialização
-    const leadsToCache = CUProfile.role==='admin' ? [] : allLeads;
     const data={
       profile:CUProfile,
-      leads:leadsToCache,
+      leads:allLeads, // todos os leads — necessário para KPIs corretos
       users:allUsers,
       hist:allHist.slice(0,200),
       tasks:allTasks.slice(0,200),
@@ -3664,21 +3508,27 @@ function saveCache(){
       membros:allMembroEquipes,
       ts:Date.now()
     };
-    sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
-    console.log('Cache salvo: '+leadsToCache.length+' leads, role='+CUProfile.role);
+    try{
+      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
+    } catch(quota){
+      // Se a base for muito grande (>5MB), salva sem leads (carrega ao iniciar)
+      console.warn('Cache quota exceeded, saving without leads');
+      const slim={...data, leads:allLeads.slice(0,500)};
+      sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(slim));
+    }
   } catch(e){ console.warn('Cache save error:',e.message); }
 }
 
 async function refreshInBackground(){
   try{
-    // Admin sempre recarrega do banco (não usa cache de leads)
-    if(isAdmin()){
-      console.log('refreshInBackground: admin — recarregando do banco...');
+    // Admin com poucos leads = carga incompleta, refaz
+    if(isAdmin()&&allLeads.length<=1000){
+      console.log('refreshInBackground: admin com leads incompletos, recarregando...');
       await loadAll();
       saveCache();
       reRenderCurrent();
       populateSelects();
-      await runAutoReturnRules();
+      if(isAdmin()) await runAutoReturnRules();
       return;
     }
     // Admin com base grande: atualiza só dados secundários (leads chegam via realtime)
@@ -3704,11 +3554,7 @@ async function refreshInBackground(){
     saveCache();
     reRenderCurrent();
     populateSelects();
-  } catch(e){
-    console.warn('Background refresh error:',e.message);
-    // Não propaga o erro — UI já está visível com dados do cache
-    // Não salva cache corrompido em caso de falha parcial
-  }
+  } catch(e){ console.warn('Background refresh error:',e.message); }
 }
 
 async function runAutoReturnRules(){
@@ -3752,115 +3598,6 @@ async function runAutoReturnRules(){
   saveCache();
   if(leadsToReturn.length) toast(`${leadsToReturn.length} lead(s) retornado(s) automaticamente à base`, 'ok');
   reRenderCurrent();
-}
-
-/* ═══ AVALIAR PERDIDOS SEM COMENTÁRIO ═══ */
-async function openAvaliarPerdidos(){
-  // Calcula preview: quantos perdidos sem comentário real
-  const perdidos = allLeads.filter(l => l.status === 'Perdido');
-  let semComentario = 0;
-  for(const l of perdidos){
-    const hist = allHist.filter(h => h.lead_id === l.id);
-    // Comentário real = qualquer entrada que NÃO seja mudança de status automática
-    const temComentarioReal = hist.some(h => {
-      const desc = (h.descricao || '').trim();
-      // Ignora: "Status → X", "Retornado automaticamente: X"
-      if(desc.startsWith('Status →')) return false;
-      if(desc.startsWith('Retornado automaticamente')) return false;
-      if(desc.startsWith('Venda revertida')) return false;
-      // Qualquer outro texto com ao menos 3 chars é comentário real
-      return desc.length >= 3;
-    });
-    if(!temComentarioReal) semComentario++;
-  }
-  const prev = document.getElementById('avaliar-perdidos-preview');
-  const prevTxt = document.getElementById('avaliar-perdidos-preview-txt');
-  if(semComentario > 0){
-    prevTxt.textContent = `${semComentario} lead(s) perdido(s) sem comentário serão reciclados para a base como Novo.`;
-    prev.style.display = '';
-  } else {
-    prevTxt.textContent = `Nenhum lead perdido sem comentário encontrado.`;
-    prev.style.background = 'rgba(74,222,128,0.08)';
-    prev.style.borderColor = 'rgba(74,222,128,0.25)';
-    prevTxt.style.color = 'var(--green)';
-    prev.style.display = '';
-  }
-  document.getElementById('avaliar-perdidos-btn-confirmar').disabled = semComentario === 0;
-  document.getElementById('modal-avaliar-perdidos').classList.add('on');
-}
-
-async function confirmarAvaliarPerdidos(){
-  const btn = document.getElementById('avaliar-perdidos-btn-confirmar');
-  const loading = document.getElementById('avaliar-perdidos-loading');
-  btn.disabled = true;
-  loading.style.display = '';
-  try{
-    const perdidos = allLeads.filter(l => l.status === 'Perdido');
-    const paraReciclar = [];
-    for(const l of perdidos){
-      const hist = allHist.filter(h => h.lead_id === l.id);
-      const temComentarioReal = hist.some(h => {
-        const desc = (h.descricao || '').trim();
-        if(desc.startsWith('Status →')) return false;
-        if(desc.startsWith('Retornado automaticamente')) return false;
-        if(desc.startsWith('Venda revertida')) return false;
-        return desc.length >= 3;
-      });
-      if(!temComentarioReal) paraReciclar.push(l);
-    }
-    if(!paraReciclar.length){
-      toast('Nenhum lead para reciclar.','ok');
-      closeModal('avaliar-perdidos');
-      return;
-    }
-    const ids = paraReciclar.map(l => l.id);
-    // 1. Atualiza os leads: status Novo, sem vendedor, sem equipe
-    const { error } = await sb.from('crm_leads').update({
-      status: 'Novo',
-      responsavel_id: null,
-      equipe_id: null,
-      distribuido_em: null
-    }).in('id', ids);
-    if(error){ toast('Erro ao atualizar leads: ' + error.message, 'err'); return; }
-    // 2. Atualiza cache local
-    ids.forEach(id => {
-      const i = allLeads.findIndex(l => l.id === id);
-      if(i > -1){
-        allLeads[i].status = 'Novo';
-        allLeads[i].responsavel_id = null;
-        allLeads[i].equipe_id = null;
-        allLeads[i].distribuido_em = null;
-      }
-    });
-    // 3. Registra no histórico (visível só para adm — tipo especial) o status anterior e o vendedor
-    for(const l of paraReciclar){
-      const vendAnterior = allUsers.find(u => u.user_id === l.responsavel_id);
-      const nomeVend = vendAnterior?.name || 'Sem vendedor';
-      const equipeAnterior = allEquipes.find(e => e.id === l.equipe_id);
-      const nomeEquipe = equipeAnterior?.nome || 'Sem equipe';
-      try{
-        await sb.from('crm_historico').insert({
-          lead_id: l.id,
-          user_id: CU.id,
-          tipo: '🔒 Interno (Adm)',
-          descricao: `[RECICLADO] Status anterior: Perdido | Vendedor: ${nomeVend} | Equipe: ${nomeEquipe} | Motivo: sem comentário explicativo`,
-          created_at: new Date().toISOString()
-        });
-      } catch(e){ console.warn('Hist insert error:', e); }
-    }
-    // 4. Atualiza historico em cache
-    const { data: newHist } = await sb.from('crm_historico').select('*').order('created_at', { ascending: false }).limit(2000);
-    if(newHist) allHist = newHist;
-    saveCache();
-    closeModal('avaliar-perdidos');
-    reRenderCurrent();
-    toast(`✅ ${paraReciclar.length} lead(s) reciclado(s) para a base como Novo!`, 'ok');
-  } catch(e){
-    toast('Erro: ' + e.message, 'err');
-  } finally {
-    btn.disabled = false;
-    loading.style.display = 'none';
-  }
 }
 
 /* ═══ REALTIME SUBSCRIPTIONS ═══ */
@@ -4325,7 +4062,7 @@ async function confirmDistPicker(){
 }
 
 function openDistAllPicker(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  const semVend=allLeads.filter(l=>!l.responsavel_id);
   document.getElementById('dist-all-info').textContent=semVend.length+' lead'+(semVend.length!==1?'s':'')+' sem vendedor';
   const vends=getDistVendors();
   document.getElementById('dist-all-vend').innerHTML=vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
@@ -4349,9 +4086,9 @@ async function confirmDistAll(){
   const vends=getDistVendors();
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   if(mode==='one'&&!specificVend){toast('Selecione um vendedor','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id&&l.status!=='Fechado');
+  let semVend=allLeads.filter(l=>!l.responsavel_id);
   if(qty) semVend=semVend.slice(0,qty);
-  if(!semVend.length){toast('Nenhum lead sem vendedor disponível para distribuição','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
   let{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
@@ -5929,43 +5666,6 @@ if(csvZone){
   csvZone.addEventListener('drop',e=>{e.preventDefault();csvZone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)handleCSV(f);});
 }
 </script>
-
-<!-- ════ MODAL: AVALIAR PERDIDOS SEM COMENTÁRIO ════ -->
-<div class="modal-bg" id="modal-avaliar-perdidos">
-  <div class="modal" style="max-width:560px;width:100%">
-    <div class="modal-title">🔍 Avaliar Leads Perdidos</div>
-    <div style="font-size:13px;color:var(--muted2);margin-bottom:16px;line-height:1.6">
-      Esta ação irá analisar todos os leads com status <span style="color:var(--red);font-weight:700">Perdido</span>.<br>
-      Leads que <strong style="color:var(--text)">não possuem nenhum comentário real</strong> (apenas mudanças de status não contam) serão:
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-      <div style="display:flex;align-items:flex-start;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-        <div style="font-size:18px;flex-shrink:0">🔄</div>
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--text)">Retornados à base geral como Novo</div>
-          <div style="font-size:11.5px;color:var(--muted2);margin-top:3px">Sem vendedor, sem equipe — voltam para distribuição</div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-        <div style="font-size:18px;flex-shrink:0">🔒</div>
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--text)">Registro interno visível só para adm</div>
-          <div style="font-size:11.5px;color:var(--muted2);margin-top:3px">Status anterior e vendedor responsável ficam registrados no histórico</div>
-        </div>
-      </div>
-    </div>
-    <div id="avaliar-perdidos-preview" style="background:rgba(229,85,85,0.08);border:1px solid rgba(229,85,85,0.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--red);margin-bottom:14px;display:none">
-      <span id="avaliar-perdidos-preview-txt"></span>
-    </div>
-    <div id="avaliar-perdidos-loading" style="text-align:center;padding:12px;color:var(--muted2);font-size:12px;display:none">⏳ Analisando leads...</div>
-    <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal('avaliar-perdidos')">Cancelar</button>
-      <button id="avaliar-perdidos-btn-confirmar" class="btn-save" style="background:var(--red);border-color:var(--red)" onclick="confirmarAvaliarPerdidos()">
-        🔍 Avaliar e Reciclar
-      </button>
-    </div>
-  </div>
-</div>
 
 <!-- ════ MODAL: BUSCA NA BASE COMPLETA ════ -->
 <div class="modal-bg" id="modal-busca-base">
