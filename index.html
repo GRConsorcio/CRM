@@ -417,6 +417,16 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <option value="Remalho">♻️ Remalho</option>
       </select>
       <button class="btn-sm" style="border-color:var(--purple);color:#c084fc" onclick="leadsMassChangeTipo()">🏷️ Aplicar tipo</button>
+      <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+      <select id="leads-mass-status" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
+        <option value="">Mudar status para...</option>
+        <option value="Novo">🆕 Novo</option>
+        <option value="Sem Contato">📵 Sem Contato</option>
+        <option value="Em Negociação">🤝 Em Negociação</option>
+        <option value="Proposta">📋 Proposta</option>
+        <option value="Perdido">❌ Perdido</option>
+      </select>
+      <button class="btn-sm" style="border-color:var(--orange);color:var(--orange)" onclick="leadsMassChangeStatus()">🔄 Aplicar status</button>
       <div id="mass-delete-btn-wrap"></div>
       <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="closeLeadsMass()">✕ Fechar</button>
     </div>
@@ -445,6 +455,20 @@ tr:hover td{background:rgba(255,255,255,.015)}
 
   <!-- MEUS LEADS (vendedor) -->
   <div class="page" id="page-meus-leads">
+    <div style="background:linear-gradient(135deg,rgba(201,168,76,0.08),rgba(201,168,76,0.03));border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:13px;font-weight:900;color:var(--gold2);margin-bottom:2px">🎣 Puxador de Remalho</div>
+        <div style="font-size:11px;color:var(--muted2)">Puxa 5 leads remalho sem vendedor direto para você</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="puxador-count-wrap" style="font-size:11px;color:var(--muted2);display:none">
+          <span id="puxador-disponiveis"></span> disponíveis
+        </div>
+        <button id="btn-puxador" onclick="puxarLeadsRemalho()" style="background:var(--gold);border:none;color:#0a0a0a;border-radius:9px;padding:10px 20px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;transition:all .15s;white-space:nowrap">
+          🎣 Puxar 5 Remalhos
+        </button>
+      </div>
+    </div>
     <div class="filter-bar">
       <input class="inp" id="ml-srch" placeholder="🔍 Buscar..." oninput="renderMeusLeads()">
       <select id="ml-f-status" onchange="renderMeusLeads()">
@@ -1903,7 +1927,7 @@ function nav(page,el){
   if(page==='dashboard') renderDashboard().catch(e=>console.warn('renderDashboard error:',e));
   if(page==='leads') { leadsCurrentPage=1; renderLeads(); }
   else if(_leadsMassMode) closeLeadsMass(); // sai da aba leads → fecha modo massa
-  if(page==='meus-leads') renderMeusLeads();
+  if(page==='meus-leads'){ renderMeusLeads(); if(CUProfile?.role==='vendedor') atualizarContadorPuxador(); }
   if(page==='funil') renderFunil();
   if(page==='distribuicao') renderDistribuicao();
   if(page==='tarefas') renderTarefas();
@@ -2334,6 +2358,99 @@ function renderMeusLeads(){
         </div></td>
       </tr>`).join('');
 }
+
+/* ═══ PUXADOR DE REMALHO (vendedor) ═══ */
+let _puxadorBusy = false;
+async function puxarLeadsRemalho(){
+  if(_puxadorBusy){ toast('Aguarde...','err'); return; }
+  _puxadorBusy = true;
+  const btn = document.getElementById('btn-puxador');
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳ Puxando...'; }
+
+  try{
+    // Busca leads remalho sem responsável, ordenados por data mais antigo primeiro
+    // Usa .range(0,4) para pegar exatamente 5
+    const{data, error} = await sb.from('crm_leads')
+      .select('*')
+      .eq('tipo_lead','Remalho')
+      .is('responsavel_id', null)
+      .order('created_at', {ascending: true})
+      .range(0, 4);
+
+    if(error){ toast('Erro ao buscar leads: '+error.message,'err'); return; }
+    if(!data||data.length===0){
+      toast('Não há leads remalho disponíveis no momento 🎣','err');
+      await atualizarContadorPuxador();
+      return;
+    }
+
+    const ids = data.map(l=>l.id);
+    const now = new Date().toISOString();
+
+    // Atribui ao vendedor
+    const{error: updErr} = await sb.from('crm_leads')
+      .update({ responsavel_id: CU.id, distribuido_em: now })
+      .in('id', ids);
+
+    if(updErr){ toast('Erro ao atribuir leads: '+updErr.message,'err'); return; }
+
+    // Atualiza memória local
+    data.forEach(lead=>{
+      lead.responsavel_id = CU.id;
+      lead.distribuido_em = now;
+      const idx = allLeads.findIndex(l=>l.id===lead.id);
+      if(idx > -1){
+        allLeads[idx].responsavel_id = CU.id;
+        allLeads[idx].distribuido_em = now;
+      } else {
+        allLeads.push(lead);
+      }
+    });
+
+    // Registra no histórico
+    try{
+      const histRows = ids.map(id=>({
+        lead_id: id,
+        user_id: CU.id,
+        tipo: '🎣 Puxador',
+        descricao: 'Lead remalho puxado pelo vendedor via Puxador',
+        created_at: now
+      }));
+      await sb.from('crm_historico').insert(histRows);
+    } catch(he){ console.warn('Hist puxador error:', he.message); }
+
+    saveCache();
+    renderMeusLeads();
+    await atualizarContadorPuxador();
+    toast(data.length+' lead'+( data.length!==1?'s remalhos':'remalho')+' puxado'+(data.length!==1?'s':'')+' com sucesso! 🎣','ok');
+
+  } catch(e){
+    console.error('puxarLeadsRemalho error:', e);
+    toast('Erro inesperado: '+e.message,'err');
+  } finally {
+    _puxadorBusy = false;
+    if(btn){ btn.disabled=false; btn.innerHTML='🎣 Puxar 5 Remalhos'; }
+  }
+}
+
+async function atualizarContadorPuxador(){
+  try{
+    const{count} = await sb.from('crm_leads')
+      .select('*',{count:'exact',head:true})
+      .eq('tipo_lead','Remalho')
+      .is('responsavel_id',null);
+    const wrap = document.getElementById('puxador-count-wrap');
+    const span = document.getElementById('puxador-disponiveis');
+    if(wrap && span){
+      span.textContent = (count||0).toLocaleString('pt-BR');
+      wrap.style.display = 'block';
+      // Disable button if nothing available
+      const btn = document.getElementById('btn-puxador');
+      if(btn){ btn.disabled = count===0; btn.style.opacity = count===0?'0.45':'1'; }
+    }
+  } catch(e){ console.warn('contador puxador error:', e.message); }
+}
+
 
 /* ═══ LEAD DETAIL ═══ */
 async function openDetail(id,from){
@@ -2977,7 +3094,7 @@ async function saveLead(){
     toast('Lead atualizado!','ok');
     editLeadId=null;
     // Se for vendedor, re-renderiza meus leads; senão, a tabela admin
-    if(CUProfile?.role==='vendedor') renderMeusLeads(); else renderLeads(true);
+    if(CUProfile?.role==='vendedor'){ renderMeusLeads(); atualizarContadorPuxador(); } else renderLeads(true);
     if(isAdminOrCoord()) populateSelects();
     saveCache();
   } else {
@@ -4958,6 +5075,52 @@ async function leadsMassChangeTipo(){
   document.getElementById('leads-mass-tipo').value='';
   renderLeads();
   toast(`${ids.length} lead${ids.length!==1?'s':''} marcado${ids.length!==1?'s':''} como ${emoji} ${tipo}!`,'ok');
+}
+
+async function leadsMassChangeStatus(){
+  const ids=[..._selectedLeadIds];
+  const novoStatus=document.getElementById('leads-mass-status')?.value;
+  if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
+  if(!novoStatus){toast('Selecione o status desejado','err');return;}
+
+  // Conta quantos estão em cada status atual para exibir no confirm
+  const counts={};
+  ids.forEach(id=>{
+    const l=allLeads.find(x=>x.id===id);
+    const s=l?.status||'?';
+    counts[s]=(counts[s]||0)+1;
+  });
+  const resumo=Object.entries(counts).map(([s,n])=>n+' '+s).join(', ');
+  if(!confirm('Alterar status de '+ids.length+' lead'+(ids.length!==1?'s':'')+' ('+resumo+') para "'+novoStatus+'"?')) return;
+
+  toast('Atualizando status de '+ids.length+' leads, aguarde...','ok');
+  const now=new Date().toISOString();
+  let erros=0;
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
+    const{error}=await sb.from('crm_leads').update({status:novoStatus}).in('id',batch);
+    if(error){erros++;console.warn('Erro batch status:',error.message);continue;}
+    batch.forEach(id=>{
+      const idx=allLeads.findIndex(l=>l.id===id);
+      if(idx>-1) allLeads[idx].status=novoStatus;
+    });
+  }
+  // Registra no histórico em lote (1 entrada por lead)
+  try{
+    const histRows=ids.map(id=>({lead_id:id,user_id:CU.id,tipo:'🔄 Status',descricao:'Status alterado em massa para: '+novoStatus,created_at:now}));
+    for(let i=0;i<histRows.length;i+=100){
+      await sb.from('crm_historico').insert(histRows.slice(i,i+100));
+    }
+    const{data:newHist}=await sb.from('crm_historico').select('*').order('created_at',{ascending:false}).limit(2000);
+    if(newHist) allHist=newHist;
+  } catch(e){ console.warn('Hist error:',e.message); }
+
+  saveCache();
+  _selectedLeadIds.clear();
+  document.getElementById('leads-mass-status').value='';
+  renderLeads();
+  if(erros>0) toast(erros+' lote(s) com erro. Verifique o console.','err');
+  else toast(ids.length+' lead'+(ids.length!==1?'s':'')+' atualizado'+(ids.length!==1?'s':'')+' para "'+novoStatus+'"!','ok');
 }
 
 /* ═══ FUNIL POR VENDEDOR (admin/coord) ═══ */
