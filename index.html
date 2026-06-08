@@ -2975,7 +2975,7 @@ function openModal(type){
       // Update button label
       document.querySelector('#modal-venda .btn-save').textContent='Atualizar Venda';
       // Check if user can edit: admin, coordenador, supervisor only
-      const canEditVenda=isAdmin()||isCoordenador()||isSupervisor();
+      const canEditVenda=isAdmin()||isCoordenador()||isSupervisor()||(CUProfile?.role==='vendedor'&&existingVenda?.vendedor_id===CU.id);
       document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
       ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs'].forEach(id=>{
         const el=document.getElementById(id);
@@ -3000,6 +3000,34 @@ function openModal(type){
     ['v-doc-foto','v-contrato','v-boleto','v-comprovante'].forEach(id=>{
       const el=document.getElementById(id); if(el) el.value='';
     });
+    // Se é edição: mostra docs existentes em cada categoria
+    if(existingVenda){
+      const vendaDocs=allDocs.filter(d=>d.venda_id===existingVenda.id);
+      const catMap={'foto':'preview-foto','contrato':'preview-contrato','boleto':'preview-boleto','comprovante':'preview-comprovante'};
+      const catLabels={'foto':'Documento com Foto','contrato':'Contrato','boleto':'Boleto','comprovante':'Comprovante de Pagamento'};
+      // Agrupa por categoria baseado no nome do arquivo
+      const catDocs={foto:[],contrato:[],boleto:[],comprovante:[]};
+      vendaDocs.forEach(d=>{
+        for(const cat of ['foto','contrato','boleto','comprovante']){
+          if(d.nome&&d.nome.toLowerCase().includes(catLabels[cat].toLowerCase())){catDocs[cat].push(d);return;}
+        }
+        catDocs.foto.push(d); // fallback
+      });
+      for(const [cat,docs] of Object.entries(catDocs)){
+        if(!docs.length) continue;
+        const previewEl=document.getElementById(catMap[cat]);
+        if(!previewEl) continue;
+        previewEl.innerHTML=docs.map(d=>`
+          <div class="doc-item" id="existing-doc-${d.id}" style="margin-bottom:4px">
+            <div class="doc-icon">${d.tipo==='pdf'?'📄':'🖼️'}</div>
+            <div class="doc-name" style="font-size:11px">${d.nome}</div>
+            <div class="doc-actions">
+              <button class="act" onclick="downloadDoc('${d.storage_path}','${d.nome}')" title="Baixar">⬇️</button>
+              <button class="act red" onclick="delDocFromModal('${d.id}','${d.storage_path}','${cat}')" title="Remover">🗑️</button>
+            </div>
+          </div>`).join('');
+      }
+    }
   }
   if(type==='dist-auto'){
     const count=allLeads.filter(l=>!l.responsavel_id).length;
@@ -3269,23 +3297,28 @@ async function saveVenda(){
   if(!v('v-venc')){toast('Informe a Data de Vencimento','err');return;}
   if(!v('v-credito')){toast('Informe o Valor do Crédito','err');return;}
   if(!v('v-parcela')){toast('Informe a Parcela','err');return;}
-  // Validate required docs
-  if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
-  if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
-  if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
+  const existingVCheck=allVendas.find(v=>v.lead_id===vendaLeadId);
+  if(!existingVCheck){
+    // Nova venda: documentos obrigatórios
+    if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
+    if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
+    if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
+  }
+  // Edição: documentos são opcionais — só faz upload se novos foram selecionados
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
-  const payload={
-    lead_id:vendaLeadId,vendedor_id:lead?.responsavel_id||CU.id,
+  const existingV=allVendas.find(v=>v.lead_id===vendaLeadId);
+  const updatePayload={
     cpf:v('v-cpf'),data_nascimento:v('v-nasc')||null,
     grupo:v('v-grupo')||null,cota:v('v-cota')||null,
     data_vencimento:v('v-venc')||null,
     valor_credito:parseBrl(v('v-credito'))||null,
     parcela:parseBrl(v('v-parcela'))||null,
     observacoes:v('v-obs')||null,
-    status_venda:'Pendente',created_at:new Date().toISOString()
   };
-  const existingV=allVendas.find(v=>v.lead_id===vendaLeadId);
+  const payload=existingV
+    ? updatePayload
+    : {...updatePayload, lead_id:vendaLeadId, vendedor_id:lead?.responsavel_id||CU.id, status_venda:'Pendente', created_at:new Date().toISOString()};
   let vd;
   if(existingV){
     const{data:upd,error}=await sb.from('crm_vendas').update(payload).eq('id',existingV.id).select().maybeSingle();
@@ -3294,16 +3327,7 @@ async function saveVenda(){
     const vi=allVendas.findIndex(v=>v.id===existingV.id);
     if(vi>-1) Object.assign(allVendas[vi],payload);
 
-    // FIX 1: Ao atualizar venda existente, apaga documentos antigos para evitar duplicação
-    const hasNewFiles=Object.values(catFiles).some(arr=>arr.length>0);
-    if(hasNewFiles){
-      const oldDocs=allDocs.filter(d=>d.venda_id===existingV.id);
-      for(const od of oldDocs){
-        await sb.storage.from('crm-documentos').remove([od.storage_path]);
-      }
-      await sb.from('crm_documentos').delete().eq('venda_id',existingV.id);
-      allDocs=allDocs.filter(d=>d.venda_id!==existingV.id);
-    }
+    // Edição: NÃO apaga documentos anteriores — novos são adicionados ao existente
   } else {
     const{data:ins,error}=await sb.from('crm_vendas').insert(payload).select().maybeSingle();
     if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
@@ -3402,6 +3426,19 @@ async function delDoc(id,path){
   allDocs=allDocs.filter(d=>d.id!==id);
   toast('Documento removido','ok');
   openDetail(detailLeadId,fromPage);
+}
+
+// Remove doc directly from inside the venda modal (edit mode)
+async function delDocFromModal(id, path, cat){
+  if(!confirm('Remover este documento?')) return;
+  const{error}=await sb.storage.from('crm-documentos').remove([path]);
+  if(error){ toast('Erro ao remover arquivo: '+error.message,'err'); return; }
+  await sb.from('crm_documentos').delete().eq('id',id);
+  allDocs=allDocs.filter(d=>d.id!==id);
+  // Remove from preview
+  const el=document.getElementById('existing-doc-'+id);
+  if(el) el.remove();
+  toast('Documento removido','ok');
 }
 
 /* ═══ DIST MANUAL ═══ */
