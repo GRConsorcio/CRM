@@ -364,7 +364,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
   <!-- LEADS (admin/coord) -->
   <div class="page" id="page-leads">
     <div class="filter-bar">
-      <input class="inp" id="l-srch" placeholder="🔍 Buscar..." oninput="renderLeads(true)">
+      <input class="inp" id="l-srch" placeholder="🔍 Buscar por nome, telefone, e-mail ou interesse..." oninput="renderLeads(true)" style="min-width:260px">
       <select id="l-f-status" onchange="renderLeads(true)">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
@@ -2088,7 +2088,7 @@ function renderLeads(resetPage){
   const fdIni=document.getElementById('l-f-data-ini')?.value||'';
   const fdFim=document.getElementById('l-f-data-fim')?.value||'';
   const f=allLeads.filter(l=>{
-    if(q&&!l.nome.toLowerCase().includes(q)&&!(l.interesse||'').toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
+    if(q){const qd=q.replace(/[^0-9]/g,'');const match=l.nome.toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q)||(l.email||'').toLowerCase().includes(q)||(l.observacoes||'').toLowerCase().includes(q)||(qd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(qd));if(!match)return false;}
     if(fs&&l.status!==fs)return false;
     if(fr&&l.responsavel_id!==fr)return false;
     if(fo==='__sem__'&&l.responsavel_id!=null)return false;
@@ -2225,9 +2225,9 @@ async function buscarNaBaseCompleta(){
     let query=sb.from('crm_leads').select('*').limit(50);
     if(digits.length>=4){
       // Busca por telefone (números) OU nome OU interesse
-      query=query.or(`nome.ilike.%${q}%,telefone.ilike.%${digits}%,interesse.ilike.%${q}%`);
+      query=query.or(`nome.ilike.%${q}%,telefone.ilike.%${digits}%,interesse.ilike.%${q}%,email.ilike.%${q}%`);
     } else {
-      query=query.or(`nome.ilike.%${q}%,interesse.ilike.%${q}%`);
+      query=query.or(`nome.ilike.%${q}%,interesse.ilike.%${q}%,email.ilike.%${q}%`);
     }
     const {data,error}=await query;
     if(error) throw error;
