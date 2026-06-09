@@ -4169,59 +4169,60 @@ async function runAutoReturnRules(){
     if(!refDate) continue;
     const diasDesdeAtribuicao=(now-new Date(refDate))/(1000*60*60*24);
     if(l.status==='Perdido'&&diasDesdeAtribuicao>=3){
-      retornar3.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,equipe_id:l.equipe_id,dias:Math.floor(diasDesdeAtribuicao)});
+      retornar3.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
     } else if(l.status!=='Perdido'&&['Novo','Em Negociação','Proposta','Sem Contato'].includes(l.status)&&diasDesdeAtribuicao>=7){
-      retornar7.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,equipe_id:l.equipe_id,dias:Math.floor(diasDesdeAtribuicao)});
+      retornar7.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
     }
   }
 
   const todos=[...retornar7,...retornar3];
   if(!todos.length) return;
 
-  // Detecta se colunas novas existem (baseado nos dados carregados)
-  const hasPropostaQuente='proposta_quente' in (allLeads[0]||{});
-  const hasAtribuidoEm='atribuido_em' in (allLeads[0]||{});
+  // Helper: processa em batches de 100 (evita 400 do Supabase com arrays grandes)
+  async function updateInBatches(ids, payload){
+    const BATCH=100;
+    for(let i=0;i<ids.length;i+=BATCH){
+      const batch=ids.slice(i,i+BATCH);
+      const{error}=await sb.from('crm_leads').update(payload).in('id',batch);
+      if(error) console.warn('Auto-return batch error:',error.message,payload);
+    }
+  }
 
   const ids7=retornar7.map(x=>x.id);
   const ids3=retornar3.map(x=>x.id);
 
-  const baseUpdate7={responsavel_id:null,equipe_id:null,distribuido_em:null};
-  const baseUpdate3={responsavel_id:null,equipe_id:null,distribuido_em:null,tipo_lead:'Remalho'};
-  if(hasAtribuidoEm){ baseUpdate7.atribuido_em=null; baseUpdate3.atribuido_em=null; }
-  if(hasPropostaQuente){ baseUpdate7.proposta_quente=false; baseUpdate3.proposta_quente=false; }
+  // Update mínimo garantido (colunas que sempre existem)
+  const upBase={responsavel_id:null,equipe_id:null,distribuido_em:null};
+  const up3={...upBase,tipo_lead:'Remalho'};
 
-  if(ids7.length){
-    const{error}=await sb.from('crm_leads').update(baseUpdate7).in('id',ids7);
-    if(error) console.warn('Auto-return 7d error:',error.message);
-  }
-  if(ids3.length){
-    const{error}=await sb.from('crm_leads').update(baseUpdate3).in('id',ids3);
-    if(error) console.warn('Auto-return 3d error:',error.message);
-  }
+  if(ids7.length) await updateInBatches(ids7, upBase);
+  if(ids3.length) await updateInBatches(ids3, up3);
 
-  for(const item of todos){
+  // Atualiza memória local
+  todos.forEach(item=>{
     const i=allLeads.findIndex(l=>l.id===item.id);
     if(i>-1){
       allLeads[i].responsavel_id=null;
       allLeads[i].equipe_id=null;
       allLeads[i].distribuido_em=null;
-      if(hasAtribuidoEm) allLeads[i].atribuido_em=null;
-      if(hasPropostaQuente) allLeads[i].proposta_quente=false;
+      allLeads[i].atribuido_em=null;
       if(item.status==='Perdido') allLeads[i].tipo_lead='Remalho';
     }
+  });
+
+  // Registra histórico em paralelo (sem bloquear)
+  Promise.all(todos.map(item=>{
     const vendedorNome=allUsers.find(u=>u.user_id===item.vendedor_id)?.name||'vendedor';
     const motivo=item.status==='Perdido'
-      ?`Retorno automático: lead Perdido há ${item.dias} dias sem atualização`
-      :`Retorno automático: ${item.status} há ${item.dias} dias sem atualização`;
-    try{
-      await sb.from('crm_historico').insert({
-        lead_id:item.id,user_id:CU.id,
-        tipo:'🔄 Retorno Automático',
-        descricao:`${motivo} (era de ${vendedorNome})`,
-        created_at:new Date().toISOString()
-      });
-    }catch(e){console.warn('History insert error:',e);}
-  }
+      ?`Retorno automático: lead Perdido há ${item.dias} dias`
+      :`Retorno automático: ${item.status} há ${item.dias} dias`;
+    return sb.from('crm_historico').insert({
+      lead_id:item.id,user_id:CU.id,
+      tipo:'🔄 Retorno Automático',
+      descricao:`${motivo} (era de ${vendedorNome})`,
+      created_at:new Date().toISOString()
+    }).catch(e=>console.warn('Hist insert error:',e));
+  })).catch(()=>{});
 
   saveCache();
   const msg=[];
