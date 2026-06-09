@@ -1356,80 +1356,72 @@ async function initApp(user){
   if(_initAppInProgress) return;
   _initAppInProgress=true;
   try{
-  CU=user;
-  const _displayName = CU.user_metadata?.full_name || CU.nome || CU.name || CU.email || '';
-  document.getElementById('u-name').textContent = _displayName;
-  document.getElementById('u-av').textContent =
-    (_displayName || '?').charAt(0).toUpperCase();
-  document.getElementById('auth-screen').style.display='none';
+    CU=user;
+    const _displayName = CU.user_metadata?.full_name || CU.nome || CU.name || CU.email || '';
+    document.getElementById('u-name').textContent = _displayName;
+    document.getElementById('u-av').textContent =
+      (_displayName || '?').charAt(0).toUpperCase();
+    document.getElementById('auth-screen').style.display='none';
 
-  // ── CACHE FIRST: mostra dados salvos instantaneamente
-  const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
-  if(cacheData){
-    try{
-      const cached=JSON.parse(cacheData);
-      // Invalida cache marcado como incompleto
-      const isIncomplete = cached._incomplete ||
-        (cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin'&&cached.leads.length>0);
-      if(isIncomplete){
-        console.log('Cache incompleto — inicializando UI com dados parciais e recarregando leads...');
-        // Inicializa UI imediatamente com o que tiver (users, equipes, etc.) para não ficar tela em branco
-        CUProfile=cached.profile;
-        allLeads=cached.leads||[];
-        allUsers=cached.users||[];
-        allHist=cached.hist||[];
-        allTasks=cached.tasks||[];
-        allVendas=cached.vendas||[];
-        allDocs=cached.docs||[];
-        allEquipes=cached.equipes||[];
-        allMembroEquipes=cached.membros||[];
-        populateSelects();
-        renderNav();
-        goToDashboard();
-        renderDashboard().catch(()=>{});
-        setupRealtime();
-        setTimeout(checkTaskAlerts,2000);
-        if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-        _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-        sessionStorage.removeItem('crm_data_'+CU.id);
-        // Recarrega leads em background sem bloquear UI
-        refreshInBackground();
-        return;
-      } else {
-        CUProfile=cached.profile;
-        allLeads=cached.leads||[];
-        allUsers=cached.users||[];
-        allHist=cached.hist||[];
-        allTasks=cached.tasks||[];
-        allVendas=cached.vendas||[];
-        allDocs=cached.docs||[];
-        allEquipes=cached.equipes||[];
-        allMembroEquipes=cached.membros||[];
-        populateSelects();
-        renderNav();
-        goToDashboard();
-        renderDashboard().catch(()=>{});
-        setupRealtime();
-        // Start task alert system
-        setTimeout(checkTaskAlerts,2000);
-        if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-        _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-        // Atualiza dados em background sem bloquear a UI
-        refreshInBackground();
-        return;
-      }
-    } catch(e){ sessionStorage.removeItem('crm_data_'+CU.id); }
-  }
+    // ── CACHE FIRST: mostra dados salvos instantaneamente
+    const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
+    if(cacheData){
+      try{
+        const cached=JSON.parse(cacheData);
+        const isIncomplete = cached._incomplete ||
+          (cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin'&&cached.leads.length>0);
+        if(isIncomplete){
+          console.log('Cache incompleto — inicializando UI com dados parciais e recarregando leads...');
+          CUProfile=cached.profile;
+          allLeads=cached.leads||[];
+          allUsers=cached.users||[];
+          allHist=cached.hist||[];
+          allTasks=cached.tasks||[];
+          allVendas=cached.vendas||[];
+          allDocs=cached.docs||[];
+          allEquipes=cached.equipes||[];
+          allMembroEquipes=cached.membros||[];
+          populateSelects();
+          renderNav();
+          goToDashboard();
+          renderDashboard().catch(()=>{});
+          setupRealtime();
+          setTimeout(checkTaskAlerts,2000);
+          if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+          _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+          sessionStorage.removeItem('crm_data_'+CU.id);
+          refreshInBackground();
+          return;
+        } else {
+          CUProfile=cached.profile;
+          allLeads=cached.leads||[];
+          allUsers=cached.users||[];
+          allHist=cached.hist||[];
+          allTasks=cached.tasks||[];
+          allVendas=cached.vendas||[];
+          allDocs=cached.docs||[];
+          allEquipes=cached.equipes||[];
+          allMembroEquipes=cached.membros||[];
+          populateSelects();
+          renderNav();
+          goToDashboard();
+          renderDashboard().catch(()=>{});
+          setupRealtime();
+          setTimeout(checkTaskAlerts,2000);
+          if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+          _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+          refreshInBackground();
+          return;
+        }
+      } catch(e){ sessionStorage.removeItem('crm_data_'+CU.id); }
+    }
 
-  // ── PRIMEIRA VEZ: carrega normalmente
-  try{
+    // ── PRIMEIRA VEZ: carrega normalmente
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
     await ensureProfile();
     await loadAll();
     clearTimeout(t);
     saveCache();
-    // loadAll já inicializa UI para admin (retorno antecipado)
-    // Para outros perfis, inicializa aqui
     if(!document.getElementById('page-dashboard')?.classList.contains('on')){
       populateSelects();
       renderNav();
