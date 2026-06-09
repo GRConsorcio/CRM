@@ -3769,7 +3769,15 @@ async function togglePropostaQuente(leadId,ativo,el){
   const prev=el.innerHTML;
   el.textContent='...';
   const{error}=await sb.from('crm_leads').update({proposta_quente:ativo}).eq('id',leadId);
-  if(error){toast('Erro: '+error.message,'err');el.innerHTML=prev;return;}
+  if(error){
+    el.innerHTML=prev;
+    if(error.message?.includes('column')&&error.message?.includes('proposta_quente')){
+      toast('Execute o SQL de migração no Supabase para ativar esta função.','err');
+    } else {
+      toast('Erro: '+error.message,'err');
+    }
+    return;
+  }
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1) allLeads[i].proposta_quente=ativo;
   // Registra no histórico
@@ -4076,14 +4084,24 @@ function goToDashboard(){
 function saveCache(){
   if(!CU||!CUProfile) return;
   try{
+    // Slim leads: salva só os campos usados em listagens/KPIs (não o objeto completo)
+    // Isso reduz de ~500KB para ~150KB em bases grandes
+    const slimLeads=allLeads.map(l=>({
+      id:l.id, nome:l.nome, telefone:l.telefone, email:l.email,
+      status:l.status, interesse:l.interesse, origem:l.origem,
+      responsavel_id:l.responsavel_id, equipe_id:l.equipe_id,
+      tipo_lead:l.tipo_lead, created_at:l.created_at,
+      distribuido_em:l.distribuido_em, atribuido_em:l.atribuido_em,
+      proposta_quente:l.proposta_quente, observacoes:l.observacoes
+    }));
     const data={
       profile:CUProfile,
-      leads:allLeads, // todos os leads — necessário para KPIs corretos
+      leads:slimLeads,
       users:allUsers,
       hist:allHist.slice(0,200),
       tasks:allTasks.slice(0,200),
       vendas:allVendas.slice(0,200),
-      docs:[], // documentos sempre buscados frescos do Supabase em openDetail
+      docs:[],
       equipes:allEquipes,
       membros:allMembroEquipes,
       ts:Date.now()
@@ -4091,9 +4109,8 @@ function saveCache(){
     try{
       sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
     } catch(quota){
-      // Se a base for muito grande (>5MB), salva sem leads (carrega ao iniciar)
+      // Se ainda estourar (base muito grande), salva sem leads
       console.warn('Cache quota exceeded, saving without leads');
-      // Marca explicitamente como incompleto para forçar reload no próximo acesso
       const slim={...data, leads:[], _incomplete:true};
       try{ sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(slim)); } catch(e2){}
     }
@@ -4141,20 +4158,16 @@ async function refreshInBackground(){
 async function runAutoReturnRules(){
   if(!isAdmin()) return;
   const now=new Date();
-  const retornar7=[]; // status normal — 7 dias desde atribuido_em
-  const retornar3=[]; // Perdido — 3 dias desde atribuido_em
+  const retornar7=[];
+  const retornar3=[];
 
   for(const l of allLeads){
-    if(!l.responsavel_id) continue; // já está na base sem dono
-    // Fechado com venda aprovada nunca volta
+    if(!l.responsavel_id) continue;
     const venda=allVendas.find(v=>v.lead_id===l.id);
     if(l.status==='Fechado'&&venda?.status_venda==='Aprovado') continue;
-
-    // Usa atribuido_em se existir, senão distribuido_em como fallback
     const refDate=l.atribuido_em||l.distribuido_em;
     if(!refDate) continue;
     const diasDesdeAtribuicao=(now-new Date(refDate))/(1000*60*60*24);
-
     if(l.status==='Perdido'&&diasDesdeAtribuicao>=3){
       retornar3.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,equipe_id:l.equipe_id,dias:Math.floor(diasDesdeAtribuicao)});
     } else if(l.status!=='Perdido'&&['Novo','Em Negociação','Proposta','Sem Contato'].includes(l.status)&&diasDesdeAtribuicao>=7){
@@ -4165,36 +4178,35 @@ async function runAutoReturnRules(){
   const todos=[...retornar7,...retornar3];
   if(!todos.length) return;
 
-  // Prepara updates — Perdidos ficam com flag de reciclagem
+  // Detecta se colunas novas existem (baseado nos dados carregados)
+  const hasPropostaQuente='proposta_quente' in (allLeads[0]||{});
+  const hasAtribuidoEm='atribuido_em' in (allLeads[0]||{});
+
   const ids7=retornar7.map(x=>x.id);
   const ids3=retornar3.map(x=>x.id);
 
+  const baseUpdate7={responsavel_id:null,equipe_id:null,distribuido_em:null};
+  const baseUpdate3={responsavel_id:null,equipe_id:null,distribuido_em:null,tipo_lead:'Remalho'};
+  if(hasAtribuidoEm){ baseUpdate7.atribuido_em=null; baseUpdate3.atribuido_em=null; }
+  if(hasPropostaQuente){ baseUpdate7.proposta_quente=false; baseUpdate3.proposta_quente=false; }
+
   if(ids7.length){
-    await sb.from('crm_leads').update({
-      responsavel_id:null,equipe_id:null,
-      distribuido_em:null,atribuido_em:null,
-      proposta_quente:false // reset tag ao retornar
-    }).in('id',ids7);
+    const{error}=await sb.from('crm_leads').update(baseUpdate7).in('id',ids7);
+    if(error) console.warn('Auto-return 7d error:',error.message);
   }
   if(ids3.length){
-    // Perdidos voltam com tipo_lead=Remalho para reciclagem própria
-    await sb.from('crm_leads').update({
-      responsavel_id:null,equipe_id:null,
-      distribuido_em:null,atribuido_em:null,
-      tipo_lead:'Remalho',
-      proposta_quente:false
-    }).in('id',ids3);
+    const{error}=await sb.from('crm_leads').update(baseUpdate3).in('id',ids3);
+    if(error) console.warn('Auto-return 3d error:',error.message);
   }
 
-  // Atualiza memória e registra histórico com todo o contexto
   for(const item of todos){
     const i=allLeads.findIndex(l=>l.id===item.id);
     if(i>-1){
       allLeads[i].responsavel_id=null;
       allLeads[i].equipe_id=null;
       allLeads[i].distribuido_em=null;
-      allLeads[i].atribuido_em=null;
-      allLeads[i].proposta_quente=false;
+      if(hasAtribuidoEm) allLeads[i].atribuido_em=null;
+      if(hasPropostaQuente) allLeads[i].proposta_quente=false;
       if(item.status==='Perdido') allLeads[i].tipo_lead='Remalho';
     }
     const vendedorNome=allUsers.find(u=>u.user_id===item.vendedor_id)?.name||'vendedor';
@@ -4203,8 +4215,7 @@ async function runAutoReturnRules(){
       :`Retorno automático: ${item.status} há ${item.dias} dias sem atualização`;
     try{
       await sb.from('crm_historico').insert({
-        lead_id:item.id,
-        user_id:CU.id,
+        lead_id:item.id,user_id:CU.id,
         tipo:'🔄 Retorno Automático',
         descricao:`${motivo} (era de ${vendedorNome})`,
         created_at:new Date().toISOString()
