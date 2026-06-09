@@ -1290,6 +1290,8 @@ const sb=createClient(SUPA_URL,SUPA_KEY);
 
 let CU=null,CUProfile=null;
 let _initAppInProgress=false;
+let _hasAtribuidoEm=false; // detected after first loadAll
+let _hasPropostaQuente=false;
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let pendingFiles=[];
@@ -2411,7 +2413,7 @@ async function puxarLeadsRemalho(){
 
     // Atribui ao vendedor
     const{error: updErr} = await sb.from('crm_leads')
-      .update({ responsavel_id: CU.id, distribuido_em: now, atribuido_em: now })
+      .update(buildAssignPayload(CU.id, now))
       .in('id', ids);
 
     if(updErr){ toast('Erro ao atribuir leads: '+updErr.message,'err'); return; }
@@ -2897,7 +2899,7 @@ async function quickDist(leadId){
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   const idx=(dc?.ultimo_vendedor_idx||0)%vends.length;
   const vend=vends[idx];
-  await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).eq('id',leadId);
+  await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',leadId);
   await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()}).eq('id',dc.id);
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1){allLeads[i].responsavel_id=vend.user_id;}
@@ -2915,7 +2917,7 @@ async function distAutoAll(){
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
     const vend=vends[idx%vends.length];
-    await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).eq('id',lead.id);
+    await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',lead.id);
     const i=allLeads.findIndex(l=>l.id===lead.id);
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
     idx++;
@@ -3644,7 +3646,7 @@ async function uploadContratoLead(leadId, files){
 async function distManual(){
   const leadId=v('dm-lead'),vendId=v('dm-vend');
   if(!leadId||!vendId){toast('Selecione lead e vendedor','err');return;}
-  await sb.from('crm_leads').update({responsavel_id:vendId,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).eq('id',leadId);
+  await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',leadId);
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1) allLeads[i].responsavel_id=vendId;
   closeModal('dist-manual');
@@ -3665,7 +3667,7 @@ async function distAuto(){
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
     const vend=vends[idx%vends.length];
-    await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).eq('id',lead.id);
+    await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',lead.id);
     const i=allLeads.findIndex(l=>l.id===lead.id);
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
     idx++;
@@ -4139,6 +4141,11 @@ async function refreshInBackground(){
       ]);
       if(lu.data) allUsers=lu.data;
       if(lh.data) allHist=lh.data;
+  // Detect new columns from loaded data
+  if(allLeads.length>0){
+    _hasAtribuidoEm='atribuido_em' in allLeads[0];
+    _hasPropostaQuente='proposta_quente' in allLeads[0];
+  }
       if(lt.data) allTasks=lt.data;
       if(lv.data) allVendas=lv.data;
       saveCache();
@@ -4789,7 +4796,7 @@ function openDistPicker(leadId){
 async function confirmDistPicker(){
   const vendId=document.getElementById('dist-picker-vend').value;
   if(!vendId||!_distPickerLeadId){toast('Selecione um vendedor','err');return;}
-  const{error}=await sb.from('crm_leads').update({responsavel_id:vendId,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).eq('id',_distPickerLeadId);
+  const{error}=await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',_distPickerLeadId);
   if(error){toast('Erro: '+error.message,'err');return;}
   const i=allLeads.findIndex(l=>l.id===_distPickerLeadId);
   if(i>-1) allLeads[i].responsavel_id=vendId;
@@ -4834,7 +4841,7 @@ async function confirmDistAll(){
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
     const vendId=mode==='one'?specificVend:vends[idx%vends.length].user_id;
-    await sb.from('crm_leads').update({responsavel_id:vendId,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).eq('id',lead.id);
+    await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',lead.id);
     const i=allLeads.findIndex(l=>l.id===lead.id);
     if(i>-1) allLeads[i].responsavel_id=vendId;
     if(mode==='round') idx++;
@@ -4917,7 +4924,7 @@ async function coordMassTransfer(){
   const respId=document.getElementById('coord-mass-resp')?.value;
   if(!ids.length){toast('Selecione leads','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
-  await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).in('id',ids);
+  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',ids);
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();renderCoordLeads();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
@@ -5051,7 +5058,7 @@ async function cfMassTransfer(){
   const respId=document.getElementById('cf-mass-resp')?.value;
   if(!ids.length){toast('Selecione leads','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
-  await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).in('id',ids);
+  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',ids);
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();renderCoordFunil();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
@@ -5100,7 +5107,7 @@ async function coordQuickDist(leadId){
   const counts=vends.map(u=>({u,c:allLeads.filter(l=>l.responsavel_id===u.user_id).length}));
   counts.sort((a,b)=>a.c-b.c);
   const vend=counts[0].u;
-  await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).eq('id',leadId);
+  await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',leadId);
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1) allLeads[i].responsavel_id=vend.user_id;
   saveCache();renderCoordDist();
@@ -5117,7 +5124,7 @@ async function coordDistAutoAll(){
   let idx=0;
   for(const lead of semVend){
     const vend=vends[idx%vends.length];
-    await sb.from('crm_leads').update({responsavel_id:vend.user_id,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).eq('id',lead.id);
+    await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',lead.id);
     const i=allLeads.findIndex(l=>l.id===lead.id);
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
     idx++;
@@ -5179,7 +5186,7 @@ async function massTransfer(){
   const respId=document.getElementById('mass-transfer-resp')?.value;
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!respId){toast('Selecione um vendedor para transferir','err');return;}
-  const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).in('id',ids);
+  const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',ids);
   if(error){toast('Erro: '+error.message,'err');return;}
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();populateSelects();
@@ -5373,7 +5380,7 @@ async function leadsMassTransfer(){
   // Transfer in batches of 100
   for(let i=0;i<ids.length;i+=100){
     const batch=ids.slice(i,i+100);
-    const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).in('id',batch);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',batch);
     if(error){toast('Erro: '+error.message,'err');return;}
     batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].responsavel_id=respId;});
   }
@@ -6335,7 +6342,7 @@ async function mesclarTransfer(){
   toast(`Transferindo ${ids.length} leads para ${vend?.name||'vendedor'}...`,'ok');
   for(let i=0;i<ids.length;i+=100){
     const batch=ids.slice(i,i+100);
-    const{error}=await sb.from('crm_leads').update({responsavel_id:respId,distribuido_em:new Date().toISOString(),atribuido_em:new Date().toISOString()}).in('id',batch);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',batch);
     if(error){toast('Erro: '+error.message,'err');return;}
     batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].responsavel_id=respId;});
   }
