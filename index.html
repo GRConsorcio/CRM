@@ -1270,6 +1270,7 @@ const {createClient}=supabase;
 const sb=createClient(SUPA_URL,SUPA_KEY);
 
 let CU=null,CUProfile=null;
+let _initAppInProgress=false;
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let pendingFiles=[];
@@ -1333,6 +1334,9 @@ async function doLogout(){
 /* ═══ INICIALIZAÇÃO DO APP ═══ */
 async function initApp(user){
   if(CU&&CU.id===user.id&&CUProfile) return;
+  if(_initAppInProgress) return;
+  _initAppInProgress=true;
+  try{
   CU=user;
   const _displayName = CU.user_metadata?.full_name || CU.nome || CU.name || CU.email || '';
   document.getElementById('u-name').textContent = _displayName;
@@ -1426,6 +1430,8 @@ async function initApp(user){
       document.getElementById('auth-screen').style.display='flex';
       document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
     }
+  } finally {
+    _initAppInProgress=false;
   }
 }
 
@@ -1458,10 +1464,13 @@ async function initApp(user){
 
 /* Listener para login/logout em tempo real */
 sb.auth.onAuthStateChange(async(ev,session)=>{
+  if(ev==='INITIAL_SESSION') return;
   if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED') return;
-  if(new URLSearchParams(location.search).get('logout')&&ev==='INITIAL_SESSION') return;
   if(ev==='SIGNED_OUT'){
     CU=null; CUProfile=null;
+    _initAppInProgress=false;
+    allLeads=[]; allUsers=[]; allHist=[]; allTasks=[];
+    allVendas=[]; allDocs=[]; allEquipes=[]; allMembroEquipes=[];
     if(realtimeChannel){ sb.removeChannel(realtimeChannel); realtimeChannel=null; }
     document.getElementById('auth-screen').style.display='flex';
     return;
