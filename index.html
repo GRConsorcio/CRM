@@ -1825,7 +1825,7 @@ function populateSelects(){
   // ta-lead: limitar a 200 mais recentes para não travar com 46k leads
   const leadsOpts='<option value="">Nenhum</option>'+allLeads.slice(0,200).map(l=>`<option value="${l.id}">${l.nome}</option>`).join('');
   sel('ta-lead',leadsOpts);
-  sel('dm-lead',allLeads.filter(l=>!l.responsavel_id).slice(0,500).map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
+  sel('dm-lead',allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id).slice(0,500).map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
   // filter selects
   const respFilter='<option value="">Todos os vendedores</option>'+vendOpts;
   const lf=document.getElementById('l-f-resp');
@@ -2945,7 +2945,7 @@ function renderDistribuicao(){
       </div>`;
     }).join('');
 
-  const semVend=allLeads.filter(l=>!l.responsavel_id);
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
   document.getElementById('dist-tbody').innerHTML=semVend.length===0
     ?`<tr><td colspan="5"><div class="empty"><div class="ei">✅</div>Todos os leads têm vendedor</div></td></tr>`
     :semVend.map(l=>`<tr>
@@ -2975,8 +2975,8 @@ async function quickDist(leadId){
 }
 
 async function distAutoAll(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id);
-  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
+  if(!semVend.length){toast('Nenhum lead sem vendedor e sem equipe','err');return;}
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
@@ -3192,12 +3192,12 @@ function openModal(type){
     }
   }
   if(type==='dist-auto'){
-    const count=allLeads.filter(l=>!l.responsavel_id).length;
-    document.getElementById('auto-count').textContent=`Atualmente há ${count} lead${count!==1?'s':''} sem vendedor atribuído.`;
+    const count=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id).length;
+    document.getElementById('auto-count').textContent=`Atualmente há ${count} lead${count!==1?'s':''} sem vendedor e sem equipe.`;
     document.getElementById('da-qtd').value='';
   }
   if(type==='dist-manual'){
-    const semVend=allLeads.filter(l=>!l.responsavel_id);
+    const semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
     sel('dm-lead',semVend.map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
   }
   if(type==='equipe') openModal_equipe();
@@ -3748,10 +3748,10 @@ async function distManual(){
 async function distAuto(){
   const vends=allUsers.filter(u=>u.role==='vendedor');
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id);
+  let semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
   const qtd=parseInt(v('da-qtd'))||semVend.length;
   semVend=semVend.slice(0,qtd);
-  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor e sem equipe','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
@@ -4979,8 +4979,8 @@ async function confirmDistPicker(){
 }
 
 function openDistAllPicker(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id);
-  document.getElementById('dist-all-info').textContent=semVend.length+' lead'+(semVend.length!==1?'s':'')+' sem vendedor';
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
+  document.getElementById('dist-all-info').textContent=semVend.length+' lead'+(semVend.length!==1?'s':'')+' sem vendedor e sem equipe';
   const vends=getDistVendors();
   document.getElementById('dist-all-vend').innerHTML=vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
   document.getElementById('dist-all-mode').value='round';
@@ -5003,9 +5003,9 @@ async function confirmDistAll(){
   const vends=getDistVendors();
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   if(mode==='one'&&!specificVend){toast('Selecione um vendedor','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id);
+  let semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
   if(qty) semVend=semVend.slice(0,qty);
-  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor e sem equipe','err');return;}
   let{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   for(const lead of semVend){
@@ -5259,7 +5259,8 @@ function renderCoordDist(){
     }).join('');
 
   const eqs=getCoordEquipes();
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&(eqs.includes(l.equipe_id)||mbs.includes(l.responsavel_id)));
+  // Só leads sem vendedor E que pertencem à equipe do coordenador
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&eqs.includes(l.equipe_id));
   document.getElementById('coord-dist-tbody').innerHTML=semVend.length===0
     ?`<tr><td colspan="5"><div class="empty"><div class="ei">✅</div>Todos têm vendedor</div></td></tr>`
     :semVend.map(l=>`<tr>
@@ -5290,8 +5291,9 @@ async function coordDistAutoAll(){
   const vends=allUsers.filter(u=>mbs.includes(u.user_id)&&u.role==='vendedor');
   if(!vends.length){toast('Sem vendedores','err');return;}
   const eqs=getCoordEquipes();
+  // Só leads sem vendedor E que pertençam à equipe do coord
   const semVend=allLeads.filter(l=>!l.responsavel_id&&eqs.includes(l.equipe_id));
-  if(!semVend.length){toast('Nenhum lead sem vendedor','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor na sua equipe','err');return;}
   let idx=0;
   for(const lead of semVend){
     const vend=vends[idx%vends.length];
