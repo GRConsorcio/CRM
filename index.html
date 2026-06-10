@@ -2383,6 +2383,20 @@ function renderMeusLeads(){
       </tr>`).join('');
 }
 
+/* ═══ BUILD ASSIGN PAYLOAD ═══ */
+// Monta o payload de atribuição de lead, incluindo campos opcionais quando existem
+function buildAssignPayload(vendedorId, timestamp){
+  const payload = {
+    responsavel_id: vendedorId,
+    distribuido_em: timestamp,
+  };
+  // Inclui atribuido_em se a coluna já existe na base (verificado após primeiro load)
+  if(_hasAtribuidoEm){
+    payload.atribuido_em = timestamp;
+  }
+  return payload;
+}
+
 /* ═══ PUXADOR DE REMALHO (vendedor) ═══ */
 let _puxadorBusy = false;
 async function puxarLeadsRemalho(){
@@ -2392,12 +2406,13 @@ async function puxarLeadsRemalho(){
   if(btn){ btn.disabled=true; btn.innerHTML='⏳ Puxando...'; }
 
   try{
-    // Busca leads remalho sem responsável, ordenados por data mais antigo primeiro
+    // Busca leads remalho sem responsável E sem equipe (pool livre), ordenados mais antigo primeiro
     // Usa .range(0,4) para pegar exatamente 5
     const{data, error} = await sb.from('crm_leads')
       .select('*')
       .eq('tipo_lead','Remalho')
       .is('responsavel_id', null)
+      .is('equipe_id', null)
       .order('created_at', {ascending: true})
       .range(0, 4);
 
@@ -2464,7 +2479,8 @@ async function atualizarContadorPuxador(){
     const{count} = await sb.from('crm_leads')
       .select('*',{count:'exact',head:true})
       .eq('tipo_lead','Remalho')
-      .is('responsavel_id',null);
+      .is('responsavel_id',null)
+      .is('equipe_id',null);
     const wrap = document.getElementById('puxador-count-wrap');
     const span = document.getElementById('puxador-disponiveis');
     if(wrap && span){
@@ -2540,8 +2556,8 @@ async function openDetail(id,from){
         ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
         ${canEditData?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
         ${isAdmin()?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >🗑️ Apagar</button>`:''}
-        ${isAdminOrCoord()&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">🏅 Enviar p/ Equipe</button>`:''}
-        ${isAdminOrCoord()&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">↩️ Recolher</button>`:''}
+        ${(isAdminOrCoord()||isSupervisor())&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">🏅 Enviar p/ Equipe</button>`:''}
+        ${(isAdminOrCoord()||isSupervisor())&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">↩️ Recolher</button>`:''}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px 18px;border-bottom:1px solid var(--border)">
@@ -4198,7 +4214,9 @@ async function runAutoReturnRules(){
   const ids3=retornar3.map(x=>x.id);
 
   // Update mínimo garantido (colunas que sempre existem)
-  const upBase={responsavel_id:null,equipe_id:null,distribuido_em:null};
+  // status é sempre resetado para 'Novo' para evitar que o lead entre no funil do novo vendedor
+  // no mesmo estágio onde estava antes (ex: "Sem Contato" → virava "Sem Contato" de novo)
+  const upBase={responsavel_id:null,equipe_id:null,distribuido_em:null,status:'Novo'};
   const up3={...upBase,tipo_lead:'Remalho'};
 
   if(ids7.length) await updateInBatches(ids7, upBase);
@@ -4212,22 +4230,24 @@ async function runAutoReturnRules(){
       allLeads[i].equipe_id=null;
       allLeads[i].distribuido_em=null;
       allLeads[i].atribuido_em=null;
+      allLeads[i].status='Novo'; // sempre reseta status para não cair no mesmo estágio
       if(item.status==='Perdido') allLeads[i].tipo_lead='Remalho';
     }
   });
 
   // Registra histórico em paralelo (sem bloquear)
-  Promise.all(todos.map(item=>{
+  Promise.all(todos.map(async item=>{
     const vendedorNome=allUsers.find(u=>u.user_id===item.vendedor_id)?.name||'vendedor';
     const motivo=item.status==='Perdido'
       ?`Retorno automático: lead Perdido há ${item.dias} dias`
       :`Retorno automático: ${item.status} há ${item.dias} dias`;
-    return sb.from('crm_historico').insert({
+    const{error:he}=await sb.from('crm_historico').insert({
       lead_id:item.id,user_id:CU.id,
       tipo:'🔄 Retorno Automático',
       descricao:`${motivo} (era de ${vendedorNome})`,
       created_at:new Date().toISOString()
-    }).catch(e=>console.warn('Hist insert error:',e));
+    });
+    if(he) console.warn('Hist insert error:',he.message);
   })).catch(()=>{});
 
   saveCache();
@@ -4423,10 +4443,23 @@ async function syncLead(payload){
   } else if(eventType==='UPDATE'){
     const idx=allLeads.findIndex(l=>l.id===n.id);
     if(idx>-1){
-      // Vendedor: remove from local if unassigned from them
-      if(!isAdminOrCoord()&&n.responsavel_id!==CU.id){
+      // IMPORTANTE: O payload de UPDATE do Supabase Realtime pode ser parcial (nem sempre
+      // traz todos os campos, especialmente se a tabela tem muitas colunas ou RLS ativo).
+      // Por isso, NUNCA removemos um lead baseado em n.responsavel_id===null/undefined do
+      // payload — isso causava leads sumindo da base do vendedor quando qualquer outro
+      // campo era atualizado pelo admin (ex: auto-retorno atualizando atribuido_em).
+      // A regra correta: só remove se EXPLICITAMENTE o responsavel_id mudou para outro usuário
+      // E o novo valor não é undefined (payload incompleto).
+      const novoResp = n.responsavel_id;
+      const campoExplicito = novoResp !== undefined; // false = campo não veio no payload (parcial)
+      if(!isAdminOrCoord() && campoExplicito && novoResp !== CU.id && novoResp !== null){
+        // Lead foi transferido para outro vendedor — remove da lista local
+        allLeads.splice(idx,1);
+      } else if(!isAdminOrCoord() && campoExplicito && novoResp === null){
+        // Lead foi recolhido (sem vendedor) — remove da lista local do vendedor
         allLeads.splice(idx,1);
       } else {
+        // Atualização parcial ou lead ainda pertence a este usuário — apenas mescla os campos
         Object.assign(allLeads[idx],n);
       }
     } else if(isAdminOrCoord()||(n.responsavel_id===CU.id)){
