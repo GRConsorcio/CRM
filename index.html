@@ -2384,11 +2384,15 @@ function renderMeusLeads(){
 }
 
 /* ═══ BUILD ASSIGN PAYLOAD ═══ */
-// Monta o payload de atribuição de lead, incluindo campos opcionais quando existem
-function buildAssignPayload(vendedorId, timestamp){
+// Monta o payload de atribuição de lead.
+// Sempre reseta status para 'Novo' ao atribuir — garante que o lead não apareça
+// com status antigo (Perdido, Sem Contato, etc.) na base do novo vendedor.
+// Passe resetStatus=false apenas em transferências entre vendedores onde o status deve ser mantido.
+function buildAssignPayload(vendedorId, timestamp, resetStatus=true){
   const payload = {
     responsavel_id: vendedorId,
     distribuido_em: timestamp,
+    ...(resetStatus ? { status: 'Novo' } : {}),
   };
   // Inclui atribuido_em se a coluna já existe na base (verificado após primeiro load)
   if(_hasAtribuidoEm){
@@ -2426,9 +2430,10 @@ async function puxarLeadsRemalho(){
     const ids = data.map(l=>l.id);
     const now = new Date().toISOString();
 
-    // Atribui ao vendedor
+    // Atribui ao vendedor — buildAssignPayload já reseta status para 'Novo'
+    const assignPayload = buildAssignPayload(CU.id, now);
     const{error: updErr} = await sb.from('crm_leads')
-      .update(buildAssignPayload(CU.id, now))
+      .update(assignPayload)
       .in('id', ids);
 
     if(updErr){ toast('Erro ao atribuir leads: '+updErr.message,'err'); return; }
@@ -2438,11 +2443,13 @@ async function puxarLeadsRemalho(){
       lead.responsavel_id = CU.id;
       lead.distribuido_em = now;
       lead.atribuido_em = now;
+      lead.status = 'Novo';
       const idx = allLeads.findIndex(l=>l.id===lead.id);
       if(idx > -1){
         allLeads[idx].responsavel_id = CU.id;
         allLeads[idx].distribuido_em = now;
         allLeads[idx].atribuido_em = now;
+        allLeads[idx].status = 'Novo';
       } else {
         allLeads.push(lead);
       }
@@ -4956,7 +4963,7 @@ async function coordMassTransfer(){
   const respId=document.getElementById('coord-mass-resp')?.value;
   if(!ids.length){toast('Selecione leads','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
-  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',ids);
+  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',ids);
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();renderCoordLeads();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
@@ -5090,7 +5097,7 @@ async function cfMassTransfer(){
   const respId=document.getElementById('cf-mass-resp')?.value;
   if(!ids.length){toast('Selecione leads','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
-  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',ids);
+  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',ids);
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();renderCoordFunil();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
@@ -5218,7 +5225,7 @@ async function massTransfer(){
   const respId=document.getElementById('mass-transfer-resp')?.value;
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!respId){toast('Selecione um vendedor para transferir','err');return;}
-  const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',ids);
+  const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',ids);
   if(error){toast('Erro: '+error.message,'err');return;}
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();populateSelects();
@@ -5412,7 +5419,7 @@ async function leadsMassTransfer(){
   // Transfer in batches of 100
   for(let i=0;i<ids.length;i+=100){
     const batch=ids.slice(i,i+100);
-    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',batch);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',batch);
     if(error){toast('Erro: '+error.message,'err');return;}
     batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].responsavel_id=respId;});
   }
@@ -6374,7 +6381,7 @@ async function mesclarTransfer(){
   toast(`Transferindo ${ids.length} leads para ${vend?.name||'vendedor'}...`,'ok');
   for(let i=0;i<ids.length;i+=100){
     const batch=ids.slice(i,i+100);
-    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',batch);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',batch);
     if(error){toast('Erro: '+error.message,'err');return;}
     batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].responsavel_id=respId;});
   }
