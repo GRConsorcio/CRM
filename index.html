@@ -3533,6 +3533,21 @@ async function saveVenda(){
     if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
     if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
     if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
+  } else {
+    // Venda existente: verifica se docs obrigatórios estão faltando (upload anterior pode ter falhado parcialmente)
+    const vendaDocsSalvos = allDocs.filter(d=>d.venda_id===existingV.id);
+    const temFoto = vendaDocsSalvos.some(d=>(d.nome||'').toLowerCase().includes('foto'));
+    const temContrato = vendaDocsSalvos.some(d=>(d.nome||'').toLowerCase().includes('contrato'));
+    const temComprovante = vendaDocsSalvos.some(d=>(d.nome||'').toLowerCase().includes('comprovante'));
+    // Se algum doc obrigatório está faltando no banco E não foi anexado agora, avisa (não bloqueia — permite re-upload)
+    const faltando = [];
+    if(!temFoto && !catFiles.foto.length) faltando.push('Documento com Foto');
+    if(!temContrato && !catFiles.contrato.length) faltando.push('Contrato');
+    if(!temComprovante && !catFiles.comprovante.length) faltando.push('Comprovante de Pagamento');
+    if(faltando.length){
+      toast('⚠️ Documento(s) faltando: '+faltando.join(', ')+'. Anexe para completar a venda.','err');
+      return;
+    }
   }
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
@@ -3583,7 +3598,7 @@ async function saveVenda(){
         seq++;
         // Nome de arquivo saneado: remove caracteres problemáticos para o storage
         const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80);
-        const uniq=`${Date.now()}-${seq}-${Math.random().toString(36).slice(2,8)}`;
+        const uniq=`${Date.now()}-${seq}-${(typeof performance!=='undefined'?Math.floor(performance.now()*1000):Math.floor(Math.random()*1e9))}-${Math.random().toString(36).slice(2,8)}`;
         const storagePath=`${vendaLeadId}/${vd.id}/${cat}-${uniq}-${safeName}`;
 
         const{error:ueErr}=await sb.storage.from('crm-documentos').upload(storagePath,file,{upsert:false});
@@ -3607,25 +3622,25 @@ async function saveVenda(){
         if(dbErr){
           console.error('DB insert doc error ['+file.name+']:', dbErr.message);
           uploadErrors.push(file.name+' (db)');
-        } else if(dc){
-          allDocs.push(dc);
         }
+        // Não faz push individual — a sincronização abaixo garante consistência
       }
     }
 
     if(uploadErrors.length){
       toast('⚠️ Falha ao enviar: '+uploadErrors.slice(0,3).join(', ')+(uploadErrors.length>3?' e mais...':''),'err');
     }
-
-    // Sincroniza allDocs com banco para garantir consistência
-    try{
-      const{data:freshDocs}=await sb.from('crm_documentos').select('*').eq('lead_id',vendaLeadId);
-      if(freshDocs){
-        allDocs=allDocs.filter(d=>d.lead_id!==vendaLeadId);
-        allDocs.push(...freshDocs);
-      }
-    }catch(syncErr){console.warn('Sync docs error:',syncErr.message);}
   }
+
+  // Sincroniza allDocs com banco para garantir consistência (sempre, não só quando há novos arquivos)
+  // Isso evita documentos duplicados na memória após uploads parciais ou recarregamentos
+  try{
+    const{data:freshDocs}=await sb.from('crm_documentos').select('*').eq('lead_id',vendaLeadId);
+    if(freshDocs){
+      allDocs=allDocs.filter(d=>d.lead_id!==vendaLeadId);
+      allDocs.push(...freshDocs);
+    }
+  }catch(syncErr){console.warn('Sync docs error:',syncErr.message);}
 
   // ── Atualiza status do lead (só na criação) ──
   if(!existingV){
