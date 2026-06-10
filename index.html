@@ -4187,27 +4187,52 @@ async function refreshInBackground(){
 async function runAutoReturnRules(){
   if(!isAdmin()) return;
   const now=new Date();
-  const retornar7=[];
-  const retornar3=[];
+  const retornar10=[];  // Em Negociação / Proposta → 10 dias
+  const retornar7=[];   // Novo / Sem Contato → 7 dias
+  const retornar3=[];   // Perdido → 3 dias
+
+  // Leads com vendedor mas sem atribuido_em (base antiga ou leads que chegaram antes da
+  // coluna existir) — reseta atribuido_em para AGORA para que a contagem comece hoje.
+  // Faz isso em lote uma única vez por execução, sem bloquear a checagem principal.
+  const semData=allLeads.filter(l=>l.responsavel_id&&!l.atribuido_em&&!l.distribuido_em&&l.status!=='Fechado');
+  if(semData.length){
+    const semDataIds=semData.map(l=>l.id);
+    const nowIso=now.toISOString();
+    // Atualiza em batches silenciosamente
+    (async()=>{
+      const BATCH=100;
+      for(let i=0;i<semDataIds.length;i+=BATCH){
+        const batch=semDataIds.slice(i,i+BATCH);
+        await sb.from('crm_leads').update({atribuido_em:nowIso,distribuido_em:nowIso}).in('id',batch);
+        batch.forEach(id=>{
+          const idx=allLeads.findIndex(l=>l.id===id);
+          if(idx>-1){allLeads[idx].atribuido_em=nowIso;allLeads[idx].distribuido_em=nowIso;}
+        });
+      }
+      console.log(`Auto-return: ${semDataIds.length} leads sem data de atribuição tiveram atribuido_em zerado para hoje.`);
+    })().catch(e=>console.warn('Reset atribuido_em error:',e.message));
+  }
 
   for(const l of allLeads){
     if(!l.responsavel_id) continue;
     const venda=allVendas.find(v=>v.lead_id===l.id);
     if(l.status==='Fechado'&&venda?.status_venda==='Aprovado') continue;
     const refDate=l.atribuido_em||l.distribuido_em;
-    if(!refDate) continue;
+    if(!refDate) continue; // ainda sem data (será zerado acima na próxima execução)
     const diasDesdeAtribuicao=(now-new Date(refDate))/(1000*60*60*24);
     if(l.status==='Perdido'&&diasDesdeAtribuicao>=3){
       retornar3.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
-    } else if(l.status!=='Perdido'&&['Novo','Em Negociação','Proposta','Sem Contato'].includes(l.status)&&diasDesdeAtribuicao>=7){
+    } else if(['Em Negociação','Proposta'].includes(l.status)&&diasDesdeAtribuicao>=10){
+      retornar10.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
+    } else if(['Novo','Sem Contato'].includes(l.status)&&diasDesdeAtribuicao>=7){
       retornar7.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
     }
   }
 
-  const todos=[...retornar7,...retornar3];
+  const todos=[...retornar10,...retornar7,...retornar3];
   if(!todos.length) return;
 
-  // Helper: processa em batches de 100 (evita 400 do Supabase com arrays grandes)
+  // Helper: processa em batches de 100
   async function updateInBatches(ids, payload){
     const BATCH=100;
     for(let i=0;i<ids.length;i+=BATCH){
@@ -4217,17 +4242,17 @@ async function runAutoReturnRules(){
     }
   }
 
+  const ids10=retornar10.map(x=>x.id);
   const ids7=retornar7.map(x=>x.id);
   const ids3=retornar3.map(x=>x.id);
 
-  // Update mínimo garantido (colunas que sempre existem)
-  // status é sempre resetado para 'Novo' para evitar que o lead entre no funil do novo vendedor
-  // no mesmo estágio onde estava antes (ex: "Sem Contato" → virava "Sem Contato" de novo)
-  const upBase={responsavel_id:null,equipe_id:null,distribuido_em:null,status:'Novo'};
+  // status sempre resetado para 'Novo' — lead não volta com status antigo para o próximo vendedor
+  const upBase={responsavel_id:null,equipe_id:null,distribuido_em:null,atribuido_em:null,status:'Novo'};
   const up3={...upBase,tipo_lead:'Remalho'};
 
-  if(ids7.length) await updateInBatches(ids7, upBase);
-  if(ids3.length) await updateInBatches(ids3, up3);
+  if(ids10.length) await updateInBatches(ids10, upBase);
+  if(ids7.length)  await updateInBatches(ids7,  upBase);
+  if(ids3.length)  await updateInBatches(ids3,  up3);
 
   // Atualiza memória local
   todos.forEach(item=>{
@@ -4237,7 +4262,7 @@ async function runAutoReturnRules(){
       allLeads[i].equipe_id=null;
       allLeads[i].distribuido_em=null;
       allLeads[i].atribuido_em=null;
-      allLeads[i].status='Novo'; // sempre reseta status para não cair no mesmo estágio
+      allLeads[i].status='Novo';
       if(item.status==='Perdido') allLeads[i].tipo_lead='Remalho';
     }
   });
@@ -4245,9 +4270,8 @@ async function runAutoReturnRules(){
   // Registra histórico em paralelo (sem bloquear)
   Promise.all(todos.map(async item=>{
     const vendedorNome=allUsers.find(u=>u.user_id===item.vendedor_id)?.name||'vendedor';
-    const motivo=item.status==='Perdido'
-      ?`Retorno automático: lead Perdido há ${item.dias} dias`
-      :`Retorno automático: ${item.status} há ${item.dias} dias`;
+    const limite=item.status==='Perdido'?3:['Em Negociação','Proposta'].includes(item.status)?10:7;
+    const motivo=`Retorno automático: lead "${item.status}" há ${item.dias} dias (limite: ${limite}d)`;
     const{error:he}=await sb.from('crm_historico').insert({
       lead_id:item.id,user_id:CU.id,
       tipo:'🔄 Retorno Automático',
@@ -4259,8 +4283,9 @@ async function runAutoReturnRules(){
 
   saveCache();
   const msg=[];
-  if(retornar7.length) msg.push(`${retornar7.length} lead(s) retornado(s) após 7 dias`);
-  if(retornar3.length) msg.push(`${retornar3.length} perdido(s) reciclado(s) após 3 dias`);
+  if(retornar10.length) msg.push(`${retornar10.length} lead(s) retornado(s) após 10 dias`);
+  if(retornar7.length)  msg.push(`${retornar7.length} lead(s) retornado(s) após 7 dias`);
+  if(retornar3.length)  msg.push(`${retornar3.length} perdido(s) reciclado(s) após 3 dias`);
   toast(msg.join(' · '),'ok');
   reRenderCurrent();
 }
@@ -6664,9 +6689,11 @@ CREATE INDEX IF NOT EXISTS idx_docs_categoria ON crm_documentos(categoria, lead_
 --       AND atribuido_em IS NOT NULL
 --       AND status NOT IN ('Fechado')
 --       AND (
---         (status = 'Perdido' AND atribuido_em < NOW() - INTERVAL '3 days')
+--         (status = 'Perdido'                            AND atribuido_em < NOW() - INTERVAL '3 days')
 --         OR
---         (status <> 'Perdido' AND atribuido_em < NOW() - INTERVAL '7 days')
+--         (status IN ('Em Negociação','Proposta')        AND atribuido_em < NOW() - INTERVAL '10 days')
+--         OR
+--         (status IN ('Novo','Sem Contato')              AND atribuido_em < NOW() - INTERVAL '7 days')
 --       )
 --       AND id NOT IN (
 --         SELECT lead_id FROM crm_vendas WHERE status_venda = 'Aprovado'
