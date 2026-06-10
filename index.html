@@ -3620,7 +3620,7 @@ async function saveVenda(){
   if(!existingV && typeof sincronizarVendaFirebase === 'function'){
     const lead = allLeads.find(l=>l.id===vendaLeadId);
     const vendedor = allUsers.find(u=>u.user_id===(vd.vendedor_id||CU.id));
-    const equipe = lead?.equipe_id ? allEquipes.find(e=>e.id===lead.equipe_id) : null;
+    const equipe = resolverEquipeParaVenda(lead, vendedor);
     sincronizarVendaFirebase(lead, vd, vendedor, equipe, +1).catch(e=>
       console.warn('Firebase ranking sync error:',e.message)
     );
@@ -3665,7 +3665,7 @@ async function updateVendaStatus(id,status){
   if(status==='Cancelado' && vendaAntes && typeof sincronizarVendaFirebase==='function'){
     const lead = allLeads.find(l=>l.id===vendaAntes.lead_id);
     const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
-    const equipe = lead?.equipe_id ? allEquipes.find(e=>e.id===lead.equipe_id) : null;
+    const equipe = resolverEquipeParaVenda(lead, vendedor);
     sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, -1).catch(e=>
       console.warn('Firebase ranking sync (cancelado) error:',e.message)
     );
@@ -3884,6 +3884,33 @@ async function togglePropostaQuente(leadId,ativo,el){
   else if(document.getElementById('page-meus-leads')?.classList.contains('on')) renderMeusLeads();
   toast(ativo?'🔥 Proposta Quente ativada!':'Tag removida','ok');
 }
+/* ═══ RESOLVER EQUIPE PARA RANKING FIREBASE ═══
+   Tenta determinar a equipe do lead/vendedor no seguinte ordem:
+   1. equipe_id do lead
+   2. equipe do vendedor via allMembroEquipes
+   Retorna o objeto equipe ou null.
+*/
+function resolverEquipeParaVenda(lead, vendedor){
+  // 1. Lead tem equipe diretamente
+  if(lead?.equipe_id){
+    const eq = allEquipes.find(e=>e.id===lead.equipe_id);
+    if(eq) return eq;
+  }
+  // 2. Busca pelo vendedor nos membros de equipe
+  if(vendedor?.user_id){
+    const membro = allMembroEquipes.find(m=>m.user_id===vendedor.user_id);
+    if(membro?.equipe_id){
+      const eq = allEquipes.find(e=>e.id===membro.equipe_id);
+      if(eq){
+        console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}": "${eq.nome}"`);
+        return eq;
+      }
+    }
+  }
+  console.warn(`[FB Ranking] Equipe não encontrada para lead=${lead?.id} vendedor="${vendedor?.name}"`);
+  return null;
+}
+
 function toast(msg,type='ok'){
   const n=document.getElementById('notify');
   n.textContent=msg;n.className=`notify ${type} show`;
@@ -4031,7 +4058,7 @@ async function revertVenda(vendaId, leadId){
   if(vendaAntes && typeof sincronizarVendaFirebase==='function'){
     const lead = allLeads.find(l=>l.id===leadId);
     const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
-    const equipe = lead?.equipe_id ? allEquipes.find(e=>e.id===lead.equipe_id) : null;
+    const equipe = resolverEquipeParaVenda(lead, vendedor);
     sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, -1).catch(e=>
       console.warn('Firebase ranking sync (revert) error:',e.message)
     );
@@ -6863,7 +6890,7 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
 }
 
 // delta=+1 ao criar venda (Pendente), delta=-1 ao cancelar ou reverter
-// Expõe getters — o script principal (não-module) seta window._allEquipes etc.
+// A equipe já vem resolvida pelo script principal via resolverEquipeParaVenda()
 window._crmAllEquipes        = ()=> window._allEquipes        || [];
 window._crmAllMembroEquipes  = ()=> window._allMembroEquipes  || [];
 
@@ -6873,27 +6900,15 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
       console.warn('[FB Ranking] Dados incompletos:', {lead:!!lead, venda:!!venda, vendedor:!!vendedor});
       return;
     }
-
-    // Resolve a equipe: tenta pelo lead primeiro, depois pelo vendedor
-    let equipeResolvida = equipe;
-    if(!lead.equipe_id || !equipe){
-      // Fallback: busca a equipe pelo vendedor nos membros de equipe
-      const membroEquipes = window._crmAllMembroEquipes ? window._crmAllMembroEquipes() : [];
-      const todasEquipes  = window._crmAllEquipes      ? window._crmAllEquipes()       : [];
-      const equipeDoVendedor = membroEquipes.find(m => m.user_id === vendedor.user_id);
-      if(equipeDoVendedor){
-        equipeResolvida = todasEquipes.find(e => e.id === equipeDoVendedor.equipe_id);
-        console.log(`[FB Ranking] Lead sem equipe_id — usando equipe do vendedor: "${equipeResolvida?.nome}"`);
-      }
-      if(!equipeResolvida){
-        console.warn('[FB Ranking] Não foi possível determinar a equipe — lead e vendedor sem equipe vinculada.');
-        return;
-      }
+    if(!equipe){
+      console.warn(`[FB Ranking] Equipe não resolvida para "${vendedor.name}" — venda não sincronizada.`);
+      return;
     }
 
-    const nomeEquipe = (equipeResolvida?.nome || '').toLowerCase();
+    const nomeEquipe = (equipe.nome || '').toLowerCase();
     const semanaIdx = semanaDoMes(venda.created_at);
-    console.log(`[FB Ranking] delta=${delta>0?'+'+delta:delta} vendedor="${vendedor.name}" equipe="${nomeEquipe}" semana=${semanaIdx+1}`);
+
+    console.log(`[FB Ranking] ${delta>0?'+'+delta:delta} | vendedor="${vendedor.name}" | equipe="${equipe.nome}" | semana=${semanaIdx+1}`);
 
     let fbKey = null;
     if(nomeEquipe.includes('chis') || nomeEquipe.includes('danylo')){
@@ -6901,7 +6916,7 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
     } else if(nomeEquipe.includes('luiz')){
       fbKey = 'luiz';
     } else {
-      console.warn(`[FB Ranking] Equipe "${nomeEquipe}" não mapeada.`);
+      console.warn(`[FB Ranking] Equipe "${equipe.nome}" não mapeada para nenhum Firebase. Verifique o nome da equipe no CRM.`);
       return;
     }
 
