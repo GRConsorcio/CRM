@@ -1048,6 +1048,17 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div class="fld"><label>Valor do Crédito (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-credito" type="text" inputmode="numeric" placeholder="Ex: 90.000,00 ou 90000" oninput="fmtBrlInput(this)"></div>
     </div>
     <div class="fld"><label>Parcela (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-parcela" type="text" inputmode="numeric" placeholder="Ex: 700,00 ou 700" oninput="fmtBrlInput(this)"></div>
+
+    <div class="fld">
+      <label>Quantidade de Cotas vendidas</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button type="button" onclick="alterarQtdCotas(-1)" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;flex-shrink:0" onmouseover="this.style.borderColor='var(--gold-dim)'" onmouseout="this.style.borderColor='var(--border)'">−</button>
+        <input class="inp" id="v-qtd-cotas" type="number" min="1" value="1" style="margin:0;width:80px;text-align:center;font-size:18px;font-weight:700;color:var(--gold2)" oninput="if(parseInt(this.value)<1||!this.value)this.value=1">
+        <button type="button" onclick="alterarQtdCotas(+1)" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;flex-shrink:0" onmouseover="this.style.borderColor='var(--gold-dim)'" onmouseout="this.style.borderColor='var(--border)'">+</button>
+        <span style="font-size:11.5px;color:var(--muted2)">cota(s) — sobe essa quantidade no ranking</span>
+      </div>
+    </div>
+
     <div class="fld"><label>Observações</label><textarea class="inp" id="v-obs" placeholder="Anotações sobre a venda..."></textarea></div>
 
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin:18px 0 12px">📎 Documentos</div>
@@ -2643,6 +2654,7 @@ async function openDetail(id,from){
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Vencimento</div><strong>${venda.data_vencimento?fmtDateStr(venda.data_vencimento):'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Crédito</div><strong style="color:var(--gold2)">${venda.valor_credito?brl(venda.valor_credito):'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Parcela</div><strong>${venda.parcela?brl(venda.parcela):'—'}</strong></div>
+        <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Qtd. Cotas</div><strong style="color:var(--gold2);font-size:15px">${venda.qtd_cotas||1}</strong></div>
       </div>
       ${docs.length>0?`<div style="margin-top:14px">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">📎 Documentos (${docs.length})</div>
@@ -3134,12 +3146,13 @@ function openModal(type){
       sv('v-credito',existingVenda.valor_credito?Number(existingVenda.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'');
       sv('v-parcela',existingVenda.parcela?Number(existingVenda.parcela).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'');
       sv('v-obs',existingVenda.observacoes||'');
+      sv('v-qtd-cotas', existingVenda.qtd_cotas||1);
       // Update button label
       document.querySelector('#modal-venda .btn-save').textContent='Atualizar Venda';
       // Check if user can edit: admin, coordenador, supervisor only
       const canEditVenda=isAdmin()||isCoordenador()||isSupervisor()||(CUProfile?.role==='vendedor'&&existingVenda?.vendedor_id===CU.id);
       document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
-      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs'].forEach(id=>{
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-qtd-cotas'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.disabled=!canEditVenda;
       });
@@ -3147,6 +3160,7 @@ function openModal(type){
       ['v-cpf','v-grupo','v-cota','v-obs','v-credito','v-parcela'].forEach(id=>document.getElementById(id).value='');
       document.getElementById('v-nasc').value='';
       document.getElementById('v-venc').value='';
+      sv('v-qtd-cotas',1);
       document.querySelector('#modal-venda .btn-save').textContent='Salvar Venda';
       document.querySelector('#modal-venda .btn-save').style.display='';
       ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs'].forEach(id=>{
@@ -3494,6 +3508,13 @@ function handleFiles(files){
   // no-op in venda context; kept for compatibility
 }
 
+function alterarQtdCotas(delta){
+  const el=document.getElementById('v-qtd-cotas');
+  if(!el) return;
+  const atual=parseInt(el.value)||1;
+  el.value=Math.max(1,atual+delta);
+}
+
 async function saveVenda(){
   const cpf=v('v-cpf').replace(/\D/g,'');
   if(!cpf){toast('Informe o CPF','err');return;}
@@ -3515,6 +3536,7 @@ async function saveVenda(){
   }
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
+  const qtdCotas = Math.max(1, parseInt(v('v-qtd-cotas'))||1);
   const updatePayload={
     cpf:v('v-cpf'),data_nascimento:v('v-nasc')||null,
     grupo:v('v-grupo')||null,cota:v('v-cota')||null,
@@ -3522,6 +3544,7 @@ async function saveVenda(){
     valor_credito:parseBrl(v('v-credito'))||null,
     parcela:parseBrl(v('v-parcela'))||null,
     observacoes:v('v-obs')||null,
+    qtd_cotas:qtdCotas,
   };
   const insertPayload={...updatePayload,
     lead_id:vendaLeadId,vendedor_id:lead?.responsavel_id||CU.id,
@@ -3616,12 +3639,12 @@ async function saveVenda(){
   closeModal('venda');
   toast(existingV?'Venda atualizada com sucesso!':'Venda registrada com sucesso!','ok');
 
-  // ── Sincroniza com Firebase dos Rankings ao criar (Pendente = +1) ──
+  // ── Sincroniza com Firebase dos Rankings ao criar (Pendente = +qtdCotas) ──
   if(!existingV && typeof sincronizarVendaFirebase === 'function'){
-    const lead = allLeads.find(l=>l.id===vendaLeadId);
+    const leadFb = allLeads.find(l=>l.id===vendaLeadId);
     const vendedor = allUsers.find(u=>u.user_id===(vd.vendedor_id||CU.id));
-    const equipe = resolverEquipeParaVenda(lead, vendedor);
-    sincronizarVendaFirebase(lead, vd, vendedor, equipe, +1).catch(e=>
+    const equipe = resolverEquipeParaVenda(leadFb, vendedor);
+    sincronizarVendaFirebase(leadFb, vd, vendedor, equipe, +qtdCotas).catch(e=>
       console.warn('Firebase ranking sync error:',e.message)
     );
   }
@@ -3666,7 +3689,8 @@ async function updateVendaStatus(id,status){
     const lead = allLeads.find(l=>l.id===vendaAntes.lead_id);
     const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
     const equipe = resolverEquipeParaVenda(lead, vendedor);
-    sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, -1).catch(e=>
+    const delta = -(vendaAntes.qtd_cotas||1);
+    sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, delta).catch(e=>
       console.warn('Firebase ranking sync (cancelado) error:',e.message)
     );
   }
@@ -4059,7 +4083,8 @@ async function revertVenda(vendaId, leadId){
     const lead = allLeads.find(l=>l.id===leadId);
     const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
     const equipe = resolverEquipeParaVenda(lead, vendedor);
-    sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, -1).catch(e=>
+    const delta = -(vendaAntes.qtd_cotas||1);
+    sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, delta).catch(e=>
       console.warn('Firebase ranking sync (revert) error:',e.message)
     );
   }
