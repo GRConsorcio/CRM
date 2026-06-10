@@ -2075,6 +2075,7 @@ async function renderDashboard(){
     // Vendedor: sem painel de atividade
     if(actPanelWrap) actPanelWrap.style.display='none';
   }
+} // fim renderDashboard
 
 /* ═══ LEADS (admin) ═══ */
 const LEADS_PAGE_SIZE = 1000;
@@ -3611,10 +3612,16 @@ async function saveVenda(){
   closeModal('venda');
   toast(existingV?'Venda atualizada com sucesso!':'Venda registrada com sucesso!','ok');
 
-  // ── Sincroniza com Firebase dos Rankings (assíncrono, não bloqueia o fluxo) ──
-  sincronizarVendaFirebase(vendaLeadId, vd.id, existingV).catch(e=>
-    console.warn('Firebase ranking sync error:',e.message)
-  );
+  // ── Sincroniza com Firebase dos Rankings ──
+  // Passa os dados diretamente para evitar race condition (allVendas pode não ter vd ainda)
+  if(!existingV && typeof sincronizarVendaFirebase === 'function'){
+    const lead = allLeads.find(l=>l.id===vendaLeadId);
+    const vendedor = allUsers.find(u=>u.user_id===(vd.vendedor_id||CU.id));
+    const equipe = lead?.equipe_id ? allEquipes.find(e=>e.id===lead.equipe_id) : null;
+    sincronizarVendaFirebase(lead, vd, vendedor, equipe).catch(e=>
+      console.warn('Firebase ranking sync error:',e.message)
+    );
+  }
 
   openDetail(vendaLeadId,fromPage);
 }
@@ -6839,165 +6846,52 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx){
 }
 
 // ── Função principal chamada pelo CRM ao salvar uma venda ──
-// Exposta globalmente para o script principal (não-module) acessar.
-window.sincronizarVendaFirebase = async function(leadId, vendaId, isUpdate){
+// Recebe os objetos diretamente para evitar race condition com os arrays globais.
+window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe){
   try{
-    // Busca o lead e a venda
-    const lead = window._crmAllLeads ? window._crmAllLeads().find(l=>l.id===leadId) : null;
-    const venda = window._crmAllVendas ? window._crmAllVendas().find(v=>v.id===vendaId) : null;
-    if(!lead || !venda) { console.warn('[FB Ranking] Lead ou venda não encontrados'); return; }
+    if(!lead || !venda || !vendedor){
+      console.warn('[FB Ranking] Dados incompletos:', {lead:!!lead, venda:!!venda, vendedor:!!vendedor});
+      return;
+    }
 
-    // Só sincroniza quando a venda é criada (não em atualizações)
-    if(isUpdate){ console.log('[FB Ranking] Atualização de venda — não incrementa ranking'); return; }
-
-    // Busca a equipe do lead no Supabase
-    const equipe = window._crmAllEquipes ? window._crmAllEquipes().find(e=>e.id===lead.equipe_id) : null;
-    const nomeEquipe = (equipe?.nome || '').toLowerCase();
-
-    // Busca o vendedor
-    const vendedor = window._crmAllUsers ? window._crmAllUsers().find(u=>u.user_id===venda.vendedor_id) : null;
-    if(!vendedor){ console.warn('[FB Ranking] Vendedor não encontrado'); return; }
-
-    // Calcula a semana da venda
-    const semanaIdx = semanaDoMes(venda.created_at);
-
-    console.log(`[FB Ranking] Venda de "${vendedor.name}" | Equipe: "${nomeEquipe}" | Semana ${semanaIdx+1} | Venda ID: ${vendaId}`);
-
-    // Se o lead não tem equipe, não sincroniza com nenhum ranking
+    // Se o lead não tem equipe, não sincroniza
     if(!lead.equipe_id){
       console.log('[FB Ranking] Lead sem equipe — venda não sincronizada com nenhum ranking.');
       return;
     }
 
-    // Determina em qual Firebase sincronizar baseado no nome da equipe
-    const syncs = [];
+    const nomeEquipe = (equipe?.nome || '').toLowerCase();
+    const semanaIdx = semanaDoMes(venda.created_at);
 
+    console.log(`[FB Ranking] Sincronizando: vendedor="${vendedor.name}" | equipe="${nomeEquipe}" | semana=${semanaIdx+1} | venda="${venda.id}"`);
+
+    // Determina qual Firebase usar pelo nome da equipe
+    let fbKey = null;
     if(nomeEquipe.includes('chis') || nomeEquipe.includes('danylo')){
-      syncs.push({ fbKey:'chis', nomeEquipe });
+      fbKey = 'chis';
     } else if(nomeEquipe.includes('luiz')){
-      syncs.push({ fbKey:'luiz', nomeEquipe });
+      fbKey = 'luiz';
     } else {
-      console.warn(`[FB Ranking] Equipe "${nomeEquipe}" não mapeada. Adicione o mapeamento em FB_CONFIGS.`);
+      console.warn(`[FB Ranking] Equipe "${nomeEquipe}" não mapeada. Configure FB_CONFIGS com o nome correto.`);
       return;
     }
 
-    // Executa syncs em paralelo
-    await Promise.all(syncs.map(async({fbKey, nomeEquipe})=>{
-      try{
-        const raiz = await resolverRaizEquipe(fbKey, nomeEquipe);
-        const ok = await incrementarCotaFirebase(fbKey, raiz, vendedor.name, semanaIdx);
-        if(ok){
-          // Notifica o CRM — toast discreto
-          const n=document.getElementById('notify');
-          if(n){n.textContent='📊 Ranking atualizado!';n.className='notify ok show';setTimeout(()=>n.classList.remove('show'),2500);}
-        }
-      }catch(e){
-        console.warn(`[FB Ranking ${fbKey}] Erro:`,e.message);
-      }
-    }));
+    const raiz = await resolverRaizEquipe(fbKey, nomeEquipe);
+    const ok = await incrementarCotaFirebase(fbKey, raiz, vendedor.name, semanaIdx);
+
+    if(ok){
+      const n=document.getElementById('notify');
+      if(n){n.textContent='📊 Ranking atualizado!';n.className='notify ok show';setTimeout(()=>n.classList.remove('show'),2500);}
+    } else {
+      console.warn(`[FB Ranking] Não foi possível incrementar — vendedor não encontrado no ranking Firebase.`);
+    }
 
   }catch(e){
-    console.warn('[FB Ranking] Erro geral:',e.message);
+    console.warn('[FB Ranking] Erro geral:', e.message, e);
   }
 };
 
-// ── Expõe os arrays do CRM para o módulo Firebase ──
-// O script principal (não-module) popula estas funções após inicializar.
-window._crmAllLeads   = ()=> window._allLeads   || [];
-window._crmAllVendas  = ()=> window._allVendas  || [];
-window._crmAllUsers   = ()=> window._allUsers   || [];
-window._crmAllEquipes = ()=> window._allEquipes || [];
-
 </script>
 
-<script>
-// ── Bridge: expõe os arrays do CRM para o módulo Firebase ──
-// Intercepta as variáveis globais do CRM após o carregamento.
-(function patchCrmArrays(){
-  // Tenta a cada 500ms até encontrar as variáveis do CRM
-  const t=setInterval(()=>{
-    if(typeof allLeads!=='undefined'){
-      window._allLeads   = allLeads;
-      window._allVendas  = allVendas;
-      window._allUsers   = allUsers;
-      window._allEquipes = allEquipes;
-      // Mantém referências vivas (os arrays são reatribuídos, não mutados,
-      // então o módulo usa getters que leem direto da variável global)
-      window._crmAllLeads   = ()=> allLeads;
-      window._crmAllVendas  = ()=> allVendas;
-      window._crmAllUsers   = ()=> allUsers;
-      window._crmAllEquipes = ()=> allEquipes;
-      clearInterval(t);
-      console.log('[FB Ranking] Bridge CRM conectado.');
-    }
-  },500);
-})();
-</script>
-
-</body>
-</html>
-  (somente uma vez para adicionar as novas colunas)
-══════════════════════════════════════════════════════════════════
-
--- 1. Coluna tag "Proposta Quente"
-ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS proposta_quente BOOLEAN DEFAULT FALSE;
-
--- 2. Coluna atribuido_em (timer do auto-retorno)
-ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS atribuido_em TIMESTAMPTZ;
-
--- Popula atribuido_em nos leads que já têm distribuido_em (migração de dados existentes)
-UPDATE crm_leads
-SET atribuido_em = distribuido_em
-WHERE responsavel_id IS NOT NULL
-  AND distribuido_em IS NOT NULL
-  AND atribuido_em IS NULL;
-
--- 3. Coluna categoria nos documentos (para separar contratos do lead de documentos da venda)
-ALTER TABLE crm_documentos ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'venda';
-
--- Marca documentos existentes como categoria 'venda'
-UPDATE crm_documentos SET categoria = 'venda' WHERE categoria IS NULL;
-
--- 4. Índices para performance do auto-retorno
-CREATE INDEX IF NOT EXISTS idx_leads_atribuido ON crm_leads(atribuido_em) WHERE responsavel_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_leads_proposta_quente ON crm_leads(proposta_quente) WHERE proposta_quente = TRUE;
-CREATE INDEX IF NOT EXISTS idx_docs_categoria ON crm_documentos(categoria, lead_id);
-
--- 5. (Opcional) Cron job via pg_cron para auto-retorno diário às 3h
--- Requer extensão pg_cron habilitada no Supabase (Dashboard → Database → Extensions)
--- SELECT cron.schedule(
---   'auto-retorno-leads',
---   '0 3 * * *',
---   $$
---     UPDATE crm_leads
---     SET responsavel_id = NULL,
---         equipe_id = NULL,
---         distribuido_em = NULL,
---         atribuido_em = NULL,
---         proposta_quente = FALSE
---     WHERE responsavel_id IS NOT NULL
---       AND atribuido_em IS NOT NULL
---       AND status NOT IN ('Fechado')
---       AND (
---         (status = 'Perdido'                            AND atribuido_em < NOW() - INTERVAL '3 days')
---         OR
---         (status IN ('Em Negociação','Proposta')        AND atribuido_em < NOW() - INTERVAL '10 days')
---         OR
---         (status IN ('Novo','Sem Contato')              AND atribuido_em < NOW() - INTERVAL '7 days')
---       )
---       AND id NOT IN (
---         SELECT lead_id FROM crm_vendas WHERE status_venda = 'Aprovado'
---       );
---
---   UPDATE crm_leads
---   SET tipo_lead = 'Remalho'
---   WHERE responsavel_id IS NULL
---     AND status = 'Perdido'
---     AND tipo_lead <> 'Remalho';
--- $$
--- );
-
-══════════════════════════════════════════════════════════════════
--->
 </body>
 </html>
