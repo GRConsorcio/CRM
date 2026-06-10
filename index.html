@@ -3930,22 +3930,45 @@ async function togglePropostaQuente(leadId,ativo,el){
    Retorna o objeto equipe ou null.
 */
 function resolverEquipeParaVenda(lead, vendedor){
-  // 1. Lead tem equipe diretamente
+  // 1. Lead tem equipe diretamente (caminho ideal)
   if(lead?.equipe_id){
     const eq = allEquipes.find(e=>e.id===lead.equipe_id);
     if(eq) return eq;
   }
-  // 2. Busca pelo vendedor nos membros de equipe
+
+  // 2. Lead sem equipe_id — comum em leads importados direto com vendedor.
+  //    Busca todas as equipes do vendedor via allMembroEquipes e escolhe
+  //    a que bate com um Firebase configurado (chis/luiz), priorizando
+  //    equipes onde o vendedor é coordenador.
   if(vendedor?.user_id){
-    const membro = allMembroEquipes.find(m=>m.user_id===vendedor.user_id);
-    if(membro?.equipe_id){
-      const eq = allEquipes.find(e=>e.id===membro.equipe_id);
+    const membros = allMembroEquipes.filter(m=>m.user_id===vendedor.user_id);
+    if(membros.length){
+      // Preferência: equipes mapeadas nos Firebase conhecidos
+      const nomesMapeados = ['chis','danylo','luiz'];
+      const membroMapeado = membros.find(m=>{
+        const eq = allEquipes.find(e=>e.id===m.equipe_id);
+        const nomeEq = (eq?.nome||'').toLowerCase();
+        return nomesMapeados.some(n=>nomeEq.includes(n));
+      });
+      if(membroMapeado){
+        const eq = allEquipes.find(e=>e.id===membroMapeado.equipe_id);
+        if(eq){
+          console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}" (membro mapeado): "${eq.nome}"`);
+          // Atualiza equipe_id do lead em memória para evitar resolver de novo
+          if(lead) lead.equipe_id = eq.id;
+          return eq;
+        }
+      }
+      // Fallback: primeira equipe do vendedor
+      const eq = allEquipes.find(e=>e.id===membros[0].equipe_id);
       if(eq){
-        console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}": "${eq.nome}"`);
+        console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}" (fallback): "${eq.nome}"`);
+        if(lead) lead.equipe_id = eq.id;
         return eq;
       }
     }
   }
+
   console.warn(`[FB Ranking] Equipe não encontrada para lead=${lead?.id} vendedor="${vendedor?.name}"`);
   return null;
 }
@@ -4859,6 +4882,16 @@ async function importLeads(leads,fonte){
     }
 
     const respId=lead.responsavel_id||null;
+
+    // ── AUTO-RESOLVE equipe_id no import ──
+    // Leads importados com vendedor mas sem equipe_id causam falha silenciosa
+    // na sincronização Firebase (resolverEquipeParaVenda retorna null e sync é abortado).
+    let equipeId = lead.equipe_id || null;
+    if(!equipeId && respId){
+      const membro = allMembroEquipes.find(m=>m.user_id===respId);
+      if(membro?.equipe_id) equipeId = membro.equipe_id;
+    }
+
     batch.push({
       nome:nomeLead,
       telefone:lead.telefone||null,
@@ -4868,6 +4901,7 @@ async function importLeads(leads,fonte){
       status:'Novo',
       tipo_lead:lead.tipo_lead||'Novo',
       responsavel_id:respId,
+      equipe_id:equipeId,
       criado_por:CU.id,
       distribuido_em:respId?new Date().toISOString():null,
       created_at:new Date().toISOString(),
