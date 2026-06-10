@@ -3612,13 +3612,12 @@ async function saveVenda(){
   closeModal('venda');
   toast(existingV?'Venda atualizada com sucesso!':'Venda registrada com sucesso!','ok');
 
-  // ── Sincroniza com Firebase dos Rankings ──
-  // Passa os dados diretamente para evitar race condition (allVendas pode não ter vd ainda)
+  // ── Sincroniza com Firebase dos Rankings ao criar (Pendente = +1) ──
   if(!existingV && typeof sincronizarVendaFirebase === 'function'){
     const lead = allLeads.find(l=>l.id===vendaLeadId);
     const vendedor = allUsers.find(u=>u.user_id===(vd.vendedor_id||CU.id));
     const equipe = lead?.equipe_id ? allEquipes.find(e=>e.id===lead.equipe_id) : null;
-    sincronizarVendaFirebase(lead, vd, vendedor, equipe).catch(e=>
+    sincronizarVendaFirebase(lead, vd, vendedor, equipe, +1).catch(e=>
       console.warn('Firebase ranking sync error:',e.message)
     );
   }
@@ -3656,6 +3655,18 @@ async function updateVendaStatus(id,status){
   saveCache();
   toast('Venda '+status.toLowerCase()+'!','ok');
   renderDashboard();
+
+  // ── Cancelado → -1 no ranking Firebase ──
+  // Aprovado → não muda (já estava +1 desde Pendente)
+  if(status==='Cancelado' && vendaAntes && typeof sincronizarVendaFirebase==='function'){
+    const lead = allLeads.find(l=>l.id===vendaAntes.lead_id);
+    const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
+    const equipe = lead?.equipe_id ? allEquipes.find(e=>e.id===lead.equipe_id) : null;
+    sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, -1).catch(e=>
+      console.warn('Firebase ranking sync (cancelado) error:',e.message)
+    );
+  }
+
   // Refresh vendas page if open, otherwise refresh detail
   if(document.getElementById('page-vendas')?.classList.contains('on')){
     renderVendasPage();
@@ -3991,6 +4002,7 @@ function renderVendasPage(){
 async function revertVenda(vendaId, leadId){
   if(!confirm('Reverter esta venda? O lead voltará ao status anterior e a venda será removida.'))return;
   if(!isAdmin()&&!isCoordenador()){toast('Sem permissão','err');return;}
+  const vendaAntes=allVendas.find(v=>v.id===vendaId);
   // Remove docs from storage
   const docs=allDocs.filter(d=>d.venda_id===vendaId||d.lead_id===leadId);
   for(const d of docs){
@@ -4010,6 +4022,17 @@ async function revertVenda(vendaId, leadId){
   allHist=data||[];
   saveCache();
   toast('Venda revertida! Lead voltou para Proposta.','ok');
+
+  // ── Revertido → -1 no ranking Firebase ──
+  if(vendaAntes && typeof sincronizarVendaFirebase==='function'){
+    const lead = allLeads.find(l=>l.id===leadId);
+    const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
+    const equipe = lead?.equipe_id ? allEquipes.find(e=>e.id===lead.equipe_id) : null;
+    sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, -1).catch(e=>
+      console.warn('Firebase ranking sync (revert) error:',e.message)
+    );
+  }
+
   openDetail(leadId,fromPage);
 }
 
@@ -6799,22 +6822,17 @@ function normNome(n){
 }
 
 // ── Incrementa +1 na semana correta do vendedor no Firebase ──
-async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx){
+// delta = +1 (nova venda/pendente) ou -1 (cancelado/revertido)
+async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, delta=1){
   const db = getDatabase(getFbApp(fbKey));
   const dadosRef = ref(db, `${raiz}/dados`);
-
-  // Lê dados atuais para encontrar o vendedor pelo nome (fuzzy match)
   const snap = await get(dadosRef);
   const dadosVal = snap.val() || {};
-
   const nomeNorm = normNome(nomeVendedorCRM);
   let vendKey = null;
   let vendData = null;
-
-  // Busca por correspondência de nome
   for(const [key, val] of Object.entries(dadosVal)){
     const nomeRanking = normNome(val.nome || key);
-    // Aceita se contém o primeiro nome + sobrenome, ou sobrenome isolado
     const partesCRM = nomeNorm.split(' ');
     const partesRk  = nomeRanking.split(' ');
     const match = partesCRM.some(p=>p.length>2&&partesRk.some(r=>r===p))
@@ -6822,72 +6840,53 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx){
                || nomeNorm.includes(nomeRanking);
     if(match){ vendKey=key; vendData=val; break; }
   }
-
   if(!vendKey){
-    console.warn(`[Firebase Ranking ${fbKey}] Vendedor "${nomeVendedorCRM}" não encontrado no ranking. Nomes disponíveis:`, Object.values(dadosVal).map(v=>v.nome));
+    console.warn(`[Firebase Ranking ${fbKey}] Vendedor "${nomeVendedorCRM}" não encontrado. Disponíveis:`, Object.values(dadosVal).map(v=>v.nome));
     return false;
   }
-
-  // Garante que o array s tem índices suficientes
-  const s = Array.isArray(vendData.s) ? [...vendData.s] : [0,0,0,0];
-  while(s.length <= semanaIdx) s.push(0);
-  s[semanaIdx] = (s[semanaIdx]||0) + 1;
-
-  // Usa runTransaction para evitar conflito com múltiplos updates simultâneos
   await runTransaction(ref(db, `${raiz}/dados/${vendKey}/s`), currentS=>{
-    if(!Array.isArray(currentS)) currentS = s;
+    if(!Array.isArray(currentS)) currentS = [0,0,0,0];
     while(currentS.length <= semanaIdx) currentS.push(0);
-    currentS[semanaIdx] = (currentS[semanaIdx]||0) + 1;
+    currentS[semanaIdx] = Math.max(0, (currentS[semanaIdx]||0) + delta);
     return currentS;
   });
-
-  console.log(`[Firebase Ranking ${fbKey}] +1 para ${vendData.nome} na semana ${semanaIdx+1} (${raiz})`);
+  const acao = delta > 0 ? `+${delta}` : String(delta);
+  console.log(`[Firebase Ranking ${fbKey}] ${acao} para ${vendData.nome} semana ${semanaIdx+1} (${raiz})`);
   return true;
 }
 
-// ── Função principal chamada pelo CRM ao salvar uma venda ──
-// Recebe os objetos diretamente para evitar race condition com os arrays globais.
-window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe){
+// delta=+1 ao criar venda (Pendente), delta=-1 ao cancelar ou reverter
+window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, delta=1){
   try{
     if(!lead || !venda || !vendedor){
       console.warn('[FB Ranking] Dados incompletos:', {lead:!!lead, venda:!!venda, vendedor:!!vendedor});
       return;
     }
-
-    // Se o lead não tem equipe, não sincroniza
     if(!lead.equipe_id){
-      console.log('[FB Ranking] Lead sem equipe — venda não sincronizada com nenhum ranking.');
+      console.log('[FB Ranking] Lead sem equipe — não sincroniza.');
       return;
     }
-
     const nomeEquipe = (equipe?.nome || '').toLowerCase();
     const semanaIdx = semanaDoMes(venda.created_at);
-
-    console.log(`[FB Ranking] Sincronizando: vendedor="${vendedor.name}" | equipe="${nomeEquipe}" | semana=${semanaIdx+1} | venda="${venda.id}"`);
-
-    // Determina qual Firebase usar pelo nome da equipe
+    console.log(`[FB Ranking] delta=${delta>0?'+'+delta:delta} vendedor="${vendedor.name}" equipe="${nomeEquipe}" semana=${semanaIdx+1}`);
     let fbKey = null;
     if(nomeEquipe.includes('chis') || nomeEquipe.includes('danylo')){
       fbKey = 'chis';
     } else if(nomeEquipe.includes('luiz')){
       fbKey = 'luiz';
     } else {
-      console.warn(`[FB Ranking] Equipe "${nomeEquipe}" não mapeada. Configure FB_CONFIGS com o nome correto.`);
+      console.warn(`[FB Ranking] Equipe "${nomeEquipe}" não mapeada.`);
       return;
     }
-
     const raiz = await resolverRaizEquipe(fbKey, nomeEquipe);
-    const ok = await incrementarCotaFirebase(fbKey, raiz, vendedor.name, semanaIdx);
-
+    const ok = await incrementarCotaFirebase(fbKey, raiz, vendedor.name, semanaIdx, delta);
     if(ok){
       const n=document.getElementById('notify');
-      if(n){n.textContent='📊 Ranking atualizado!';n.className='notify ok show';setTimeout(()=>n.classList.remove('show'),2500);}
-    } else {
-      console.warn(`[FB Ranking] Não foi possível incrementar — vendedor não encontrado no ranking Firebase.`);
+      const msg = delta > 0 ? '📊 Ranking: +1 cota!' : '📊 Ranking: -1 cota';
+      if(n){n.textContent=msg;n.className='notify ok show';setTimeout(()=>n.classList.remove('show'),2500);}
     }
-
   }catch(e){
-    console.warn('[FB Ranking] Erro geral:', e.message, e);
+    console.warn('[FB Ranking] Erro:', e.message, e);
   }
 };
 
