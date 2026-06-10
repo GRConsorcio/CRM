@@ -6878,12 +6878,39 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
     console.warn(`[Firebase Ranking ${fbKey}] Vendedor "${nomeVendedorCRM}" não encontrado. Disponíveis:`, Object.values(dadosVal).map(v=>v.nome));
     return false;
   }
+
+  // ── PROTEGE O SNAPDIA ANTES DE INCREMENTAR ──
+  // O ranking calcula "vendas do dia" como: totalAtual - snapBase
+  // Se snapBase não existir quando s[] muda, o ranking recria snapBase com o
+  // novo total — zerando as vendas do dia. Gravamos o snapBase com o valor
+  // ATUAL (pré-incremento) antes de modificar s[].
+  const hoje = new Date();
+  const dataStr = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+  const snapDiaRef = ref(db, `${raiz}/snapDia/${vendKey}`);
+  const snapDiaAtual = await get(snapDiaRef);
+  const snapDiaVal = snapDiaAtual.val();
+
+  // Só grava/protege se não existir snapshot de hoje ainda
+  if(!snapDiaVal || snapDiaVal.data !== dataStr){
+    const totalAtualPreIncremento = Array.isArray(vendData.s)
+      ? vendData.s.reduce((a,b)=>a+b,0)
+      : 0;
+    await set(snapDiaRef, {
+      data: dataStr,
+      base: totalAtualPreIncremento,
+      nome: vendData.nome
+    });
+    console.log(`[Firebase Ranking ${fbKey}] SnapDia gravado para "${vendData.nome}": base=${totalAtualPreIncremento}`);
+  }
+
+  // Agora incrementa o s[] com segurança
   await runTransaction(ref(db, `${raiz}/dados/${vendKey}/s`), currentS=>{
     if(!Array.isArray(currentS)) currentS = [0,0,0,0];
     while(currentS.length <= semanaIdx) currentS.push(0);
     currentS[semanaIdx] = Math.max(0, (currentS[semanaIdx]||0) + delta);
     return currentS;
   });
+
   const acao = delta > 0 ? `+${delta}` : String(delta);
   console.log(`[Firebase Ranking ${fbKey}] ${acao} para ${vendData.nome} semana ${semanaIdx+1} (${raiz})`);
   return true;
