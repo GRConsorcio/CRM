@@ -1789,6 +1789,21 @@ async function loadAll(){
       // VENDEDOR — só os próprios leads
       const{data}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
       allLeads=data||[];
+
+      // Auto-refresh a cada 90s: garante que leads redistribuídos somem da lista
+      // sem precisar o vendedor recarregar a página manualmente
+      if(!window._vendedorLeadRefreshInterval){
+        window._vendedorLeadRefreshInterval=setInterval(async()=>{
+          try{
+            const{data:fresh}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+            if(fresh){
+              allLeads=fresh;
+              const pg=document.querySelector('.nav-item.active')?.dataset?.page;
+              if(pg==='meus-leads') renderMeusLeads();
+            }
+          }catch(e){console.warn('Auto-refresh leads error:',e.message);}
+        },90000); // 90 segundos
+      }
     }
   } catch(e){
     console.error('Erro ao carregar leads:',e.message);
@@ -2574,15 +2589,30 @@ async function openDetail(id,from){
   fromPage=from;
   detailLeadId=id;
   let lead=allLeads.find(l=>l.id===id);
-  // Se o lead nao esta em memoria (ex: coordenador acessando venda de lead fora do seu escopo),
-  // busca diretamente do Supabase e adiciona ao allLeads temporariamente
-  if(!lead){
-    try{
-      const{data,error}=await sb.from('crm_leads').select('*').eq('id',id).maybeSingle();
-      if(error||!data){toast('Lead nao encontrado','err');return;}
-      lead=data;
-      allLeads.push(lead); // cache temporario para evitar re-fetch
-    }catch(e){toast('Erro ao buscar lead','err');return;}
+
+  // Sempre rebusca o lead do banco para garantir responsavel_id atualizado.
+  // Evita que vendedor que perdeu o lead (redistribuído) continue vendo como dono.
+  try{
+    const{data:freshLead,error:flErr}=await sb.from('crm_leads').select('*').eq('id',id).maybeSingle();
+    if(flErr||!freshLead){
+      if(!lead){toast('Lead não encontrado','err');return;}
+      // Se falhou mas temos cache, usa o cache mesmo
+    } else {
+      // Atualiza cache com dado fresco
+      const idx=allLeads.findIndex(l=>l.id===id);
+      if(idx>-1) allLeads[idx]=freshLead; else allLeads.push(freshLead);
+      lead=freshLead;
+    }
+  }catch(e){
+    if(!lead){toast('Erro ao buscar lead','err');return;}
+    // usa cache se falhar
+  }
+
+  // Bloqueia vendedor que não é mais o responsável
+  if(CUProfile?.role==='vendedor' && lead.responsavel_id && lead.responsavel_id!==CU.id){
+    toast('Este lead foi redistribuído e não pertence mais a você.','err');
+    renderMeusLeads();
+    return;
   }
   const resp=allUsers.find(u=>u.user_id===lead.responsavel_id);
   // Busca histórico sempre direto do Supabase (sem limite de cache) para não perder registros
