@@ -366,6 +366,18 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <div class="panel-body" style="max-height:280px;overflow-y:auto" id="dash-act"></div>
       </div>
     </div>
+    <!-- Ferramentas admin — só visível para admin -->
+    <div class="panel" id="dash-admin-tools" style="margin-top:12px;display:none;">
+      <div class="panel-head"><div class="panel-title">🔧 Ferramentas do Ranking</div></div>
+      <div class="panel-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px;">
+        <button class="btn-primary" style="font-size:11px;padding:7px 14px;" onclick="repararSnapDiaLuiz()">
+          🔄 Reparar SnapDia Luiz
+        </button>
+        <span style="font-size:11px;color:var(--muted);">
+          Corrige o contador "Vendas do Dia" quando aparece zerado após atualização do sistema.
+        </span>
+      </div>
+    </div>
   </div>
 
   <!-- LEADS (admin/coord) -->
@@ -2022,6 +2034,8 @@ async function renderDashboard(){
   if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)">${semVend.toLocaleString('pt-BR')}</div></div>`;
   // Ranking panel: admin e coordenador veem o painel de colunas
   document.getElementById('dash-cols').style.display=(isAdmin()||isCoordenador()||isSupervisor())?'':'none';
+  const adminTools=document.getElementById('dash-admin-tools');
+  if(adminTools) adminTools.style.display=isAdmin()?'':'none';
   document.getElementById('dash-kpis').innerHTML=kpis;
 
   // Ranking de fechamentos
@@ -6930,11 +6944,23 @@ function nomeKey(n){ return n.replace(/[.#$\[\]/]/g,'_'); }
 // Lógica: semana 1 = dias 1-7, semana 2 = dias 8-14, semana 3 = dias 15-21, semana 4 = dias 22+
 // Isso bate com a lógica manual que os usuários já usam nos rankings.
 function semanaDoMes(dataISO){
-  const d = dataISO ? new Date(dataISO) : new Date();
-  const dia = d.getDate();
-  if(dia <= 7)  return 0;
-  if(dia <= 14) return 1;
-  if(dia <= 21) return 2;
+  // IMPORTANTE: usa fuso local (BRT = UTC-3) para não jogar vendas
+  // feitas após 21h BRT (00h+ UTC) no dia/semana errados.
+  let d;
+  if(dataISO){
+    // Converte para data LOCAL, não UTC
+    // new Date(iso).getDate() usa UTC — errado para BRT.
+    // Solução: formata para string local e extrai o dia.
+    d = new Date(dataISO);
+  } else {
+    d = new Date();
+  }
+  // getDate() em fuso local do browser (BRT)
+  const dia = d.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo',day:'numeric'});
+  const diaNum = parseInt(dia, 10);
+  if(diaNum <= 7)  return 0;
+  if(diaNum <= 14) return 1;
+  if(diaNum <= 21) return 2;
   return 3;
 }
 
@@ -6996,23 +7022,48 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
   // Se snapBase não existir quando s[] muda, o ranking recria snapBase com o
   // novo total — zerando as vendas do dia. Gravamos o snapBase com o valor
   // ATUAL (pré-incremento) antes de modificar s[].
+  //
+  // USA FUSO BRT (America/Sao_Paulo) — não UTC.
+  // Se usar UTC, vendas entre 21h-23h59 BRT (00h-02h59 UTC) entram no dia
+  // seguinte do UTC, causando snapDia errado e ranking mostrando dia anterior.
   const hoje = new Date();
-  const dataStr = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+  const dataStr = hoje.toLocaleDateString('pt-BR',{
+    timeZone:'America/Sao_Paulo',
+    year:'numeric',month:'2-digit',day:'2-digit'
+  }).split('/').reverse().join('-'); // "DD/MM/YYYY" → "YYYY-MM-DD"
+
   const snapDiaRef = ref(db, `${raiz}/snapDia/${vendKey}`);
   const snapDiaAtual = await get(snapDiaRef);
   const snapDiaVal = snapDiaAtual.val();
 
-  // Só grava/protege se não existir snapshot de hoje ainda
-  if(!snapDiaVal || snapDiaVal.data !== dataStr){
-    const totalAtualPreIncremento = Array.isArray(vendData.s)
-      ? vendData.s.reduce((a,b)=>a+b,0)
-      : 0;
+  // Aceita tanto a data BRT quanto a data UTC como válidas para HOJE
+  // (período de transição: snapDias antigos foram gravados em UTC)
+  const hojeUTC = new Date().toISOString().slice(0,10);
+  const snapExisteHoje = snapDiaVal && (
+    snapDiaVal.data === dataStr ||   // data BRT (correto)
+    snapDiaVal.data === hojeUTC      // data UTC (legado — aceita para não zerar)
+  );
+
+  if(!snapExisteHoje){
+    // Snap não existe OU é de dia anterior — grava novo com base no total pré-incremento
+    // ATENÇÃO: o total pré-incremento DEVE ser calculado ANTES de qualquer runTransaction
+    // Se o snap de ontem (UTC) ainda está ativo, significa que o ranking não zerou ainda —
+    // preservamos a base do snap antigo para não perder vendas do dia.
+    let base;
+    if(snapDiaVal && snapDiaVal.data === hojeUTC && snapDiaVal.data !== dataStr){
+      // Era UTC de hoje mas BRT mudou — migra o snap preservando a base existente
+      base = snapDiaVal.base;
+      console.log(`[Firebase Ranking ${fbKey}] Migrando snapDia UTC→BRT para "${vendData.nome}": base preservada=${base}`);
+    } else {
+      // Snap de dia anterior — calcula base atual
+      base = Array.isArray(vendData.s) ? vendData.s.reduce((a,b)=>a+b,0) : 0;
+    }
     await set(snapDiaRef, {
-      data: dataStr,
-      base: totalAtualPreIncremento,
+      data: dataStr,       // sempre grava com data BRT
+      base,
       nome: vendData.nome
     });
-    console.log(`[Firebase Ranking ${fbKey}] SnapDia gravado para "${vendData.nome}": base=${totalAtualPreIncremento}`);
+    console.log(`[Firebase Ranking ${fbKey}] SnapDia gravado para "${vendData.nome}": base=${base}`);
   }
 
   // Agora incrementa o s[] com segurança
@@ -7032,6 +7083,91 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
 // A equipe já vem resolvida pelo script principal via resolverEquipeParaVenda()
 window._crmAllEquipes        = ()=> window._allEquipes        || [];
 window._crmAllMembroEquipes  = ()=> window._allMembroEquipes  || [];
+
+
+// ══════════════════════════════════════════════════════════════
+// REPARO DO SNAPDIA — corrige base após bug de fuso UTC/BRT
+// Chama: repararSnapDiaLuiz() no console do admin
+// ══════════════════════════════════════════════════════════════
+window.repararSnapDiaLuiz = async function(){
+  try{
+    console.log('[Reparo] Iniciando reparo do snapDia Luiz...');
+    const fbKey = 'luiz';
+    const db = getDatabase(getFbApp(fbKey));
+    const raiz = await resolverRaizEquipe(fbKey, 'luiz');
+
+    // Data de hoje em BRT
+    const hoje = new Date();
+    const dataHojeBRT = hoje.toLocaleDateString('pt-BR',{
+      timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
+    }).split('/').reverse().join('-');
+
+    // Data de ontem em BRT
+    const ontem = new Date(hoje);
+    ontem.setDate(ontem.getDate()-1);
+    const dataOntemBRT = ontem.toLocaleDateString('pt-BR',{
+      timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
+    }).split('/').reverse().join('-');
+
+    console.log(`[Reparo] Hoje BRT: ${dataHojeBRT} | Ontem BRT: ${dataOntemBRT}`);
+
+    // Busca vendas de hoje no Supabase por vendedor
+    const inicioDia = dataHojeBRT + 'T00:00:00-03:00';
+    const fimDia    = dataHojeBRT + 'T23:59:59-03:00';
+    const {data:vendasHoje} = await sb.from('crm_vendas')
+      .select('id,vendedor_id,qtd_cotas,created_at,status_venda')
+      .gte('created_at', inicioDia)
+      .lte('created_at', fimDia)
+      .neq('status_venda','Cancelado');
+
+    console.log(`[Reparo] Vendas de hoje no Supabase: ${vendasHoje?.length||0}`);
+
+    // Agrupa por vendedor_id → total de cotas
+    const cotasPorVendedor = {};
+    (vendasHoje||[]).forEach(v=>{
+      const uid = v.vendedor_id;
+      if(!uid) return;
+      cotasPorVendedor[uid] = (cotasPorVendedor[uid]||0) + (v.qtd_cotas||1);
+    });
+
+    // Lê dados do Firebase
+    const dadosSnap = await get(ref(db, `${raiz}/dados`));
+    const dados = dadosSnap.val() || {};
+
+    let reparados = 0;
+    for(const [vendKey, vendData] of Object.entries(dados)){
+      const totalAtual = Array.isArray(vendData.s) ? vendData.s.reduce((a,b)=>a+b,0) : 0;
+
+      // Encontra o user_id do vendedor pelo nome (fuzzy match)
+      const nomeVend = normNome(vendData.nome||vendKey);
+      const userMatch = allUsers.find(u=>{
+        return normNome(u.name).split(' ').some(p=>p.length>2&&nomeVend.includes(p))
+            || nomeVend.split(' ').some(p=>p.length>2&&normNome(u.name).includes(p));
+      });
+
+      const cotasHoje = userMatch ? (cotasPorVendedor[userMatch.user_id]||0) : 0;
+      // Base correta = total atual MENOS as cotas de hoje
+      const baseCorreta = Math.max(0, totalAtual - cotasHoje);
+
+      const snapDiaRef = ref(db, `${raiz}/snapDia/${vendKey}`);
+      await set(snapDiaRef, {
+        data: dataHojeBRT,
+        base: baseCorreta,
+        nome: vendData.nome
+      });
+
+      console.log(`[Reparo] ${vendData.nome}: total=${totalAtual}, cotasHoje=${cotasHoje}, base corrigida=${baseCorreta}`);
+      reparados++;
+    }
+
+    const msg = `Reparo concluído: ${reparados} vendedores corrigidos. Recarregue o ranking para ver.`;
+    console.log('[Reparo]', msg);
+    alert(msg);
+  }catch(e){
+    console.error('[Reparo] Erro:', e);
+    alert('Erro no reparo: '+e.message);
+  }
+};
 
 window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, delta=1){
   try{
