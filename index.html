@@ -3235,12 +3235,32 @@ async function saveLead(){
   
   // VERIFICAÇÃO DE DUPLICATA (Nome + Telefone)
   if(!editLeadId){
-    const duplicado = allLeads.find(l => 
-      l.nome.toLowerCase() === nome.toLowerCase() && 
-      (l.telefone || '').replace(/\D/g,'') === telefone.replace(/\D/g,'')
+    // Busca por telefone (mais confiável) ou nome exato
+    const telDigits = telefone.replace(/\D/g,'');
+    const duplicado = allLeads.find(l =>
+      (telDigits.length >= 8 && (l.telefone||'').replace(/\D/g,'') === telDigits) ||
+      (l.nome.toLowerCase() === nome.toLowerCase() && (l.telefone||'').replace(/\D/g,'') === telDigits)
     );
     if(duplicado){
-      toast('Lead já existe (mesmo nome e número)!','err');
+      // Mostra modal de confirmação para puxar/atribuir
+      const respNome = allUsers.find(u=>u.user_id===duplicado.responsavel_id)?.name || 'sem vendedor';
+      const msg = `"${duplicado.nome}" já está na base.\nResponsável atual: ${respNome}\n\nDeseja atribuir este lead a você?`;
+      if(confirm(msg)){
+        // Atribui ao usuário atual
+        const patchPayload = {responsavel_id: CU.id, status: duplicado.status||'Novo'};
+        await sb.from('crm_leads').update(patchPayload).eq('id', duplicado.id);
+        const i = allLeads.findIndex(l=>l.id===duplicado.id);
+        if(i>-1) Object.assign(allLeads[i], patchPayload);
+        await sb.from('crm_historico').insert({
+          lead_id: duplicado.id, user_id: CU.id,
+          tipo: '🔄 Reatribuição',
+          descricao: `Lead puxado por ${CU.name||CU.email} (já existia na base — resp. anterior: ${respNome})`,
+          created_at: new Date().toISOString()
+        });
+        toast(`Lead "${duplicado.nome}" atribuído a você!`,'ok');
+        closeModal('lead');
+        if(CUProfile?.role==='vendedor') renderMeusLeads(); else renderLeads(true);
+      }
       return;
     }
   }
@@ -4844,10 +4864,26 @@ async function importBulk(){
   const leads=lines.map(line=>{
     const parts=line.split('|').map(p=>p.trim());
     if(!parts[0]) return null;
+
+    let nomeRaw  = fixEncoding(parts[0]) || '';
+    let telRaw   = fixEncoding(parts[1]) || null;
+    let interesse= fixEncoding(parts[2]) || null;
+
+    // ── Separa telefone do nome quando vierem juntos sem pipe ──
+    // Detecta sequência de 8+ dígitos no final do nome (com espaço opcional antes)
+    // Ex: "JOSE NILSON 66984183898" → nome="JOSE NILSON", tel="66984183898"
+    if(!telRaw){
+      const phoneMatch = nomeRaw.match(/^(.+?)\s+((?:\+?\d[\s\-]?){8,15}\d)\s*$/);
+      if(phoneMatch){
+        nomeRaw = phoneMatch[1].trim();
+        telRaw  = phoneMatch[2].replace(/\s/g,'');
+      }
+    }
+
     return{
-      nome:fixEncoding(parts[0]),
-      telefone:fixEncoding(parts[1])||null,
-      interesse:fixEncoding(parts[2])||null,
+      nome:nomeRaw,
+      telefone:telRaw,
+      interesse,
       origem:'Lista',
       responsavel_id:respId||null,
       tipo_lead:tipoLead,
