@@ -2984,7 +2984,7 @@ function renderDistribuicao(){
       updateDistEquipePreview();
     }
   }
-  const vends=allUsers.filter(u=>u.role==='vendedor');
+  const vends=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   document.getElementById('dist-vendedores').innerHTML=vends.length===0
     ?'<div class="empty"><div class="ei">👥</div>Nenhum vendedor cadastrado</div>'
     :vends.map(u=>{
@@ -3016,7 +3016,7 @@ function renderDistribuicao(){
 }
 
 async function quickDist(leadId){
-  const vends=allUsers.filter(u=>u.role==='vendedor');
+  const vends=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   const idx=(dc?.ultimo_vendedor_idx||0)%vends.length;
@@ -3033,7 +3033,7 @@ async function quickDist(leadId){
 async function distAutoAll(){
   const semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
   if(!semVend.length){toast('Nenhum lead sem vendedor e sem equipe','err');return;}
-  const vends=allUsers.filter(u=>u.role==='vendedor');
+  const vends=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
@@ -3849,7 +3849,7 @@ async function distManual(){
 
 /* ═══ DIST AUTO ═══ */
 async function distAuto(){
-  const vends=allUsers.filter(u=>u.role==='vendedor');
+  const vends=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   let semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
   const qtd=parseInt(v('da-qtd'))||semVend.length;
@@ -5097,12 +5097,13 @@ let _distPickerLeadId=null;
 
 function getDistVendors(){
   // Admin/coord: all vendedores; supervisor: own equipe vendedores
+  // Ordenação estável por user_id garante que o round-robin não pule vendedores
   if(isAdmin()||isCoordenador()){
-    return allUsers.filter(u=>u.role==='vendedor');
+    return allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   } else {
     const myEqIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
     const myMemberIds=[...new Set(allMembroEquipes.filter(m=>myEqIds.includes(m.equipe_id)).map(m=>m.user_id))];
-    return allUsers.filter(u=>myMemberIds.includes(u.user_id)&&u.role==='vendedor');
+    return allUsers.filter(u=>myMemberIds.includes(u.user_id)&&u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   }
 }
 
