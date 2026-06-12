@@ -4700,10 +4700,11 @@ function getLabelBloqueioPorLead(lead){
 
 /* ═══ AVALIAR PERDIDOS SEM COMENTÁRIO ═══ */
 async function openAvaliarPerdidos(){
-  // Calcula preview: quantos perdidos sem comentário real
+  // Coleta todos os perdidos e classifica em: reciclar, bloqueados, com_comentário
   const perdidos = allLeads.filter(l => l.status === 'Perdido');
-  let semComentario = 0;
-  let bloqueados = 0;
+  const listaReciclar   = [];  // {lead}
+  const listaBloqueados = [];  // {lead, label}
+
   for(const l of perdidos){
     const hist = allHist.filter(h => h.lead_id === l.id);
     const temComentarioReal = hist.some(h => {
@@ -4711,25 +4712,68 @@ async function openAvaliarPerdidos(){
       if(desc.startsWith('Status →')) return false;
       if(desc.startsWith('Retornado automaticamente')) return false;
       if(desc.startsWith('Venda revertida')) return false;
+      if(desc.startsWith('[BLOQUEADO')) return false;
       return desc.length >= 3;
     });
     if(!temComentarioReal){
-      if(temPalavraBloqueiaNaObs(l)) bloqueados++;
-      else semComentario++;
+      const label = getLabelBloqueioPorLead(l);
+      if(label) listaBloqueados.push({lead:l, label});
+      else listaReciclar.push(l);
     }
   }
+
+  // Preview badge
   const prev = document.getElementById('avaliar-perdidos-preview');
   const prevTxt = document.getElementById('avaliar-perdidos-preview-txt');
-  let previewMsg = '';
-  if(semComentario > 0) previewMsg += `${semComentario} lead(s) serão reciclados para a base como Novo. `;
-  if(bloqueados > 0) previewMsg += `${bloqueados} lead(s) BLOQUEADO(S) de reciclagem (Cliente Fiat / Santander / Fechado GR / Embracon) — ficam como Perdido.`;
-  if(!previewMsg) previewMsg = 'Nenhum lead perdido sem comentário encontrado.';
-  prevTxt.innerHTML = previewMsg.replace('BLOQUEADO(S)', '<strong style="color:var(--orange)">BLOQUEADO(S)</strong>');
-  prev.style.background = semComentario>0?'rgba(229,85,85,0.08)':'rgba(74,222,128,0.08)';
-  prev.style.borderColor = semComentario>0?'rgba(229,85,85,0.25)':'rgba(74,222,128,0.25)';
-  prevTxt.style.color = semComentario>0?'var(--red)':'var(--green)';
-  prev.style.display = '';
-  document.getElementById('avaliar-perdidos-btn-confirmar').disabled = semComentario === 0;
+  let parts=[];
+  if(listaReciclar.length>0) parts.push(`<span style="color:var(--red);font-weight:700">${listaReciclar.length} lead(s) serão reciclados</span>`);
+  if(listaBloqueados.length>0) parts.push(`<span style="color:var(--orange);font-weight:700">${listaBloqueados.length} bloqueado(s) de reciclagem</span>`);
+  if(!parts.length) parts.push('<span style="color:var(--green)">Nenhum lead perdido sem comentário encontrado ✅</span>');
+  prevTxt.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+  prev.style.background='var(--surface2)';prev.style.borderColor='var(--border2)';prevTxt.style.color='var(--text)';
+  prev.style.display='';
+
+  // Lista BLOQUEADOS com detalhe
+  const bloqWrap=document.getElementById('av-bloqueados-wrap');
+  const bloqList=document.getElementById('av-bloqueados-list');
+  if(listaBloqueados.length>0){
+    bloqList.innerHTML=listaBloqueados.map(({lead,label})=>{
+      const resp=allUsers.find(u=>u.user_id===lead.responsavel_id);
+      return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid rgba(251,146,60,0.12);font-size:12px">
+        <div style="flex:1">
+          <span style="font-weight:700;color:var(--text)">${lead.nome}</span>
+          <span style="color:var(--muted2);font-size:11px"> · ${lead.telefone||'—'}</span>
+          ${resp?`<span style="color:var(--muted);font-size:11px"> · ${resp.name}</span>`:''}
+        </div>
+        <span style="background:rgba(251,146,60,0.15);color:var(--orange);border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap">🚫 "${label}"</span>
+      </div>`;
+    }).join('');
+    bloqWrap.style.display='';
+  } else {
+    bloqWrap.style.display='none';
+  }
+
+  // Lista para RECICLAR
+  const recWrap=document.getElementById('av-reciclar-wrap');
+  const recList=document.getElementById('av-reciclar-list');
+  if(listaReciclar.length>0){
+    recList.innerHTML=listaReciclar.map(l=>{
+      const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+      return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid rgba(74,222,128,0.1);font-size:12px">
+        <div style="flex:1">
+          <span style="font-weight:700;color:var(--text)">${l.nome}</span>
+          <span style="color:var(--muted2);font-size:11px"> · ${l.telefone||'—'}</span>
+          ${resp?`<span style="color:var(--muted);font-size:11px"> · ${resp.name}</span>`:''}
+        </div>
+        <span style="font-size:11px;color:var(--muted2)">${fmtDt(l.updated_at||l.created_at)}</span>
+      </div>`;
+    }).join('');
+    recWrap.style.display='';
+  } else {
+    recWrap.style.display='none';
+  }
+
+  document.getElementById('avaliar-perdidos-btn-confirmar').disabled = listaReciclar.length === 0;
   document.getElementById('modal-avaliar-perdidos').classList.add('on');
 }
 
@@ -7021,6 +7065,20 @@ if(csvZone){
     <div id="avaliar-perdidos-preview" style="background:rgba(229,85,85,0.08);border:1px solid rgba(229,85,85,0.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--red);margin-bottom:14px;display:none">
       <span id="avaliar-perdidos-preview-txt"></span>
     </div>
+    <!-- Lista de leads BLOQUEADOS -->
+    <div id="av-bloqueados-wrap" style="display:none;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--orange);margin-bottom:8px">
+        🚫 Leads bloqueados de reciclagem — palavra-chave detectada
+      </div>
+      <div id="av-bloqueados-list" style="max-height:220px;overflow-y:auto;border:1px solid rgba(251,146,60,0.25);border-radius:8px;background:rgba(251,146,60,0.04)"></div>
+    </div>
+    <!-- Lista de leads para RECICLAR -->
+    <div id="av-reciclar-wrap" style="display:none;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--green);margin-bottom:8px">
+        🔄 Leads que serão reciclados
+      </div>
+      <div id="av-reciclar-list" style="max-height:180px;overflow-y:auto;border:1px solid rgba(74,222,128,0.2);border-radius:8px;background:rgba(74,222,128,0.04)"></div>
+    </div>
     <div id="avaliar-perdidos-loading" style="text-align:center;padding:12px;color:var(--muted2);font-size:12px;display:none">⏳ Analisando leads...</div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('avaliar-perdidos')">Cancelar</button>
@@ -7408,36 +7466,57 @@ let _srchBasePage=1;
 const _srchBasePerPage=30;
 let _solLeadId=null;
 
+let _srchBaseTimer=null;
+let _srchBaseResults=[];
+
 function renderBuscaBase(){
   _srchBasePage=1;
-  _renderBuscaBasePage();
-}
-
-function _renderBuscaBasePage(){
-  const q=(document.getElementById('srch-base-inp')?.value||'').toLowerCase().trim();
-  const statusF=document.getElementById('srch-base-status')?.value||'';
+  const q=(document.getElementById('srch-base-inp')?.value||'').trim();
   if(!q){
     document.getElementById('srch-base-tbody').innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">🔍</div>Digite um nome ou telefone para buscar</div></td></tr>';
     document.getElementById('srch-base-title').textContent='Resultados';
     document.getElementById('srch-base-pg').style.display='none';
     return;
   }
-  let results=allLeads.filter(l=>{
-    const nome=(l.nome||'').toLowerCase();
-    const tel=(l.telefone||'').replace(/\D/g,'');
-    const qTel=q.replace(/\D/g,'');
-    const matchNome=nome.includes(q);
-    const matchTel=qTel.length>=4&&tel.includes(qTel);
-    if(!matchNome&&!matchTel) return false;
-    if(statusF&&l.status!==statusF) return false;
-    return true;
-  });
+  // Debounce 400ms para não disparar a cada tecla
+  clearTimeout(_srchBaseTimer);
+  _srchBaseTimer=setTimeout(()=>_executarBuscaBase(q),400);
+}
+
+async function _executarBuscaBase(q){
+  const tbody=document.getElementById('srch-base-tbody');
+  const statusF=document.getElementById('srch-base-status')?.value||'';
+  tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:8px;color:var(--muted2);font-size:13px">Buscando...</div></div></td></tr>';
+
+  try{
+    // Busca direto no Supabase — funciona para qualquer role
+    const qLike=q.replace(/[%_]/g,'\\$&'); // escape special chars
+    let query=sb.from('crm_leads')
+      .select('id,nome,telefone,interesse,status,responsavel_id,created_at')
+      .or(`nome.ilike.%${qLike}%,telefone.ilike.%${qLike}%`)
+      .order('created_at',{ascending:false})
+      .limit(200);
+    if(statusF) query=query.eq('status',statusF);
+    const{data,error}=await query;
+    if(error) throw error;
+    _srchBaseResults=data||[];
+    _renderBuscaBasePage();
+  }catch(e){
+    tbody.innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ei">⚠️</div>Erro ao buscar: ${e.message}</div></td></tr>`;
+  }
+}
+
+function _renderBuscaBasePage(){
+  const q=(document.getElementById('srch-base-inp')?.value||'').trim();
+  const results=_srchBaseResults;
   const total=results.length;
   const pages=Math.max(1,Math.ceil(total/_srchBasePerPage));
   _srchBasePage=Math.min(_srchBasePage,pages);
   const slice=results.slice((_srchBasePage-1)*_srchBasePerPage,_srchBasePage*_srchBasePerPage);
 
-  document.getElementById('srch-base-title').textContent=`${total} resultado${total!==1?'s':''} para "${q}"`;
+  document.getElementById('srch-base-title').textContent=
+    total===200?`Mostrando primeiros 200 resultados para "${q}" — refine a busca`
+    :`${total} resultado${total!==1?'s':''} para "${q}"`;
 
   const tbody=document.getElementById('srch-base-tbody');
   if(!slice.length){
