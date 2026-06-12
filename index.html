@@ -1683,23 +1683,23 @@ async function initApp(user){
 
     showLoading('Finalizando...', 90);
     if(CUProfile&&(allLeads.length||allUsers.length)) saveCache();
-    if(!document.getElementById('page-dashboard')?.classList.contains('on')){
-      populateSelects();
-      renderNav();
-      if(isVendedor()) carregarMinhasSolicitacoes();
-      if(isAdmin()){
-        pollSolicitacoesAdmin(); setInterval(pollSolicitacoesAdmin,60000);
-        setTimeout(verificarLeadsBloqueados,2000);
-        setInterval(verificarLeadsBloqueados,120000);
-      }
-      goToDashboard();
-      hideLoading();
-      renderDashboard().catch(()=>{});
-      setupRealtime();
-      setTimeout(checkTaskAlerts,2000);
-      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+    // Sempre executa — a condição antiga (page-dashboard.on) nunca disparava
+    // porque o HTML já inicia com class="page on" nesse elemento
+    populateSelects();
+    renderNav();
+    if(isVendedor()) carregarMinhasSolicitacoes();
+    if(isAdmin()){
+      pollSolicitacoesAdmin(); setInterval(pollSolicitacoesAdmin,60000);
+      setTimeout(verificarLeadsBloqueados,2000);
+      setInterval(verificarLeadsBloqueados,120000);
     }
+    goToDashboard();
+    hideLoading();
+    renderDashboard().catch(()=>{});
+    setupRealtime();
+    setTimeout(checkTaskAlerts,2000);
+    if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+    _taskAlertInterval=setInterval(checkTaskAlerts,60000);
   } catch(e){
     hideLoading();
     console.error('initApp error:',e);
