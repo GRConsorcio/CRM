@@ -238,6 +238,17 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .notify.ok{border-left:3px solid var(--green)}
 .notify.err{border-left:3px solid var(--red)}
 
+
+/* ── BUSCA BASE GERAL (vendedor) ── */
+.srch-base-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #191919;transition:background .12s}
+.srch-base-row:hover{background:rgba(255,255,255,.018)}
+.srch-base-row:last-child{border-bottom:none}
+.sol-badge{display:inline-block;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.sol-pend{background:#1e1a05;color:var(--orange)}
+.sol-aprov{background:#0a1f0a;color:var(--green)}
+.sol-neg{background:#1f0a0a;color:var(--red)}
+#sol-adm-badge{display:none;background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 6px;margin-left:6px}
+
 /* PAGINATION */
 .pg-bar{display:flex;align-items:center;gap:4px;padding:12px 18px;border-top:1px solid var(--border);flex-wrap:wrap;background:var(--surface)}
 .pg-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted2);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit;transition:all .13s;min-width:34px;text-align:center;line-height:1.4}
@@ -709,6 +720,56 @@ tr:hover td{background:rgba(255,255,255,.015)}
     </div>
   </div>
 
+  </div>
+
+
+  <!-- BUSCA NA BASE GERAL (vendedor) -->
+  <div class="page" id="page-busca-base">
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <div class="panel-title">🔍 Buscar na Base Geral</div>
+        <div style="font-size:11.5px;color:var(--muted2)">Pesquise e solicite leads ao admin</div>
+      </div>
+      <div class="panel-body">
+        <div class="filter-bar" style="margin-bottom:0">
+          <input class="inp" id="srch-base-inp" placeholder="🔍 Nome ou telefone..." style="margin:0;flex:1"
+            oninput="renderBuscaBase()">
+          <select id="srch-base-status" onchange="renderBuscaBase()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none">
+            <option value="">Todos os status</option>
+            <option value="Novo">Novo</option>
+            <option value="Em Negociação">Em Negociação</option>
+            <option value="Proposta">Proposta</option>
+            <option value="Fechado">Fechado</option>
+            <option value="Perdido">Perdido</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title" id="srch-base-title">Resultados</div>
+      </div>
+      <div class="tbl-wrap">
+        <table><thead><tr>
+          <th>Nome</th><th>Telefone</th><th>Interesse</th><th>Status</th><th>Responsável</th><th>Data</th><th></th>
+        </tr></thead>
+        <tbody id="srch-base-tbody"></tbody></table>
+      </div>
+      <div id="srch-base-pg" class="pg-bar" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- SOLICITAÇÕES (admin) -->
+  <div class="page" id="page-solicitacoes">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">📩 Solicitações de Lead</div>
+        <div style="font-size:11.5px;color:var(--muted2)">Pedidos de vendedores para receber leads</div>
+      </div>
+      <div id="sol-lista" class="panel-body">
+        <div class="empty"><div class="ei">📭</div>Nenhuma solicitação pendente</div>
+      </div>
+    </div>
   </div>
 
   <!-- MESCLAR BASE (admin only) -->
@@ -1304,6 +1365,23 @@ tr:hover td{background:rgba(255,255,255,.015)}
   </div>
 </div>
 <div class="notify" id="notify"></div>
+<!-- Modal solicitar lead -->
+<div class="modal-bg" id="modal-solicitar-lead">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">📩 Solicitar Lead</div>
+    <div id="sol-lead-info" style="background:var(--surface2);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px"></div>
+    <div class="fld">
+      <label>Motivo / observação (opcional)</label>
+      <textarea class="inp" id="sol-motivo" rows="3" placeholder="Ex: cliente já me procurou, tenho contato..." style="resize:vertical"></textarea>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('solicitar-lead')">Cancelar</button>
+      <button class="btn-save" onclick="confirmarSolicitacao()">📩 Enviar solicitação</button>
+    </div>
+  </div>
+</div>
+
+
 
 <script>
 const SUPA_URL='https://prquggwhjcvenzuziaox.supabase.co';
@@ -1852,6 +1930,7 @@ function isSupervisor(){return CUProfile?.role==='supervisor';}
 function isCoordenador(){return CUProfile?.role==='coordenador';}
 
 function isAdmin(){return CUProfile?.role==='admin';}
+function isVendedor(){return CUProfile?.role==='vendedor';}
 
 function populateSelects(){
   const vends=allUsers.filter(u=>u.role==='vendedor');
@@ -1920,6 +1999,8 @@ function renderNav(){
     html+=`<div class="nav-sect">Meus Leads</div>
       <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">${IC.myteam}</span><span class="nav-label">Meus Leads</span></div>
       <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Meu Funil</span></div>
+      <div class="nav-item" onclick="nav('busca-base',this);renderBuscaBase()" title="Buscar na Base"><span class="nav-icon">🔍</span><span class="nav-label">Buscar na Base</span></div>
+      <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>
       <div class="nav-item" onclick="openVendasPage('todos')" title="Minhas Vendas"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Minhas Vendas</span></div>`;
     // Vendedor NÃO vê "Clientes Vendidos" — apenas a aba de Vendas acima
   }
@@ -1943,7 +2024,8 @@ function renderNav(){
 
   if(isAdm){
     html+=`<div class="nav-sect">Administração</div>
-      <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">${IC.users}</span><span class="nav-label">Usuários</span></div>`;
+      <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">${IC.users}</span><span class="nav-label">Usuários</span></div>
+      <div class="nav-item" id="nav-solicitacoes" onclick="nav('solicitacoes',this);renderSolicitacoes()" title="Solicitações"><span class="nav-icon">📩</span><span class="nav-label">Solicitações<span id="sol-adm-badge"></span></span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
   const flBtn=document.getElementById('sb-force-logout');
@@ -1969,7 +2051,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD'};
 function nav(page,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
@@ -2008,6 +2090,8 @@ function nav(page,el){
   if(page==='coord-funil') renderCoordFunil();
   if(page==='coord-dist') renderCoordDist();
   if(page==='meu-funil') renderMeuFunil();
+  if(page==='busca-base') renderBuscaBase();
+  if(page==='solicitacoes') renderSolicitacoes();
   if(page==='funil-vendedor') {/* rendered by openFunilVendedor */}
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
@@ -4775,6 +4859,12 @@ function reRenderCurrent(){
 let csvParsedLeads=[];
 
 function renderImportar(){
+  // Vendedor: esconde seletor de responsável (vai para si mesmo)
+  const isVend = isVendedor();
+  ['csv-resp-wrap','bulk-resp'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.closest('.fld') ? el.closest('.fld').style.display=isVend?'none':'':'';
+  });
   // populate resp selects for both CSV and bulk import
   const todos=allUsers.filter(u=>u.role==='vendedor'||u.role==='admin'||u.role==='coordenador'||u.role==='supervisor');
   const optBase='<option value="">Manter na base (sem responsável)</option>';
@@ -4886,8 +4976,10 @@ async function importCSV(){
   const btn=document.getElementById('csv-import-btn');
   const respId=document.getElementById('csv-resp')?.value||null;
   const tipoLead=isAdmin()?(document.getElementById('csv-tipo')?.value||'Novo'):'Novo';
+  // Vendedor importa sempre para si mesmo
+  const finalRespId = isVendedor() ? CU.id : (respId||null);
   btn.textContent='Importando...';btn.disabled=true;
-  const leadsComResp=csvParsedLeads.map(l=>({...l,responsavel_id:respId||null,tipo_lead:tipoLead}));
+  const leadsComResp=csvParsedLeads.map(l=>({...l,responsavel_id:finalRespId,tipo_lead:tipoLead}));
   await importLeads(leadsComResp,'CSV');
   csvParsedLeads=[];
   btn.style.display='none';
@@ -4902,6 +4994,8 @@ async function importBulk(){
   const text=document.getElementById('bulk-text').value.trim();
   const respId=document.getElementById('bulk-resp')?.value||null;
   const tipoLead=isAdmin()?(document.getElementById('bulk-tipo')?.value||'Novo'):'Novo';
+  // Vendedor importa sempre para si mesmo
+  const finalBulkRespId = isVendedor() ? CU.id : (respId||null);
   if(!text){toast('Cole a lista de contatos','err');return;}
 
   const lines=text.split('\n').filter(l=>l.trim());
@@ -4935,7 +5029,8 @@ async function importBulk(){
   }).filter(Boolean);
 
   if(!leads.length){toast('Nenhum lead válido encontrado','err');return;}
-  await importLeads(leads,'Lista');
+  const leadsB=leads.map(l=>({...l,responsavel_id:isVendedor()?CU.id:(l.responsavel_id||null)}));
+  await importLeads(leadsB,'Lista');
   document.getElementById('bulk-text').value='';
 }
 
@@ -7199,6 +7294,249 @@ window.repararSnapDiaLuiz = async function(){
     alert('Erro no reparo: '+e.message);
   }
 };
+
+/* ══════════════════════════════════════════════════════
+   BUSCA NA BASE GERAL — vendedor pesquisa e solicita
+   ══════════════════════════════════════════════════════ */
+let _srchBasePage=1;
+const _srchBasePerPage=30;
+let _solLeadId=null;
+
+function renderBuscaBase(){
+  _srchBasePage=1;
+  _renderBuscaBasePage();
+}
+
+function _renderBuscaBasePage(){
+  const q=(document.getElementById('srch-base-inp')?.value||'').toLowerCase().trim();
+  const statusF=document.getElementById('srch-base-status')?.value||'';
+  if(!q){
+    document.getElementById('srch-base-tbody').innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">🔍</div>Digite um nome ou telefone para buscar</div></td></tr>';
+    document.getElementById('srch-base-title').textContent='Resultados';
+    document.getElementById('srch-base-pg').style.display='none';
+    return;
+  }
+  let results=allLeads.filter(l=>{
+    const nome=(l.nome||'').toLowerCase();
+    const tel=(l.telefone||'').replace(/\D/g,'');
+    const qTel=q.replace(/\D/g,'');
+    const matchNome=nome.includes(q);
+    const matchTel=qTel.length>=4&&tel.includes(qTel);
+    if(!matchNome&&!matchTel) return false;
+    if(statusF&&l.status!==statusF) return false;
+    return true;
+  });
+  const total=results.length;
+  const pages=Math.max(1,Math.ceil(total/_srchBasePerPage));
+  _srchBasePage=Math.min(_srchBasePage,pages);
+  const slice=results.slice((_srchBasePage-1)*_srchBasePerPage,_srchBasePage*_srchBasePerPage);
+
+  document.getElementById('srch-base-title').textContent=`${total} resultado${total!==1?'s':''} para "${q}"`;
+
+  const tbody=document.getElementById('srch-base-tbody');
+  if(!slice.length){
+    tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">🔍</div>Nenhum lead encontrado</div></td></tr>';
+  } else {
+    tbody.innerHTML=slice.map(l=>{
+      const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+      const isMeu=l.responsavel_id===CU.id;
+      const jaeSolicitado=window._minhasSolicita&&window._minhasSolicita[l.id];
+      let acao='';
+      if(isMeu){
+        acao='<span style="font-size:11px;color:var(--green)">✅ Já é seu</span>';
+      } else if(jaeSolicitado==='Pendente'){
+        acao='<span class="sol-badge sol-pend">⏳ Aguardando</span>';
+      } else if(jaeSolicitado==='Aprovado'){
+        acao='<span class="sol-badge sol-aprov">✅ Aprovado</span>';
+      } else {
+        acao=`<button class="act green" onclick="abrirSolicitacao('${l.id}')">📩 Solicitar</button>`;
+      }
+      return`<tr>
+        <td style="font-weight:600">${l.nome}</td>
+        <td>${l.telefone||'—'}</td>
+        <td style="color:var(--muted2);font-size:11.5px">${l.interesse||'—'}</td>
+        <td>${badgeLead(l.status)}</td>
+        <td style="font-size:11.5px;color:var(--muted2)">${resp?resp.name:'Sem responsável'}</td>
+        <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
+        <td>${acao}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Pagination
+  const pgBar=document.getElementById('srch-base-pg');
+  if(pages<=1){pgBar.style.display='none';return;}
+  pgBar.style.display='flex';
+  let pgHtml='';
+  for(let i=1;i<=pages;i++){
+    pgHtml+=`<button class="btn-sm${i===_srchBasePage?' active-pg':''}" style="${i===_srchBasePage?'border-color:var(--gold);color:var(--gold2)':''}" onclick="_srchBasePage=${i};_renderBuscaBasePage()">${i}</button>`;
+  }
+  pgBar.innerHTML=pgHtml;
+}
+
+function badgeLead(status){
+  const map={'Novo':'b-novo','Em Negociação':'b-contato','Proposta':'b-proposta','Fechado':'b-fechado','Perdido':'b-perdido'};
+  return`<span class="badge ${map[status]||'b-novo'}">${status||'Novo'}</span>`;
+}
+
+/* ── Abrir modal solicitar ── */
+function abrirSolicitacao(leadId){
+  _solLeadId=leadId;
+  const l=allLeads.find(x=>x.id===leadId);
+  if(!l) return;
+  const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+  document.getElementById('sol-lead-info').innerHTML=`
+    <div style="font-weight:700;font-size:14px;margin-bottom:6px">${l.nome}</div>
+    <div style="font-size:11.5px;color:var(--muted2)">${l.telefone||'—'} &nbsp;·&nbsp; ${l.interesse||'—'}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">Responsável atual: ${resp?resp.name:'Sem responsável'}</div>`;
+  document.getElementById('sol-motivo').value='';
+  openModal('solicitar-lead');
+}
+
+async function confirmarSolicitacao(){
+  if(!_solLeadId) return;
+  const motivo=document.getElementById('sol-motivo').value.trim();
+  const lead=allLeads.find(x=>x.id===_solLeadId);
+  if(!lead){toast('Lead não encontrado','err');return;}
+  try{
+    const{error}=await sb.from('crm_solicitacoes_lead').insert({
+      lead_id:_solLeadId,
+      vendedor_id:CU.id,
+      vendedor_nome:CUProfile.name,
+      lead_nome:lead.nome,
+      lead_telefone:lead.telefone||null,
+      responsavel_atual_id:lead.responsavel_id||null,
+      motivo:motivo||null,
+      status:'Pendente',
+      created_at:new Date().toISOString(),
+    });
+    if(error) throw error;
+    if(!window._minhasSolicita) window._minhasSolicita={};
+    window._minhasSolicita[_solLeadId]='Pendente';
+    closeModal('solicitar-lead');
+    toast('Solicitação enviada! O admin será notificado.','ok');
+    renderBuscaBase();
+  }catch(e){
+    toast('Erro ao enviar solicitação: '+e.message,'err');
+  }
+}
+
+/* Carrega solicitações próprias do vendedor ao inicializar */
+async function carregarMinhasSolicitacoes(){
+  if(!isVendedor()) return;
+  try{
+    const{data}=await sb.from('crm_solicitacoes_lead').select('lead_id,status').eq('vendedor_id',CU.id);
+    window._minhasSolicita={};
+    (data||[]).forEach(s=>{ window._minhasSolicita[s.lead_id]=s.status; });
+  }catch(e){ console.warn('Erro ao carregar solicitações:',e); }
+}
+
+/* ══════════════════════════════════════════════════════
+   SOLICITAÇÕES — painel admin
+   ══════════════════════════════════════════════════════ */
+let _allSolicita=[];
+
+async function renderSolicitacoes(){
+  if(!isAdmin()) return;
+  try{
+    const{data,error}=await sb.from('crm_solicitacoes_lead')
+      .select('*').order('created_at',{ascending:false}).limit(200);
+    if(error) throw error;
+    _allSolicita=data||[];
+    _renderSolLista();
+    _atualizarBadgeSol();
+  }catch(e){
+    document.getElementById('sol-lista').innerHTML=`<div class="empty"><div class="ei">⚠️</div>Erro ao carregar solicitações</div>`;
+  }
+}
+
+function _renderSolLista(){
+  const el=document.getElementById('sol-lista');
+  if(!el) return;
+  if(!_allSolicita.length){
+    el.innerHTML='<div class="empty"><div class="ei">📭</div>Nenhuma solicitação ainda</div>';
+    return;
+  }
+  el.innerHTML=_allSolicita.map(s=>{
+    const lead=allLeads.find(l=>l.id===s.lead_id);
+    const respAtual=allUsers.find(u=>u.user_id===s.responsavel_atual_id);
+    const badgeMap={Pendente:'sol-pend',Aprovado:'sol-aprov',Negado:'sol-neg'};
+    const actions=s.status==='Pendente'?`
+      <button class="act green" onclick="responderSolicita('${s.id}','Aprovado')">✅ Aprovar</button>
+      <button class="act red" onclick="responderSolicita('${s.id}','Negado')">❌ Negar</button>`
+      :`<span class="sol-badge ${badgeMap[s.status]||''}">${s.status}</span>`;
+    return`<div style="padding:14px 18px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:3px">📋 ${s.lead_nome||'Lead'}</div>
+          <div style="font-size:11.5px;color:var(--muted2);margin-bottom:3px">${s.lead_telefone||'—'}</div>
+          <div style="font-size:11px;color:var(--muted)">Responsável atual: ${respAtual?respAtual.name:'Sem responsável'}</div>
+          ${s.motivo?`<div style="font-size:11.5px;color:var(--text);margin-top:6px;background:var(--surface2);border-radius:6px;padding:6px 10px">"${s.motivo}"</div>`:''}
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:12.5px;font-weight:700;color:var(--gold2);margin-bottom:4px">👤 ${s.vendedor_nome}</div>
+          <div style="font-size:10.5px;color:var(--muted2);margin-bottom:8px">${fmtDt(s.created_at)}</div>
+          <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">${actions}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function responderSolicita(solId,novoStatus){
+  const sol=_allSolicita.find(s=>s.id===solId);
+  if(!sol) return;
+  try{
+    const{error}=await sb.from('crm_solicitacoes_lead').update({status:novoStatus,respondido_em:new Date().toISOString()}).eq('id',solId);
+    if(error) throw error;
+    // Se aprovado: transfere o lead para o vendedor solicitante
+    if(novoStatus==='Aprovado'){
+      const{error:e2}=await sb.from('crm_leads').update({
+        responsavel_id:sol.vendedor_id,
+        distribuido_em:new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      }).eq('id',sol.lead_id);
+      if(!e2){
+        const idx=allLeads.findIndex(l=>l.id===sol.lead_id);
+        if(idx>-1) allLeads[idx].responsavel_id=sol.vendedor_id;
+        await sb.from('crm_historico').insert({
+          lead_id:sol.lead_id,user_id:CU.id,tipo:'📩 Solicitação',
+          descricao:`Lead transferido para ${sol.vendedor_nome} via solicitação aprovada pelo admin`,
+          created_at:new Date().toISOString()
+        });
+      }
+    }
+    toast(novoStatus==='Aprovado'?`✅ Lead transferido para ${sol.vendedor_nome}!`:'❌ Solicitação negada.','ok');
+    await renderSolicitacoes();
+    saveCache();
+  }catch(e){
+    toast('Erro: '+e.message,'err');
+  }
+}
+
+function _atualizarBadgeSol(){
+  const pendentes=_allSolicita.filter(s=>s.status==='Pendente').length;
+  const badge=document.getElementById('sol-adm-badge');
+  if(badge){
+    badge.textContent=pendentes>0?pendentes:'';
+    badge.style.display=pendentes>0?'inline':'none';
+  }
+}
+
+/* Polling de solicitações pendentes para o admin (a cada 60s) */
+async function pollSolicitacoesAdmin(){
+  if(!isAdmin()) return;
+  try{
+    const{data}=await sb.from('crm_solicitacoes_lead').select('id,status').eq('status','Pendente');
+    const pendentes=(data||[]).length;
+    const badge=document.getElementById('sol-adm-badge');
+    if(badge){
+      badge.textContent=pendentes>0?pendentes:'';
+      badge.style.display=pendentes>0?'inline':'none';
+    }
+  }catch(e){}
+}
+
 
 window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, delta=1){
   try{
