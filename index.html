@@ -1563,8 +1563,11 @@ async function initApp(user){
       if(xtab){
         try{
           const x=JSON.parse(xtab);
-          // Usa só se recente (< 2h)
-          if(x.ts&&(Date.now()-x.ts)<7200000){
+          // Ignora cache cross-tab se role é 'vendedor' e veio de fallback (pode ser errado)
+          // Também ignora se tem flag _fallback=true
+          const isFallbackCache = x.profile?._fallback===true;
+          // Usa só se recente (< 2h) e não é fallback
+          if(x.ts&&(Date.now()-x.ts)<7200000&&!isFallbackCache){
             CUProfile=x.profile;
             allUsers=x.users||[];
             allEquipes=x.equipes||[];
@@ -1645,10 +1648,16 @@ async function initApp(user){
     showLoading('Verificando perfil...', 20);
     await ensureProfile();
     showLoading('Carregando leads e dados...', 50);
-    await loadAll();
+    try{
+      await loadAll();
+    } catch(loadErr){
+      console.warn('[initApp] loadAll erro:',loadErr.message);
+      // Mesmo com erro, continua para mostrar o app (melhor que tela preta)
+    }
     clearTimeout(t);
     showLoading('Finalizando...', 90);
-    saveCache();
+    // Salva cache só se tiver dados válidos
+    if(CUProfile&&(allLeads.length||allUsers.length)) saveCache();
     if(!document.getElementById('page-dashboard')?.classList.contains('on')){
       populateSelects();
       renderNav();
@@ -1815,7 +1824,7 @@ async function ensureProfile(){
         } catch(ce){ sessionStorage.removeItem(cacheKey); }
       }
       // 2) Sem cache: usa perfil temporario MAS salva no sessionStorage imediatamente
-      CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
+      CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor',_fallback:true};
       try{ sessionStorage.setItem(cacheKey,JSON.stringify(CUProfile)); }catch(se){}
       document.getElementById('sb-name').textContent=name;
       document.getElementById('sb-role').textContent='Vendedor';
@@ -1835,11 +1844,19 @@ async function ensureProfile(){
             document.getElementById('sb-role').textContent=roleLabels[data.role]||data.role;
             document.getElementById('u-name').textContent=data.name||name;
             document.getElementById('u-av').textContent=initials2;
-            if(data.role!==roleAnterior){
+            if(data.role!==roleAnterior||roleAnterior==='vendedor'&&data.role!=='vendedor'){
               console.log('[profileRetry] Role mudou de',roleAnterior,'para',data.role,'recarregando...');
+              // Limpa caches antigos com role errado
+              try{
+                Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_data_')||k.startsWith('crm_profile_')) sessionStorage.removeItem(k); });
+                Object.keys(localStorage).forEach(k=>{ if(k.startsWith('crm_xtab_')) localStorage.removeItem(k); });
+              }catch(ce){}
+              showLoading('Atualizando permissões...', 40);
               await loadAll();
               saveCache();
+              hideLoading();
               renderNav();
+              populateSelects();
               renderDashboard().catch(()=>{});
               toast('Perfil atualizado: '+roleLabels[data.role],'ok');
             }
@@ -1893,7 +1910,7 @@ async function loadAll(){
   const isCoord=isCoordenador();
   const isSup=isSupervisor();
   const safe=async(q)=>{try{
-    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),25000));
+    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),10000));
     const r=await Promise.race([q,tOut]);
     return r;
   }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
