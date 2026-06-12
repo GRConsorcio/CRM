@@ -318,9 +318,14 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div id="loading-bar" style="height:100%;width:0%;background:var(--gold);border-radius:3px;transition:width .4s ease"></div>
     </div>
   </div>
-  <button onclick="limparCacheERecarregar()" style="margin-top:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:7px;padding:7px 16px;font-size:11px;cursor:pointer;font-family:inherit" id="loading-reload-btn" style="display:none">
-    ↺ Demorou muito? Clique aqui
-  </button>
+  <div id="loading-reload-btn" style="display:none;margin-top:10px;display:none;flex-direction:column;align-items:center;gap:8px">
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:4px">
+      Servidor lento ou sem conexão.<br>Se tiver o CRM aberto em outra aba, feche-a primeiro.
+    </div>
+    <button onclick="limparCacheERecarregar()" style="background:var(--gold);border:none;color:#0a0a0a;border-radius:7px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+      ↺ Limpar cache e recarregar
+    </button>
+  </div>
 </div>
 
 <!-- AUTH -->
@@ -1514,7 +1519,7 @@ function showLoading(msg,pct){
   // Mostra botão de recarga após 12s
   setTimeout(()=>{
     const btn=document.getElementById('loading-reload-btn');
-    if(btn&&document.getElementById('loading-screen')?.style.display==='flex') btn.style.display='block';
+    if(btn&&document.getElementById('loading-screen')?.style.display==='flex') btn.style.display='flex';
   },12000);
 }
 function hideLoading(){
@@ -1563,8 +1568,7 @@ async function initApp(user){
       if(xtab){
         try{
           const x=JSON.parse(xtab);
-          // Ignora cache cross-tab se role é 'vendedor' e veio de fallback (pode ser errado)
-          // Também ignora se tem flag _fallback=true
+          // Ignora cache cross-tab se veio de fallback temporário
           const isFallbackCache = x.profile?._fallback===true;
           // Usa só se recente (< 2h) e não é fallback
           if(x.ts&&(Date.now()-x.ts)<7200000&&!isFallbackCache){
@@ -1644,19 +1648,40 @@ async function initApp(user){
     }
 
     // ── PRIMEIRA VEZ: carrega normalmente
-    const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
+    const tSlow=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),12000);
     showLoading('Verificando perfil...', 20);
     await ensureProfile();
     showLoading('Carregando leads e dados...', 50);
+    let loadAllOk=false;
     try{
       await loadAll();
+      loadAllOk=true;
     } catch(loadErr){
       console.warn('[initApp] loadAll erro:',loadErr.message);
-      // Mesmo com erro, continua para mostrar o app (melhor que tela preta)
     }
-    clearTimeout(t);
+    clearTimeout(tSlow);
+
+    // Se loadAll falhou completamente (Supabase offline), tenta usar cache do sessionStorage
+    if(!loadAllOk && !allUsers.length && !allLeads.length){
+      console.warn('[initApp] Supabase inacessível — tentando cache de emergência...');
+      const emergCache=sessionStorage.getItem('crm_data_'+CU.id);
+      if(emergCache){
+        try{
+          const ec=JSON.parse(emergCache);
+          if(ec.profile){ CUProfile=ec.profile; allLeads=ec.leads||[]; allUsers=ec.users||[];
+            allHist=ec.hist||[]; allTasks=ec.tasks||[]; allVendas=ec.vendas||[];
+            allDocs=ec.docs||[]; allEquipes=ec.equipes||[]; allMembroEquipes=ec.membros||[];
+            window._allEquipes=allEquipes; window._allMembroEquipes=allMembroEquipes;
+            toast('⚠️ Sem conexão — exibindo dados salvos','err');
+          }
+        }catch(ec){}
+      } else {
+        // Sem cache nenhum e sem internet — mostra aviso mas abre o app
+        toast('⚠️ Sem conexão com o servidor. Verifique sua internet.','err');
+      }
+    }
+
     showLoading('Finalizando...', 90);
-    // Salva cache só se tiver dados válidos
     if(CUProfile&&(allLeads.length||allUsers.length)) saveCache();
     if(!document.getElementById('page-dashboard')?.classList.contains('on')){
       populateSelects();
@@ -4663,11 +4688,14 @@ function saveCache(){
     // Salva também no localStorage (cross-tab) — profile + usuários apenas
     // (leads ficam só no sessionStorage pois são grandes)
     try{
-      localStorage.setItem('crm_xtab_'+CU.id, JSON.stringify({
-        profile:CUProfile, users:allUsers,
-        equipes:allEquipes, membros:allMembroEquipes,
-        ts:Date.now()
-      }));
+      // Não salva xtab se o perfil é fallback temporário (role pode estar errado)
+      if(!CUProfile?._fallback){
+        localStorage.setItem('crm_xtab_'+CU.id, JSON.stringify({
+          profile:CUProfile, users:allUsers,
+          equipes:allEquipes, membros:allMembroEquipes,
+          ts:Date.now()
+        }));
+      }
     }catch(e){}
   } catch(e){ console.warn('Cache save error:',e.message); }
 }
