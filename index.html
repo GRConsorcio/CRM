@@ -7113,6 +7113,381 @@ if(csvZone){
   csvZone.addEventListener('dragleave',()=>csvZone.classList.remove('drag'));
   csvZone.addEventListener('drop',e=>{e.preventDefault();csvZone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)handleCSV(f);});
 }
+
+/* ══════════════════════════════════════════════════════
+
+
+/*    BUSCA NA BASE GERAL — vendedor pesquisa e solicita
+   ══════════════════════════════════════════════════════ */
+let _srchBasePage=1;
+const _srchBasePerPage=30;
+let _solLeadId=null;
+
+let _srchBaseTimer=null;
+let _srchBaseResults=[];
+
+function renderBuscaBase(){
+  _srchBasePage=1;
+  const q=(document.getElementById('srch-base-inp')?.value||'').trim();
+  if(!q){
+    document.getElementById('srch-base-tbody').innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">🔍</div>Digite um nome ou telefone para buscar</div></td></tr>';
+    document.getElementById('srch-base-title').textContent='Resultados';
+    document.getElementById('srch-base-pg').style.display='none';
+    return;
+  }
+  // Debounce 400ms para não disparar a cada tecla
+  clearTimeout(_srchBaseTimer);
+  _srchBaseTimer=setTimeout(()=>_executarBuscaBase(q),400);
+}
+
+async function _executarBuscaBase(q){
+  const tbody=document.getElementById('srch-base-tbody');
+  const statusF=document.getElementById('srch-base-status')?.value||'';
+  tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:8px;color:var(--muted2);font-size:13px">Buscando...</div></div></td></tr>';
+
+  try{
+    // Busca direto no Supabase — funciona para qualquer role
+    const qLike=q.replace(/[%_]/g,'\\$&'); // escape special chars
+    let query=sb.from('crm_leads')
+      .select('id,nome,telefone,interesse,status,responsavel_id,created_at')
+      .or(`nome.ilike.%${qLike}%,telefone.ilike.%${qLike}%`)
+      .order('created_at',{ascending:false})
+      .limit(200);
+    if(statusF) query=query.eq('status',statusF);
+    const{data,error}=await query;
+    if(error) throw error;
+    _srchBaseResults=data||[];
+    _renderBuscaBasePage();
+  }catch(e){
+    tbody.innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ei">⚠️</div>Erro ao buscar: ${e.message}</div></td></tr>`;
+  }
+}
+
+function _renderBuscaBasePage(){
+  const q=(document.getElementById('srch-base-inp')?.value||'').trim();
+  const results=_srchBaseResults;
+  const total=results.length;
+  const pages=Math.max(1,Math.ceil(total/_srchBasePerPage));
+  _srchBasePage=Math.min(_srchBasePage,pages);
+  const slice=results.slice((_srchBasePage-1)*_srchBasePerPage,_srchBasePage*_srchBasePerPage);
+
+  document.getElementById('srch-base-title').textContent=
+    total===200?`Mostrando primeiros 200 resultados para "${q}" — refine a busca`
+    :`${total} resultado${total!==1?'s':''} para "${q}"`;
+
+  const tbody=document.getElementById('srch-base-tbody');
+  if(!slice.length){
+    tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">🔍</div>Nenhum lead encontrado</div></td></tr>';
+  } else {
+    tbody.innerHTML=slice.map(l=>{
+      const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+      const isMeu=l.responsavel_id===CU.id;
+      const jaeSolicitado=window._minhasSolicita&&window._minhasSolicita[l.id];
+      let acao='';
+      if(isMeu){
+        acao='<span style="font-size:11px;color:var(--green)">✅ Já é seu</span>';
+      } else if(jaeSolicitado==='Pendente'){
+        acao='<span class="sol-badge sol-pend">⏳ Aguardando</span>';
+      } else if(jaeSolicitado==='Aprovado'){
+        acao='<span class="sol-badge sol-aprov">✅ Aprovado</span>';
+      } else {
+        acao=`<button class="act green" onclick="abrirSolicitacao('${l.id}')">📩 Solicitar</button>`;
+      }
+      return`<tr>
+        <td style="font-weight:600">${l.nome}</td>
+        <td>${l.telefone||'—'}</td>
+        <td style="color:var(--muted2);font-size:11.5px">${l.interesse||'—'}</td>
+        <td>${badgeLead(l.status)}</td>
+        <td style="font-size:11.5px;color:var(--muted2)">${resp?resp.name:'Sem responsável'}</td>
+        <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
+        <td>${acao}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Pagination
+  const pgBar=document.getElementById('srch-base-pg');
+  if(pages<=1){pgBar.style.display='none';return;}
+  pgBar.style.display='flex';
+  let pgHtml='';
+  for(let i=1;i<=pages;i++){
+    pgHtml+=`<button class="btn-sm${i===_srchBasePage?' active-pg':''}" style="${i===_srchBasePage?'border-color:var(--gold);color:var(--gold2)':''}" onclick="_srchBasePage=${i};_renderBuscaBasePage()">${i}</button>`;
+  }
+  pgBar.innerHTML=pgHtml;
+}
+
+function badgeLead(status){
+  const map={'Novo':'b-novo','Em Negociação':'b-contato','Proposta':'b-proposta','Fechado':'b-fechado','Perdido':'b-perdido'};
+  return`<span class="badge ${map[status]||'b-novo'}">${status||'Novo'}</span>`;
+}
+
+/* ── Abrir modal solicitar ── */
+function abrirSolicitacao(leadId){
+  _solLeadId=leadId;
+  const l=allLeads.find(x=>x.id===leadId);
+  if(!l) return;
+  const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+  document.getElementById('sol-lead-info').innerHTML=`
+    <div style="font-weight:700;font-size:14px;margin-bottom:6px">${l.nome}</div>
+    <div style="font-size:11.5px;color:var(--muted2)">${l.telefone||'—'} &nbsp;·&nbsp; ${l.interesse||'—'}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">Responsável atual: ${resp?resp.name:'Sem responsável'}</div>`;
+  document.getElementById('sol-motivo').value='';
+  openModal('solicitar-lead');
+}
+
+async function confirmarSolicitacao(){
+  if(!_solLeadId) return;
+  const motivo=document.getElementById('sol-motivo').value.trim();
+  const lead=allLeads.find(x=>x.id===_solLeadId);
+  if(!lead){toast('Lead não encontrado','err');return;}
+  try{
+    const{error}=await sb.from('crm_solicitacoes_lead').insert({
+      lead_id:_solLeadId,
+      vendedor_id:CU.id,
+      vendedor_nome:CUProfile.name,
+      lead_nome:lead.nome,
+      lead_telefone:lead.telefone||null,
+      responsavel_atual_id:lead.responsavel_id||null,
+      motivo:motivo||null,
+      status:'Pendente',
+      created_at:new Date().toISOString(),
+    });
+    if(error) throw error;
+    if(!window._minhasSolicita) window._minhasSolicita={};
+    window._minhasSolicita[_solLeadId]='Pendente';
+    closeModal('solicitar-lead');
+    toast('Solicitação enviada! O admin será notificado.','ok');
+    renderBuscaBase();
+  }catch(e){
+    toast('Erro ao enviar solicitação: '+e.message,'err');
+  }
+}
+
+/* Carrega solicitações próprias do vendedor ao inicializar */
+async function carregarMinhasSolicitacoes(){
+  if(!isVendedor()) return;
+  try{
+    const{data}=await sb.from('crm_solicitacoes_lead').select('lead_id,status').eq('vendedor_id',CU.id);
+    window._minhasSolicita={};
+    (data||[]).forEach(s=>{ window._minhasSolicita[s.lead_id]=s.status; });
+  }catch(e){ console.warn('Erro ao carregar solicitações:',e); }
+}
+
+/* ══════════════════════════════════════════════════════
+   SOLICITAÇÕES — painel admin
+   ══════════════════════════════════════════════════════ */
+let _allSolicita=[];
+
+async function renderSolicitacoes(){
+  if(!isAdmin()) return;
+  try{
+    const{data,error}=await sb.from('crm_solicitacoes_lead')
+      .select('*').order('created_at',{ascending:false}).limit(200);
+    if(error) throw error;
+    _allSolicita=data||[];
+    _renderSolLista();
+    _atualizarBadgeSol();
+  }catch(e){
+    document.getElementById('sol-lista').innerHTML=`<div class="empty"><div class="ei">⚠️</div>Erro ao carregar solicitações</div>`;
+  }
+}
+
+function _renderSolLista(){
+  const el=document.getElementById('sol-lista');
+  if(!el) return;
+  if(!_allSolicita.length){
+    el.innerHTML='<div class="empty"><div class="ei">📭</div>Nenhuma solicitação ainda</div>';
+    return;
+  }
+  el.innerHTML=_allSolicita.map(s=>{
+    const lead=allLeads.find(l=>l.id===s.lead_id);
+    const respAtual=allUsers.find(u=>u.user_id===s.responsavel_atual_id);
+    const badgeMap={Pendente:'sol-pend',Aprovado:'sol-aprov',Negado:'sol-neg'};
+    const actions=s.status==='Pendente'?`
+      <button class="act green" onclick="responderSolicita('${s.id}','Aprovado')">✅ Aprovar</button>
+      <button class="act red" onclick="responderSolicita('${s.id}','Negado')">❌ Negar</button>`
+      :`<span class="sol-badge ${badgeMap[s.status]||''}">${s.status}</span>`;
+    return`<div style="padding:14px 18px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:3px">📋 ${s.lead_nome||'Lead'}</div>
+          <div style="font-size:11.5px;color:var(--muted2);margin-bottom:3px">${s.lead_telefone||'—'}</div>
+          <div style="font-size:11px;color:var(--muted)">Responsável atual: ${respAtual?respAtual.name:'Sem responsável'}</div>
+          ${s.motivo?`<div style="font-size:11.5px;color:var(--text);margin-top:6px;background:var(--surface2);border-radius:6px;padding:6px 10px">"${s.motivo}"</div>`:''}
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:12.5px;font-weight:700;color:var(--gold2);margin-bottom:4px">👤 ${s.vendedor_nome}</div>
+          <div style="font-size:10.5px;color:var(--muted2);margin-bottom:8px">${fmtDt(s.created_at)}</div>
+          <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">${actions}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function responderSolicita(solId,novoStatus){
+  const sol=_allSolicita.find(s=>s.id===solId);
+  if(!sol) return;
+  try{
+    const{error}=await sb.from('crm_solicitacoes_lead').update({status:novoStatus,respondido_em:new Date().toISOString()}).eq('id',solId);
+    if(error) throw error;
+    // Se aprovado: transfere o lead para o vendedor solicitante
+    if(novoStatus==='Aprovado'){
+      const{error:e2}=await sb.from('crm_leads').update({
+        responsavel_id:sol.vendedor_id,
+        distribuido_em:new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      }).eq('id',sol.lead_id);
+      if(!e2){
+        const idx=allLeads.findIndex(l=>l.id===sol.lead_id);
+        if(idx>-1) allLeads[idx].responsavel_id=sol.vendedor_id;
+        await sb.from('crm_historico').insert({
+          lead_id:sol.lead_id,user_id:CU.id,tipo:'📩 Solicitação',
+          descricao:`Lead transferido para ${sol.vendedor_nome} via solicitação aprovada pelo admin`,
+          created_at:new Date().toISOString()
+        });
+      }
+    }
+    toast(novoStatus==='Aprovado'?`✅ Lead transferido para ${sol.vendedor_nome}!`:'❌ Solicitação negada.','ok');
+    await renderSolicitacoes();
+    saveCache();
+  }catch(e){
+    toast('Erro: '+e.message,'err');
+  }
+}
+
+function _atualizarBadgeSol(){
+  const pendentes=_allSolicita.filter(s=>s.status==='Pendente').length;
+  const badge=document.getElementById('sol-adm-badge');
+  if(badge){
+    badge.textContent=pendentes>0?pendentes:'';
+    badge.style.display=pendentes>0?'inline':'none';
+  }
+}
+
+/* Polling de solicitações pendentes para o admin (a cada 60s) */
+async function pollSolicitacoesAdmin(){
+  if(!isAdmin()) return;
+  try{
+    const{data}=await sb.from('crm_solicitacoes_lead').select('id,status').eq('status','Pendente');
+    const pendentes=(data||[]).length;
+    const badge=document.getElementById('sol-adm-badge');
+    if(badge){
+      badge.textContent=pendentes>0?pendentes:'';
+      badge.style.display=pendentes>0?'inline':'none';
+    }
+  }catch(e){}
+}
+
+
+/* ══════════════════════════════════════════════════════
+   SISTEMA DE NOTIFICAÇÕES ADMIN
+   Detecta leads Perdidos com palavras bloqueadas e alerta
+   ══════════════════════════════════════════════════════ */
+let _notifItems = [];   // {id, leadId, leadNome, label, lida, ts}
+const _NOTIF_KEY = 'crm_notif_lidas_v1';
+
+function _getNotifLidas(){
+  try{ return JSON.parse(localStorage.getItem(_NOTIF_KEY)||'[]'); }catch(e){ return []; }
+}
+function _setNotifLidas(ids){
+  try{ localStorage.setItem(_NOTIF_KEY, JSON.stringify(ids)); }catch(e){}
+}
+
+function verificarLeadsBloqueados(){
+  if(!isAdmin()) return;
+  const lidas = _getNotifLidas();
+  const perdidos = allLeads.filter(l => l.status === 'Perdido');
+  _notifItems = [];
+  for(const l of perdidos){
+    const label = getLabelBloqueioPorLead(l);
+    if(!label) continue;
+    const nid = 'bloq_' + l.id;
+    _notifItems.push({
+      id: nid,
+      leadId: l.id,
+      leadNome: l.nome,
+      label,
+      lida: lidas.includes(nid),
+      ts: l.updated_at || l.created_at,
+    });
+  }
+  // Sort: não lidas primeiro, depois por data desc
+  _notifItems.sort((a,b)=>{
+    if(a.lida !== b.lida) return a.lida ? 1 : -1;
+    return new Date(b.ts) - new Date(a.ts);
+  });
+  _renderNotifBell();
+  _renderNotifList();
+}
+
+function _renderNotifBell(){
+  const wrap = document.getElementById('notif-bell-wrap');
+  const cnt  = document.getElementById('notif-count');
+  if(!wrap||!cnt) return;
+  wrap.style.display = isAdmin() ? 'inline-flex' : 'none';
+  const naoLidas = _notifItems.filter(n=>!n.lida).length;
+  cnt.textContent = naoLidas;
+  cnt.style.display = naoLidas > 0 ? '' : 'none';
+}
+
+function _renderNotifList(){
+  const list = document.getElementById('notif-list');
+  if(!list) return;
+  if(!_notifItems.length){
+    list.innerHTML = '<div class="notif-empty">✅ Nenhum lead com alerta de palavra-chave</div>';
+    return;
+  }
+  list.innerHTML = _notifItems.map(n=>`
+    <div class="notif-item${n.lida?'':' unread'}" onclick="irParaLeadNotif('${n.leadId}','${n.id}')">
+      <div class="notif-icon">⚠️</div>
+      <div class="notif-body">
+        <div class="notif-title">${n.leadNome}</div>
+        <div class="notif-desc">Palavra detectada: <strong style="color:var(--orange)">"${n.label}"</strong> — Lead Perdido bloqueado de reciclagem</div>
+        <div class="notif-time">${fmtDt(n.ts)}</div>
+      </div>
+      ${n.lida?'<span style="font-size:10px;color:var(--muted)">lida</span>':'<span style="width:7px;height:7px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-top:5px;display:block"></span>'}
+    </div>`).join('');
+}
+
+function toggleNotifDropdown(){
+  const dd = document.getElementById('notif-dropdown');
+  if(!dd) return;
+  dd.classList.toggle('open');
+  // Close on outside click
+  if(dd.classList.contains('open')){
+    setTimeout(()=>{
+      document.addEventListener('click', _closeNotifOutside, {once:true});
+    },10);
+  }
+}
+function _closeNotifOutside(e){
+  const dd=document.getElementById('notif-dropdown');
+  const wrap=document.getElementById('notif-bell-wrap');
+  if(dd&&wrap&&!wrap.contains(e.target)) dd.classList.remove('open');
+}
+
+function marcarTodasLidas(){
+  const ids = _notifItems.map(n=>n.id);
+  _setNotifLidas(ids);
+  _notifItems.forEach(n=>n.lida=true);
+  _renderNotifBell();
+  _renderNotifList();
+}
+
+function irParaLeadNotif(leadId, notifId){
+  // Marca como lida
+  const lidas = _getNotifLidas();
+  if(!lidas.includes(notifId)){ lidas.push(notifId); _setNotifLidas(lidas); }
+  const n = _notifItems.find(x=>x.id===notifId);
+  if(n) n.lida = true;
+  _renderNotifBell();
+  // Fecha dropdown
+  document.getElementById('notif-dropdown')?.classList.remove('open');
+  // Navega para o lead
+  openLeadDetail(leadId);
+}
+
 </script>
 
 <!-- ════ MODAL: AVALIAR PERDIDOS SEM COMENTÁRIO ════ -->
@@ -7536,377 +7911,7 @@ window.repararSnapDiaLuiz = async function(){
   }
 };
 
-/* ══════════════════════════════════════════════════════
-   BUSCA NA BASE GERAL — vendedor pesquisa e solicita
-   ══════════════════════════════════════════════════════ */
-let _srchBasePage=1;
-const _srchBasePerPage=30;
-let _solLeadId=null;
 
-let _srchBaseTimer=null;
-let _srchBaseResults=[];
-
-function renderBuscaBase(){
-  _srchBasePage=1;
-  const q=(document.getElementById('srch-base-inp')?.value||'').trim();
-  if(!q){
-    document.getElementById('srch-base-tbody').innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">🔍</div>Digite um nome ou telefone para buscar</div></td></tr>';
-    document.getElementById('srch-base-title').textContent='Resultados';
-    document.getElementById('srch-base-pg').style.display='none';
-    return;
-  }
-  // Debounce 400ms para não disparar a cada tecla
-  clearTimeout(_srchBaseTimer);
-  _srchBaseTimer=setTimeout(()=>_executarBuscaBase(q),400);
-}
-
-async function _executarBuscaBase(q){
-  const tbody=document.getElementById('srch-base-tbody');
-  const statusF=document.getElementById('srch-base-status')?.value||'';
-  tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:8px;color:var(--muted2);font-size:13px">Buscando...</div></div></td></tr>';
-
-  try{
-    // Busca direto no Supabase — funciona para qualquer role
-    const qLike=q.replace(/[%_]/g,'\\$&'); // escape special chars
-    let query=sb.from('crm_leads')
-      .select('id,nome,telefone,interesse,status,responsavel_id,created_at')
-      .or(`nome.ilike.%${qLike}%,telefone.ilike.%${qLike}%`)
-      .order('created_at',{ascending:false})
-      .limit(200);
-    if(statusF) query=query.eq('status',statusF);
-    const{data,error}=await query;
-    if(error) throw error;
-    _srchBaseResults=data||[];
-    _renderBuscaBasePage();
-  }catch(e){
-    tbody.innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ei">⚠️</div>Erro ao buscar: ${e.message}</div></td></tr>`;
-  }
-}
-
-function _renderBuscaBasePage(){
-  const q=(document.getElementById('srch-base-inp')?.value||'').trim();
-  const results=_srchBaseResults;
-  const total=results.length;
-  const pages=Math.max(1,Math.ceil(total/_srchBasePerPage));
-  _srchBasePage=Math.min(_srchBasePage,pages);
-  const slice=results.slice((_srchBasePage-1)*_srchBasePerPage,_srchBasePage*_srchBasePerPage);
-
-  document.getElementById('srch-base-title').textContent=
-    total===200?`Mostrando primeiros 200 resultados para "${q}" — refine a busca`
-    :`${total} resultado${total!==1?'s':''} para "${q}"`;
-
-  const tbody=document.getElementById('srch-base-tbody');
-  if(!slice.length){
-    tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">🔍</div>Nenhum lead encontrado</div></td></tr>';
-  } else {
-    tbody.innerHTML=slice.map(l=>{
-      const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
-      const isMeu=l.responsavel_id===CU.id;
-      const jaeSolicitado=window._minhasSolicita&&window._minhasSolicita[l.id];
-      let acao='';
-      if(isMeu){
-        acao='<span style="font-size:11px;color:var(--green)">✅ Já é seu</span>';
-      } else if(jaeSolicitado==='Pendente'){
-        acao='<span class="sol-badge sol-pend">⏳ Aguardando</span>';
-      } else if(jaeSolicitado==='Aprovado'){
-        acao='<span class="sol-badge sol-aprov">✅ Aprovado</span>';
-      } else {
-        acao=`<button class="act green" onclick="abrirSolicitacao('${l.id}')">📩 Solicitar</button>`;
-      }
-      return`<tr>
-        <td style="font-weight:600">${l.nome}</td>
-        <td>${l.telefone||'—'}</td>
-        <td style="color:var(--muted2);font-size:11.5px">${l.interesse||'—'}</td>
-        <td>${badgeLead(l.status)}</td>
-        <td style="font-size:11.5px;color:var(--muted2)">${resp?resp.name:'Sem responsável'}</td>
-        <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
-        <td>${acao}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  // Pagination
-  const pgBar=document.getElementById('srch-base-pg');
-  if(pages<=1){pgBar.style.display='none';return;}
-  pgBar.style.display='flex';
-  let pgHtml='';
-  for(let i=1;i<=pages;i++){
-    pgHtml+=`<button class="btn-sm${i===_srchBasePage?' active-pg':''}" style="${i===_srchBasePage?'border-color:var(--gold);color:var(--gold2)':''}" onclick="_srchBasePage=${i};_renderBuscaBasePage()">${i}</button>`;
-  }
-  pgBar.innerHTML=pgHtml;
-}
-
-function badgeLead(status){
-  const map={'Novo':'b-novo','Em Negociação':'b-contato','Proposta':'b-proposta','Fechado':'b-fechado','Perdido':'b-perdido'};
-  return`<span class="badge ${map[status]||'b-novo'}">${status||'Novo'}</span>`;
-}
-
-/* ── Abrir modal solicitar ── */
-function abrirSolicitacao(leadId){
-  _solLeadId=leadId;
-  const l=allLeads.find(x=>x.id===leadId);
-  if(!l) return;
-  const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
-  document.getElementById('sol-lead-info').innerHTML=`
-    <div style="font-weight:700;font-size:14px;margin-bottom:6px">${l.nome}</div>
-    <div style="font-size:11.5px;color:var(--muted2)">${l.telefone||'—'} &nbsp;·&nbsp; ${l.interesse||'—'}</div>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px">Responsável atual: ${resp?resp.name:'Sem responsável'}</div>`;
-  document.getElementById('sol-motivo').value='';
-  openModal('solicitar-lead');
-}
-
-async function confirmarSolicitacao(){
-  if(!_solLeadId) return;
-  const motivo=document.getElementById('sol-motivo').value.trim();
-  const lead=allLeads.find(x=>x.id===_solLeadId);
-  if(!lead){toast('Lead não encontrado','err');return;}
-  try{
-    const{error}=await sb.from('crm_solicitacoes_lead').insert({
-      lead_id:_solLeadId,
-      vendedor_id:CU.id,
-      vendedor_nome:CUProfile.name,
-      lead_nome:lead.nome,
-      lead_telefone:lead.telefone||null,
-      responsavel_atual_id:lead.responsavel_id||null,
-      motivo:motivo||null,
-      status:'Pendente',
-      created_at:new Date().toISOString(),
-    });
-    if(error) throw error;
-    if(!window._minhasSolicita) window._minhasSolicita={};
-    window._minhasSolicita[_solLeadId]='Pendente';
-    closeModal('solicitar-lead');
-    toast('Solicitação enviada! O admin será notificado.','ok');
-    renderBuscaBase();
-  }catch(e){
-    toast('Erro ao enviar solicitação: '+e.message,'err');
-  }
-}
-
-/* Carrega solicitações próprias do vendedor ao inicializar */
-async function carregarMinhasSolicitacoes(){
-  if(!isVendedor()) return;
-  try{
-    const{data}=await sb.from('crm_solicitacoes_lead').select('lead_id,status').eq('vendedor_id',CU.id);
-    window._minhasSolicita={};
-    (data||[]).forEach(s=>{ window._minhasSolicita[s.lead_id]=s.status; });
-  }catch(e){ console.warn('Erro ao carregar solicitações:',e); }
-}
-
-/* ══════════════════════════════════════════════════════
-   SOLICITAÇÕES — painel admin
-   ══════════════════════════════════════════════════════ */
-let _allSolicita=[];
-
-async function renderSolicitacoes(){
-  if(!isAdmin()) return;
-  try{
-    const{data,error}=await sb.from('crm_solicitacoes_lead')
-      .select('*').order('created_at',{ascending:false}).limit(200);
-    if(error) throw error;
-    _allSolicita=data||[];
-    _renderSolLista();
-    _atualizarBadgeSol();
-  }catch(e){
-    document.getElementById('sol-lista').innerHTML=`<div class="empty"><div class="ei">⚠️</div>Erro ao carregar solicitações</div>`;
-  }
-}
-
-function _renderSolLista(){
-  const el=document.getElementById('sol-lista');
-  if(!el) return;
-  if(!_allSolicita.length){
-    el.innerHTML='<div class="empty"><div class="ei">📭</div>Nenhuma solicitação ainda</div>';
-    return;
-  }
-  el.innerHTML=_allSolicita.map(s=>{
-    const lead=allLeads.find(l=>l.id===s.lead_id);
-    const respAtual=allUsers.find(u=>u.user_id===s.responsavel_atual_id);
-    const badgeMap={Pendente:'sol-pend',Aprovado:'sol-aprov',Negado:'sol-neg'};
-    const actions=s.status==='Pendente'?`
-      <button class="act green" onclick="responderSolicita('${s.id}','Aprovado')">✅ Aprovar</button>
-      <button class="act red" onclick="responderSolicita('${s.id}','Negado')">❌ Negar</button>`
-      :`<span class="sol-badge ${badgeMap[s.status]||''}">${s.status}</span>`;
-    return`<div style="padding:14px 18px;border-bottom:1px solid var(--border)">
-      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <div style="font-weight:700;font-size:13px;margin-bottom:3px">📋 ${s.lead_nome||'Lead'}</div>
-          <div style="font-size:11.5px;color:var(--muted2);margin-bottom:3px">${s.lead_telefone||'—'}</div>
-          <div style="font-size:11px;color:var(--muted)">Responsável atual: ${respAtual?respAtual.name:'Sem responsável'}</div>
-          ${s.motivo?`<div style="font-size:11.5px;color:var(--text);margin-top:6px;background:var(--surface2);border-radius:6px;padding:6px 10px">"${s.motivo}"</div>`:''}
-        </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:12.5px;font-weight:700;color:var(--gold2);margin-bottom:4px">👤 ${s.vendedor_nome}</div>
-          <div style="font-size:10.5px;color:var(--muted2);margin-bottom:8px">${fmtDt(s.created_at)}</div>
-          <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">${actions}</div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-async function responderSolicita(solId,novoStatus){
-  const sol=_allSolicita.find(s=>s.id===solId);
-  if(!sol) return;
-  try{
-    const{error}=await sb.from('crm_solicitacoes_lead').update({status:novoStatus,respondido_em:new Date().toISOString()}).eq('id',solId);
-    if(error) throw error;
-    // Se aprovado: transfere o lead para o vendedor solicitante
-    if(novoStatus==='Aprovado'){
-      const{error:e2}=await sb.from('crm_leads').update({
-        responsavel_id:sol.vendedor_id,
-        distribuido_em:new Date().toISOString(),
-        updated_at:new Date().toISOString()
-      }).eq('id',sol.lead_id);
-      if(!e2){
-        const idx=allLeads.findIndex(l=>l.id===sol.lead_id);
-        if(idx>-1) allLeads[idx].responsavel_id=sol.vendedor_id;
-        await sb.from('crm_historico').insert({
-          lead_id:sol.lead_id,user_id:CU.id,tipo:'📩 Solicitação',
-          descricao:`Lead transferido para ${sol.vendedor_nome} via solicitação aprovada pelo admin`,
-          created_at:new Date().toISOString()
-        });
-      }
-    }
-    toast(novoStatus==='Aprovado'?`✅ Lead transferido para ${sol.vendedor_nome}!`:'❌ Solicitação negada.','ok');
-    await renderSolicitacoes();
-    saveCache();
-  }catch(e){
-    toast('Erro: '+e.message,'err');
-  }
-}
-
-function _atualizarBadgeSol(){
-  const pendentes=_allSolicita.filter(s=>s.status==='Pendente').length;
-  const badge=document.getElementById('sol-adm-badge');
-  if(badge){
-    badge.textContent=pendentes>0?pendentes:'';
-    badge.style.display=pendentes>0?'inline':'none';
-  }
-}
-
-/* Polling de solicitações pendentes para o admin (a cada 60s) */
-async function pollSolicitacoesAdmin(){
-  if(!isAdmin()) return;
-  try{
-    const{data}=await sb.from('crm_solicitacoes_lead').select('id,status').eq('status','Pendente');
-    const pendentes=(data||[]).length;
-    const badge=document.getElementById('sol-adm-badge');
-    if(badge){
-      badge.textContent=pendentes>0?pendentes:'';
-      badge.style.display=pendentes>0?'inline':'none';
-    }
-  }catch(e){}
-}
-
-
-/* ══════════════════════════════════════════════════════
-   SISTEMA DE NOTIFICAÇÕES ADMIN
-   Detecta leads Perdidos com palavras bloqueadas e alerta
-   ══════════════════════════════════════════════════════ */
-let _notifItems = [];   // {id, leadId, leadNome, label, lida, ts}
-const _NOTIF_KEY = 'crm_notif_lidas_v1';
-
-function _getNotifLidas(){
-  try{ return JSON.parse(localStorage.getItem(_NOTIF_KEY)||'[]'); }catch(e){ return []; }
-}
-function _setNotifLidas(ids){
-  try{ localStorage.setItem(_NOTIF_KEY, JSON.stringify(ids)); }catch(e){}
-}
-
-function verificarLeadsBloqueados(){
-  if(!isAdmin()) return;
-  const lidas = _getNotifLidas();
-  const perdidos = allLeads.filter(l => l.status === 'Perdido');
-  _notifItems = [];
-  for(const l of perdidos){
-    const label = getLabelBloqueioPorLead(l);
-    if(!label) continue;
-    const nid = 'bloq_' + l.id;
-    _notifItems.push({
-      id: nid,
-      leadId: l.id,
-      leadNome: l.nome,
-      label,
-      lida: lidas.includes(nid),
-      ts: l.updated_at || l.created_at,
-    });
-  }
-  // Sort: não lidas primeiro, depois por data desc
-  _notifItems.sort((a,b)=>{
-    if(a.lida !== b.lida) return a.lida ? 1 : -1;
-    return new Date(b.ts) - new Date(a.ts);
-  });
-  _renderNotifBell();
-  _renderNotifList();
-}
-
-function _renderNotifBell(){
-  const wrap = document.getElementById('notif-bell-wrap');
-  const cnt  = document.getElementById('notif-count');
-  if(!wrap||!cnt) return;
-  wrap.style.display = isAdmin() ? 'inline-flex' : 'none';
-  const naoLidas = _notifItems.filter(n=>!n.lida).length;
-  cnt.textContent = naoLidas;
-  cnt.style.display = naoLidas > 0 ? '' : 'none';
-}
-
-function _renderNotifList(){
-  const list = document.getElementById('notif-list');
-  if(!list) return;
-  if(!_notifItems.length){
-    list.innerHTML = '<div class="notif-empty">✅ Nenhum lead com alerta de palavra-chave</div>';
-    return;
-  }
-  list.innerHTML = _notifItems.map(n=>`
-    <div class="notif-item${n.lida?'':' unread'}" onclick="irParaLeadNotif('${n.leadId}','${n.id}')">
-      <div class="notif-icon">⚠️</div>
-      <div class="notif-body">
-        <div class="notif-title">${n.leadNome}</div>
-        <div class="notif-desc">Palavra detectada: <strong style="color:var(--orange)">"${n.label}"</strong> — Lead Perdido bloqueado de reciclagem</div>
-        <div class="notif-time">${fmtDt(n.ts)}</div>
-      </div>
-      ${n.lida?'<span style="font-size:10px;color:var(--muted)">lida</span>':'<span style="width:7px;height:7px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-top:5px;display:block"></span>'}
-    </div>`).join('');
-}
-
-function toggleNotifDropdown(){
-  const dd = document.getElementById('notif-dropdown');
-  if(!dd) return;
-  dd.classList.toggle('open');
-  // Close on outside click
-  if(dd.classList.contains('open')){
-    setTimeout(()=>{
-      document.addEventListener('click', _closeNotifOutside, {once:true});
-    },10);
-  }
-}
-function _closeNotifOutside(e){
-  const dd=document.getElementById('notif-dropdown');
-  const wrap=document.getElementById('notif-bell-wrap');
-  if(dd&&wrap&&!wrap.contains(e.target)) dd.classList.remove('open');
-}
-
-function marcarTodasLidas(){
-  const ids = _notifItems.map(n=>n.id);
-  _setNotifLidas(ids);
-  _notifItems.forEach(n=>n.lida=true);
-  _renderNotifBell();
-  _renderNotifList();
-}
-
-function irParaLeadNotif(leadId, notifId){
-  // Marca como lida
-  const lidas = _getNotifLidas();
-  if(!lidas.includes(notifId)){ lidas.push(notifId); _setNotifLidas(lidas); }
-  const n = _notifItems.find(x=>x.id===notifId);
-  if(n) n.lida = true;
-  _renderNotifBell();
-  // Fecha dropdown
-  document.getElementById('notif-dropdown')?.classList.remove('open');
-  // Navega para o lead
-  openLeadDetail(leadId);
-}
 
 
 window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, delta=1){
