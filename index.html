@@ -7222,8 +7222,11 @@ function badgeLead(status){
 /* ── Abrir modal solicitar ── */
 function abrirSolicitacao(leadId){
   _solLeadId=leadId;
-  const l=allLeads.find(x=>x.id===leadId);
+  // Busca no cache da pesquisa (vendedor não tem o lead em allLeads)
+  const l=_srchBaseResults.find(x=>x.id===leadId)||allLeads.find(x=>x.id===leadId);
   if(!l) return;
+  // Guarda dados do lead para usar no confirmarSolicitacao
+  window._solLeadCache=l;
   const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
   document.getElementById('sol-lead-info').innerHTML=`
     <div style="font-weight:700;font-size:14px;margin-bottom:6px">${l.nome}</div>
@@ -7236,7 +7239,8 @@ function abrirSolicitacao(leadId){
 async function confirmarSolicitacao(){
   if(!_solLeadId) return;
   const motivo=document.getElementById('sol-motivo').value.trim();
-  const lead=allLeads.find(x=>x.id===_solLeadId);
+  // Usa cache da busca; fallback para allLeads
+  const lead=window._solLeadCache||_srchBaseResults.find(x=>x.id===_solLeadId)||allLeads.find(x=>x.id===_solLeadId);
   if(!lead){toast('Lead não encontrado','err');return;}
   try{
     const{error}=await sb.from('crm_solicitacoes_lead').insert({
