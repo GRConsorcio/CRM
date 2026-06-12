@@ -1483,7 +1483,7 @@ async function doLogout(){
   // Clear cache
   Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
   Object.keys(localStorage).forEach(k=>{
-    if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k);
+    if(k.startsWith('sb-')||k.includes('supabase')||k.startsWith('crm_xtab_')) localStorage.removeItem(k);
   });
   // Force full page reload without cache
   window.location.href=window.location.pathname+'?logout='+Date.now();
@@ -1493,8 +1493,16 @@ async function doLogout(){
 /* ═══ INICIALIZAÇÃO DO APP ═══ */
 async function initApp(user){
   if(CU&&CU.id===user.id&&CUProfile) return;
-  if(_initAppInProgress) return;
+  if(_initAppInProgress){
+    // Se já está em progresso há mais de 20s, reseta o guard (travou)
+    const now=Date.now();
+    if(!window._initAppStartedAt) window._initAppStartedAt=now;
+    if(now-window._initAppStartedAt<20000) return;
+    console.warn('[initApp] guard travado há +20s, resetando...');
+    _initAppInProgress=false;
+  }
   _initAppInProgress=true;
+  window._initAppStartedAt=Date.now();
   try{
     CU=user;
     const _displayName = CU.user_metadata?.full_name || CU.nome || CU.name || CU.email || '';
@@ -1504,7 +1512,31 @@ async function initApp(user){
     document.getElementById('auth-screen').style.display='none';
 
     // ── CACHE FIRST: mostra dados salvos instantaneamente
-    const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
+    // Tenta sessionStorage (mesma aba) primeiro, depois localStorage (cross-tab)
+    let cacheData=sessionStorage.getItem('crm_data_'+CU.id);
+    if(!cacheData){
+      // Segunda aba: tenta o cache cross-tab do localStorage
+      const xtab=localStorage.getItem('crm_xtab_'+CU.id);
+      if(xtab){
+        try{
+          const x=JSON.parse(xtab);
+          // Usa só se recente (< 2h)
+          if(x.ts&&(Date.now()-x.ts)<7200000){
+            CUProfile=x.profile;
+            allUsers=x.users||[];
+            allEquipes=x.equipes||[];
+            allMembroEquipes=x.membros||[];
+            window._allEquipes=allEquipes;
+            window._allMembroEquipes=allMembroEquipes;
+            // Mostra UI parcialmente enquanto carrega leads
+            populateSelects();
+            renderNav();
+            goToDashboard();
+            console.log('[initApp] cross-tab cache: profile='+CUProfile?.role);
+          }
+        }catch(e){ localStorage.removeItem('crm_xtab_'+CU.id); }
+      }
+    }
     if(cacheData){
       try{
         const cached=JSON.parse(cacheData);
@@ -1623,10 +1655,47 @@ async function initApp(user){
   } catch(e){ console.warn('getSession error:',e.message); }
 })();
 
+/* ── WATCHDOG: detecta tela preta e recupera ── */
+(function startWatchdog(){
+  // Roda 10s após load e a cada 30s
+  // Se sessão existe mas app não inicializou → força init
+  async function watchdogCheck(){
+    try{
+      const authOk=document.getElementById('auth-screen')?.style.display==='none'||!document.getElementById('auth-screen');
+      const appOk=CU&&CUProfile;
+      if(authOk&&!appOk){
+        console.warn('[watchdog] Tela preta detectada — tentando recuperar...');
+        _initAppInProgress=false;
+        window._initAppStartedAt=null;
+        const{data:{session}}=await sb.auth.getSession();
+        if(session?.user) await initApp(session.user);
+        else {
+          // Sem sessão válida — mostra tela de login
+          document.getElementById('auth-screen').style.display='flex';
+        }
+      }
+    }catch(e){ console.warn('[watchdog] erro:',e.message); }
+  }
+  setTimeout(watchdogCheck,10000);
+  setInterval(watchdogCheck,30000);
+  // Também roda ao tab voltar para foco (ex: alt+tab depois de dormir)
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible') setTimeout(watchdogCheck,1500);
+  });
+  window.addEventListener('focus',()=>{ setTimeout(watchdogCheck,1500); });
+})();
+
 /* Listener para login/logout em tempo real */
 sb.auth.onAuthStateChange(async(ev,session)=>{
   if(ev==='INITIAL_SESSION') return;
-  if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED') return;
+  // TOKEN_REFRESHED: só ignora se o app já inicializou (CU preenchido)
+  // Se CU está vazio mas sessão existe, o app travou — precisa inicializar
+  if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED'){
+    if(CU&&CUProfile) return; // app ok, ignora
+    // App não inicializou (tela preta) — força init
+    if(session?.user){ console.log('[auth] '+ev+' com app não inicializado — forçando init'); await initApp(session.user); }
+    return;
+  }
   if(ev==='SIGNED_OUT'){
     CU=null; CUProfile=null;
     _initAppInProgress=false;
@@ -4494,11 +4563,19 @@ function saveCache(){
     try{
       sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
     } catch(quota){
-      // Se ainda estourar (base muito grande), salva sem leads
       console.warn('Cache quota exceeded, saving without leads');
       const slim={...data, leads:[], _incomplete:true};
       try{ sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(slim)); } catch(e2){}
     }
+    // Salva também no localStorage (cross-tab) — profile + usuários apenas
+    // (leads ficam só no sessionStorage pois são grandes)
+    try{
+      localStorage.setItem('crm_xtab_'+CU.id, JSON.stringify({
+        profile:CUProfile, users:allUsers,
+        equipes:allEquipes, membros:allMembroEquipes,
+        ts:Date.now()
+      }));
+    }catch(e){}
   } catch(e){ console.warn('Cache save error:',e.message); }
 }
 
