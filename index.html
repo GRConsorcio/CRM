@@ -239,6 +239,28 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .notify.err{border-left:3px solid var(--red)}
 
 
+
+/* ── NOTIFICAÇÕES ADMIN ── */
+.notif-bell-wrap{position:relative;display:inline-flex;}
+.notif-bell{background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:6px;padding:5px 10px;font-size:15px;cursor:pointer;font-family:inherit;transition:all .13s;display:flex;align-items:center;gap:5px;line-height:1}
+.notif-bell:hover{border-color:var(--gold-dim);color:var(--gold2)}
+.notif-count{position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 5px;min-width:16px;text-align:center;display:none}
+.notif-dropdown{position:absolute;right:0;top:calc(100% + 8px);width:380px;max-width:96vw;background:var(--surface);border:1px solid var(--border2);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:999;display:none;overflow:hidden}
+.notif-dropdown.open{display:block}
+.notif-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.notif-header-title{font-size:12px;font-weight:700;color:var(--gold2)}
+.notif-list{max-height:400px;overflow-y:auto}
+.notif-item{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .13s}
+.notif-item:hover{background:var(--surface2)}
+.notif-item:last-child{border-bottom:none}
+.notif-item.unread{background:rgba(201,168,76,0.04)}
+.notif-icon{font-size:16px;flex-shrink:0;margin-top:1px}
+.notif-body{flex:1;min-width:0}
+.notif-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notif-desc{font-size:11px;color:var(--muted2);line-height:1.4}
+.notif-time{font-size:10px;color:var(--muted);margin-top:3px}
+.notif-empty{text-align:center;padding:28px;font-size:12.5px;color:var(--muted2)}
+
 /* ── BUSCA BASE GERAL (vendedor) ── */
 .srch-base-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #191919;transition:background .12s}
 .srch-base-row:hover{background:rgba(255,255,255,.018)}
@@ -351,6 +373,21 @@ tr:hover td{background:rgba(255,255,255,.015)}
   <div class="topbar">
     <div class="topbar-title" id="topbar-title">Dashboard</div>
     <div class="topbar-right">
+      <!-- Notificações (admin only) -->
+      <div class="notif-bell-wrap" id="notif-bell-wrap" style="display:none">
+        <button class="notif-bell" onclick="toggleNotifDropdown()" title="Notificações">
+          🔔 <span id="notif-count" class="notif-count">0</span>
+        </button>
+        <div class="notif-dropdown" id="notif-dropdown">
+          <div class="notif-header">
+            <span class="notif-header-title">🔔 Alertas de Leads</span>
+            <button class="btn-sm" style="font-size:10px;padding:3px 8px" onclick="marcarTodasLidas()">Marcar como lidas</button>
+          </div>
+          <div class="notif-list" id="notif-list">
+            <div class="notif-empty">Sem alertas</div>
+          </div>
+        </div>
+      </div>
       <div class="user-chip">
         <div class="user-av" id="u-av">?</div>
         <span id="u-name"
@@ -1532,6 +1569,12 @@ async function initApp(user){
     if(!document.getElementById('page-dashboard')?.classList.contains('on')){
       populateSelects();
       renderNav();
+      if(isVendedor()) carregarMinhasSolicitacoes();
+      if(isAdmin()){
+        pollSolicitacoesAdmin(); setInterval(pollSolicitacoesAdmin,60000);
+        setTimeout(verificarLeadsBloqueados,2000);
+        setInterval(verificarLeadsBloqueados,120000);
+      }
       goToDashboard();
       renderDashboard().catch(()=>{});
       setupRealtime();
@@ -2320,7 +2363,7 @@ function renderLeads(resetPage){
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
         <td><div style="display:flex;gap:5px">
           <button class="act" onclick="editLead('${l.id}')">✏️</button>
-          ${isAdmin()?`<button class="act red" onclick="delLead('${l.id}')">🗑️</button>`:''}
+          ${(isAdmin()||isSupervisor())?`<button class="act red" onclick="delLead('${l.id}')">🗑️</button>`:''}
         </div></td>
       </tr>`;
     }).join('');
@@ -2744,7 +2787,7 @@ async function openDetail(id,from){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
         ${canEditData?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
-        ${isAdmin()?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >🗑️ Apagar</button>`:''}
+        ${(isAdmin()||isSupervisor())?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >🗑️ Apagar</button>`:''}
         ${(isAdminOrCoord()||isSupervisor())&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">🏅 Enviar p/ Equipe</button>`:''}
         ${(isAdminOrCoord()||isSupervisor())&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">↩️ Recolher</button>`:''}
       </div>
@@ -3511,6 +3554,7 @@ function editLead(id){
 }
 
 async function delLead(id){
+  if(!isAdmin()&&!isSupervisor()){toast('Sem permissão para apagar leads','err');return;}
   if(!confirm('Remover lead e todo o histórico?'))return;
   await sb.from('crm_historico').delete().eq('lead_id',id);
   await sb.from('crm_tarefas').delete().eq('lead_id',id);
@@ -4606,37 +4650,85 @@ async function runAutoReturnRules(){
   reRenderCurrent();
 }
 
+
+/* ═══ PALAVRAS QUE BLOQUEIAM RECICLAGEM ═══
+   Leads com status Perdido cujo histórico/observações contenham
+   alguma dessas expressões NÃO devem ser reciclados.
+   Comparação case-insensitive, aceita variações de escrita. */
+const PALAVRAS_BLOQUEIO_RECICL = [
+  'cliente fiat',
+  'cliente santander',
+  'fechado gr',
+  'embracon',
+];
+
+function temPalavraBloqueiaNaObs(lead){
+  // Verifica nome do lead, interesse, e todo o histórico
+  const fontes = [
+    (lead.nome||''),
+    (lead.interesse||''),
+    (lead.observacoes||''),
+    (lead.origem||''),
+  ];
+  // Adiciona textos do histórico deste lead
+  const hist = allHist.filter(h => h.lead_id === lead.id);
+  hist.forEach(h => fontes.push(h.descricao||''));
+  const texto = fontes.join(' ').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,''); // remove acentos p/ comparação
+
+  return PALAVRAS_BLOQUEIO_RECICL.some(p => {
+    const pNorm = p.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    // match simples: inclui a palavra/frase em qualquer posição
+    return texto.includes(pNorm);
+  });
+}
+
+function getLabelBloqueioPorLead(lead){
+  const fontes = [
+    (lead.nome||''),(lead.interesse||''),(lead.observacoes||''),(lead.origem||''),
+  ];
+  const hist = allHist.filter(h => h.lead_id === lead.id);
+  hist.forEach(h => fontes.push(h.descricao||''));
+  const texto = fontes.join(' ').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  for(const p of PALAVRAS_BLOQUEIO_RECICL){
+    const pNorm = p.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(texto.includes(pNorm)) return p;
+  }
+  return null;
+}
+
 /* ═══ AVALIAR PERDIDOS SEM COMENTÁRIO ═══ */
 async function openAvaliarPerdidos(){
   // Calcula preview: quantos perdidos sem comentário real
   const perdidos = allLeads.filter(l => l.status === 'Perdido');
   let semComentario = 0;
+  let bloqueados = 0;
   for(const l of perdidos){
     const hist = allHist.filter(h => h.lead_id === l.id);
-    // Comentário real = qualquer entrada que NÃO seja mudança de status automática
     const temComentarioReal = hist.some(h => {
       const desc = (h.descricao || '').trim();
-      // Ignora: "Status → X", "Retornado automaticamente: X"
       if(desc.startsWith('Status →')) return false;
       if(desc.startsWith('Retornado automaticamente')) return false;
       if(desc.startsWith('Venda revertida')) return false;
-      // Qualquer outro texto com ao menos 3 chars é comentário real
       return desc.length >= 3;
     });
-    if(!temComentarioReal) semComentario++;
+    if(!temComentarioReal){
+      if(temPalavraBloqueiaNaObs(l)) bloqueados++;
+      else semComentario++;
+    }
   }
   const prev = document.getElementById('avaliar-perdidos-preview');
   const prevTxt = document.getElementById('avaliar-perdidos-preview-txt');
-  if(semComentario > 0){
-    prevTxt.textContent = `${semComentario} lead(s) perdido(s) sem comentário serão reciclados para a base como Novo.`;
-    prev.style.display = '';
-  } else {
-    prevTxt.textContent = `Nenhum lead perdido sem comentário encontrado.`;
-    prev.style.background = 'rgba(74,222,128,0.08)';
-    prev.style.borderColor = 'rgba(74,222,128,0.25)';
-    prevTxt.style.color = 'var(--green)';
-    prev.style.display = '';
-  }
+  let previewMsg = '';
+  if(semComentario > 0) previewMsg += `${semComentario} lead(s) serão reciclados para a base como Novo. `;
+  if(bloqueados > 0) previewMsg += `${bloqueados} lead(s) BLOQUEADO(S) de reciclagem (Cliente Fiat / Santander / Fechado GR / Embracon) — ficam como Perdido.`;
+  if(!previewMsg) previewMsg = 'Nenhum lead perdido sem comentário encontrado.';
+  prevTxt.innerHTML = previewMsg.replace('BLOQUEADO(S)', '<strong style="color:var(--orange)">BLOQUEADO(S)</strong>');
+  prev.style.background = semComentario>0?'rgba(229,85,85,0.08)':'rgba(74,222,128,0.08)';
+  prev.style.borderColor = semComentario>0?'rgba(229,85,85,0.25)':'rgba(74,222,128,0.25)';
+  prevTxt.style.color = semComentario>0?'var(--red)':'var(--green)';
+  prev.style.display = '';
   document.getElementById('avaliar-perdidos-btn-confirmar').disabled = semComentario === 0;
   document.getElementById('modal-avaliar-perdidos').classList.add('on');
 }
@@ -4658,7 +4750,21 @@ async function confirmarAvaliarPerdidos(){
         if(desc.startsWith('Venda revertida')) return false;
         return desc.length >= 3;
       });
-      if(!temComentarioReal) paraReciclar.push(l);
+      if(!temComentarioReal){
+        if(temPalavraBloqueiaNaObs(l)){
+          // NÃO recicla — registra histórico de bloqueio
+          try{
+            const motivo = getLabelBloqueioPorLead(l);
+            await sb.from('crm_historico').insert({
+              lead_id: l.id, user_id: CU.id, tipo: '🔒 Interno (Adm)',
+              descricao: `[BLOQUEADO DE RECICLAGEM] Palavra-chave detectada: "${motivo}" — lead mantido como Perdido`,
+              created_at: new Date().toISOString()
+            });
+          }catch(e){ console.warn('Hist bloqueio error:',e); }
+        } else {
+          paraReciclar.push(l);
+        }
+      }
     }
     if(!paraReciclar.length){
       toast('Nenhum lead para reciclar.','ok');
@@ -5693,7 +5799,7 @@ function openLeadsMass(){
   document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='table-cell');
   // Show delete button only for admin
   const delWrap=document.getElementById('mass-delete-btn-wrap');
-  if(delWrap) delWrap.innerHTML=isAdmin()
+  if(delWrap) delWrap.innerHTML=(isAdmin()||isSupervisor())
     ?'<div style="width:1px;height:20px;background:var(--border);display:inline-block;margin:0 2px;vertical-align:middle"></div><button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">🗑️ Apagar</button>'
     :'';
   // Origem (vendedor de origem para filtrar) — inclui "Sem vendedor"
@@ -7535,6 +7641,115 @@ async function pollSolicitacoesAdmin(){
       badge.style.display=pendentes>0?'inline':'none';
     }
   }catch(e){}
+}
+
+
+/* ══════════════════════════════════════════════════════
+   SISTEMA DE NOTIFICAÇÕES ADMIN
+   Detecta leads Perdidos com palavras bloqueadas e alerta
+   ══════════════════════════════════════════════════════ */
+let _notifItems = [];   // {id, leadId, leadNome, label, lida, ts}
+const _NOTIF_KEY = 'crm_notif_lidas_v1';
+
+function _getNotifLidas(){
+  try{ return JSON.parse(localStorage.getItem(_NOTIF_KEY)||'[]'); }catch(e){ return []; }
+}
+function _setNotifLidas(ids){
+  try{ localStorage.setItem(_NOTIF_KEY, JSON.stringify(ids)); }catch(e){}
+}
+
+function verificarLeadsBloqueados(){
+  if(!isAdmin()) return;
+  const lidas = _getNotifLidas();
+  const perdidos = allLeads.filter(l => l.status === 'Perdido');
+  _notifItems = [];
+  for(const l of perdidos){
+    const label = getLabelBloqueioPorLead(l);
+    if(!label) continue;
+    const nid = 'bloq_' + l.id;
+    _notifItems.push({
+      id: nid,
+      leadId: l.id,
+      leadNome: l.nome,
+      label,
+      lida: lidas.includes(nid),
+      ts: l.updated_at || l.created_at,
+    });
+  }
+  // Sort: não lidas primeiro, depois por data desc
+  _notifItems.sort((a,b)=>{
+    if(a.lida !== b.lida) return a.lida ? 1 : -1;
+    return new Date(b.ts) - new Date(a.ts);
+  });
+  _renderNotifBell();
+  _renderNotifList();
+}
+
+function _renderNotifBell(){
+  const wrap = document.getElementById('notif-bell-wrap');
+  const cnt  = document.getElementById('notif-count');
+  if(!wrap||!cnt) return;
+  wrap.style.display = isAdmin() ? 'inline-flex' : 'none';
+  const naoLidas = _notifItems.filter(n=>!n.lida).length;
+  cnt.textContent = naoLidas;
+  cnt.style.display = naoLidas > 0 ? '' : 'none';
+}
+
+function _renderNotifList(){
+  const list = document.getElementById('notif-list');
+  if(!list) return;
+  if(!_notifItems.length){
+    list.innerHTML = '<div class="notif-empty">✅ Nenhum lead com alerta de palavra-chave</div>';
+    return;
+  }
+  list.innerHTML = _notifItems.map(n=>`
+    <div class="notif-item${n.lida?'':' unread'}" onclick="irParaLeadNotif('${n.leadId}','${n.id}')">
+      <div class="notif-icon">⚠️</div>
+      <div class="notif-body">
+        <div class="notif-title">${n.leadNome}</div>
+        <div class="notif-desc">Palavra detectada: <strong style="color:var(--orange)">"${n.label}"</strong> — Lead Perdido bloqueado de reciclagem</div>
+        <div class="notif-time">${fmtDt(n.ts)}</div>
+      </div>
+      ${n.lida?'<span style="font-size:10px;color:var(--muted)">lida</span>':'<span style="width:7px;height:7px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-top:5px;display:block"></span>'}
+    </div>`).join('');
+}
+
+function toggleNotifDropdown(){
+  const dd = document.getElementById('notif-dropdown');
+  if(!dd) return;
+  dd.classList.toggle('open');
+  // Close on outside click
+  if(dd.classList.contains('open')){
+    setTimeout(()=>{
+      document.addEventListener('click', _closeNotifOutside, {once:true});
+    },10);
+  }
+}
+function _closeNotifOutside(e){
+  const dd=document.getElementById('notif-dropdown');
+  const wrap=document.getElementById('notif-bell-wrap');
+  if(dd&&wrap&&!wrap.contains(e.target)) dd.classList.remove('open');
+}
+
+function marcarTodasLidas(){
+  const ids = _notifItems.map(n=>n.id);
+  _setNotifLidas(ids);
+  _notifItems.forEach(n=>n.lida=true);
+  _renderNotifBell();
+  _renderNotifList();
+}
+
+function irParaLeadNotif(leadId, notifId){
+  // Marca como lida
+  const lidas = _getNotifLidas();
+  if(!lidas.includes(notifId)){ lidas.push(notifId); _setNotifLidas(lidas); }
+  const n = _notifItems.find(x=>x.id===notifId);
+  if(n) n.lida = true;
+  _renderNotifBell();
+  // Fecha dropdown
+  document.getElementById('notif-dropdown')?.classList.remove('open');
+  // Navega para o lead
+  openLeadDetail(leadId);
 }
 
 
