@@ -309,6 +309,20 @@ tr:hover td{background:rgba(255,255,255,.015)}
 </head>
 <body>
 
+<!-- LOADING SCREEN -->
+<div id="loading-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:998;align-items:center;justify-content:center;flex-direction:column;gap:18px">
+  <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0a0a0a;font-size:20px;font-weight:900;display:flex;align-items:center;justify-content:center">GR</div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+    <div id="loading-msg" style="font-size:13px;color:var(--muted2)">Carregando...</div>
+    <div style="width:180px;height:3px;background:var(--border);border-radius:3px;overflow:hidden">
+      <div id="loading-bar" style="height:100%;width:0%;background:var(--gold);border-radius:3px;transition:width .4s ease"></div>
+    </div>
+  </div>
+  <button onclick="limparCacheERecarregar()" style="margin-top:10px;background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:7px;padding:7px 16px;font-size:11px;cursor:pointer;font-family:inherit" id="loading-reload-btn" style="display:none">
+    ↺ Demorou muito? Clique aqui
+  </button>
+</div>
+
 <!-- AUTH -->
 <div id="setup-warning" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9998;align-items:center;justify-content:center">
   <div style="background:#1a0a0a;border:2px solid var(--red);border-radius:14px;padding:32px 36px;max-width:480px;text-align:center">
@@ -1489,16 +1503,44 @@ async function doLogout(){
   window.location.href=window.location.pathname+'?logout='+Date.now();
 }
 
+/* ═══ LOADING SCREEN ═══ */
+function showLoading(msg,pct){
+  const s=document.getElementById('loading-screen');
+  if(s) s.style.display='flex';
+  const m=document.getElementById('loading-msg');
+  if(m) m.textContent=msg||'Carregando...';
+  const b=document.getElementById('loading-bar');
+  if(b&&pct!=null) b.style.width=pct+'%';
+  // Mostra botão de recarga após 12s
+  setTimeout(()=>{
+    const btn=document.getElementById('loading-reload-btn');
+    if(btn&&document.getElementById('loading-screen')?.style.display==='flex') btn.style.display='block';
+  },12000);
+}
+function hideLoading(){
+  const s=document.getElementById('loading-screen');
+  if(s) s.style.display='none';
+  const b=document.getElementById('loading-bar');
+  if(b) b.style.width='0%';
+}
+window.limparCacheERecarregar=function(){
+  try{
+    Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
+    Object.keys(localStorage).forEach(k=>{ if(k.startsWith('crm_')||k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k); });
+  }catch(e){}
+  location.reload();
+};
+
 /* ═══ INIT ═══ */
 /* ═══ INICIALIZAÇÃO DO APP ═══ */
 async function initApp(user){
   if(CU&&CU.id===user.id&&CUProfile) return;
   if(_initAppInProgress){
-    // Se já está em progresso há mais de 20s, reseta o guard (travou)
+    // Se já está em progresso há mais de 15s, reseta o guard (travou)
     const now=Date.now();
     if(!window._initAppStartedAt) window._initAppStartedAt=now;
-    if(now-window._initAppStartedAt<20000) return;
-    console.warn('[initApp] guard travado há +20s, resetando...');
+    if(now-window._initAppStartedAt<15000) return;
+    console.warn('[initApp] guard travado há +15s, resetando...');
     _initAppInProgress=false;
   }
   _initAppInProgress=true;
@@ -1510,6 +1552,7 @@ async function initApp(user){
     document.getElementById('u-av').textContent =
       (_displayName || '?').charAt(0).toUpperCase();
     document.getElementById('auth-screen').style.display='none';
+    showLoading('Verificando sessão...', 10);
 
     // ── CACHE FIRST: mostra dados salvos instantaneamente
     // Tenta sessionStorage (mesma aba) primeiro, depois localStorage (cross-tab)
@@ -1529,6 +1572,7 @@ async function initApp(user){
             window._allEquipes=allEquipes;
             window._allMembroEquipes=allMembroEquipes;
             // Mostra UI parcialmente enquanto carrega leads
+            showLoading('Carregando dados...', 30);
             populateSelects();
             renderNav();
             goToDashboard();
@@ -1555,9 +1599,11 @@ async function initApp(user){
           allMembroEquipes=cached.membros||[];
           window._allEquipes=allEquipes;
           window._allMembroEquipes=allMembroEquipes;
+          showLoading('Atualizando dados...', 60);
           populateSelects();
           renderNav();
           goToDashboard();
+          hideLoading();
           renderDashboard().catch(()=>{});
           setupRealtime();
           setTimeout(checkTaskAlerts,2000);
@@ -1578,9 +1624,11 @@ async function initApp(user){
           allMembroEquipes=cached.membros||[];
           window._allEquipes=allEquipes;
           window._allMembroEquipes=allMembroEquipes;
+          showLoading('Carregando CRM...', 80);
           populateSelects();
           renderNav();
           goToDashboard();
+          hideLoading();
           renderDashboard().catch(()=>{});
           setupRealtime();
           setTimeout(checkTaskAlerts,2000);
@@ -1594,9 +1642,12 @@ async function initApp(user){
 
     // ── PRIMEIRA VEZ: carrega normalmente
     const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
+    showLoading('Verificando perfil...', 20);
     await ensureProfile();
+    showLoading('Carregando leads e dados...', 50);
     await loadAll();
     clearTimeout(t);
+    showLoading('Finalizando...', 90);
     saveCache();
     if(!document.getElementById('page-dashboard')?.classList.contains('on')){
       populateSelects();
@@ -1608,6 +1659,7 @@ async function initApp(user){
         setInterval(verificarLeadsBloqueados,120000);
       }
       goToDashboard();
+      hideLoading();
       renderDashboard().catch(()=>{});
       setupRealtime();
       setTimeout(checkTaskAlerts,2000);
@@ -1615,6 +1667,7 @@ async function initApp(user){
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
     }
   } catch(e){
+    hideLoading();
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
       document.getElementById('setup-warning').style.display='flex';
@@ -1662,15 +1715,19 @@ async function initApp(user){
   async function watchdogCheck(){
     try{
       const authOk=document.getElementById('auth-screen')?.style.display==='none'||!document.getElementById('auth-screen');
-      const appOk=CU&&CUProfile;
+      // appOk: CU e CUProfile existem E nav foi renderizada (há itens no nav-body)
+      const navRendered=document.getElementById('nav-body')?.children?.length>0;
+      const appOk=CU&&CUProfile&&navRendered;
       if(authOk&&!appOk){
         console.warn('[watchdog] Tela preta detectada — tentando recuperar...');
+        hideLoading();
         _initAppInProgress=false;
         window._initAppStartedAt=null;
         const{data:{session}}=await sb.auth.getSession();
         if(session?.user) await initApp(session.user);
         else {
           // Sem sessão válida — mostra tela de login
+          hideLoading();
           document.getElementById('auth-screen').style.display='flex';
         }
       }
@@ -1727,7 +1784,7 @@ async function ensureProfile(){
       }
     } catch(e){ sessionStorage.removeItem(cacheKey); }
   }
-  // No cache — fetch from DB with 12s timeout
+  // No cache — fetch from DB with 8s timeout (reduzido de 12s)
   const withTimeout=(promise,ms)=>Promise.race([
     promise,
     new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_profile')),ms))
@@ -1735,40 +1792,59 @@ async function ensureProfile(){
   let data,error;
   try{
     const r=await withTimeout(
-      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),12000
+      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),8000
     );
     data=r.data; error=r.error;
   } catch(e){
     if(e.message==='timeout_profile'){
       console.warn('ensureProfile timeout — usando fallback');
-      // Check sessionStorage cache first
       const cacheKey='crm_profile_'+CU.id;
+      // 1) Tenta cache do sessionStorage
       const cached=sessionStorage.getItem(cacheKey);
       if(cached){
-        try{ CUProfile=JSON.parse(cached); console.log('Profile from cache:',CUProfile.role); return; }
-        catch(ce){ sessionStorage.removeItem(cacheKey); }
+        try{
+          CUProfile=JSON.parse(cached);
+          console.log('[profileFallback] Cache encontrado, role:',CUProfile.role);
+          const initials=(CUProfile.name||name).split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+          document.getElementById('sb-name').textContent=CUProfile.name||name;
+          const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor'};
+          document.getElementById('sb-role').textContent=roleLabels[CUProfile.role]||CUProfile.role||'Vendedor';
+          document.getElementById('u-name').textContent=CUProfile.name||name;
+          document.getElementById('u-av').textContent=initials;
+          return;
+        } catch(ce){ sessionStorage.removeItem(cacheKey); }
       }
-      // Use temporary profile and retry in background
+      // 2) Sem cache: usa perfil temporario MAS salva no sessionStorage imediatamente
       CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
-      // Retry after 3s — when it succeeds, re-initialize with correct role
+      try{ sessionStorage.setItem(cacheKey,JSON.stringify(CUProfile)); }catch(se){}
+      document.getElementById('sb-name').textContent=name;
+      document.getElementById('sb-role').textContent='Vendedor';
+      document.getElementById('u-name').textContent=name;
+      document.getElementById('u-av').textContent=(name||'?').charAt(0).toUpperCase();
+      // 3) Retry em background — quando chegar, atualiza role sem reload completo
       setTimeout(async()=>{
         try{
           const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
-          if(data&&data.role!==CUProfile.role){
-            console.log('Profile retry OK, role:',data.role);
+          if(data){
+            const roleAnterior=CUProfile.role;
             CUProfile=data;
-            sessionStorage.setItem(cacheKey,JSON.stringify(data));
-            // Re-init with correct role
-            await loadAll();
-            saveCache();
-            renderNav();
-            renderDashboard();
-            toast('Perfil carregado: '+data.role,'ok');
-          } else if(data){
-            CUProfile=data;
-            sessionStorage.setItem(cacheKey,JSON.stringify(data));
+            try{ sessionStorage.setItem(cacheKey,JSON.stringify(data)); }catch(se){}
+            const initials2=(data.name||name).split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+            document.getElementById('sb-name').textContent=data.name||name;
+            const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor'};
+            document.getElementById('sb-role').textContent=roleLabels[data.role]||data.role;
+            document.getElementById('u-name').textContent=data.name||name;
+            document.getElementById('u-av').textContent=initials2;
+            if(data.role!==roleAnterior){
+              console.log('[profileRetry] Role mudou de',roleAnterior,'para',data.role,'recarregando...');
+              await loadAll();
+              saveCache();
+              renderNav();
+              renderDashboard().catch(()=>{});
+              toast('Perfil atualizado: '+roleLabels[data.role],'ok');
+            }
           }
-        } catch(re){ console.warn('Profile retry failed:',re.message); }
+        } catch(re){ console.warn('[profileRetry] Falhou:',re.message); }
       },3000);
       return;
     }
