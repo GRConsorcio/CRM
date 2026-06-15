@@ -318,12 +318,15 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div id="loading-bar" style="height:100%;width:0%;background:var(--gold);border-radius:3px;transition:width .4s ease"></div>
     </div>
   </div>
-  <div id="loading-reload-btn" style="display:none;margin-top:10px;display:none;flex-direction:column;align-items:center;gap:8px">
+  <div id="loading-reload-btn" style="display:none;margin-top:10px;flex-direction:column;align-items:center;gap:8px">
     <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:4px">
       Servidor lento ou sem conexão.<br>Se tiver o CRM aberto em outra aba, feche-a primeiro.
     </div>
+    <button onclick="location.reload()" style="background:transparent;border:1px solid var(--border2);color:var(--muted2);border-radius:7px;padding:7px 18px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:2px">
+      ↺ Tentar novamente
+    </button>
     <button onclick="limparCacheERecarregar()" style="background:var(--gold);border:none;color:#0a0a0a;border-radius:7px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
-      ↺ Limpar cache e recarregar
+      🗑 Limpar cache e recarregar
     </button>
   </div>
 </div>
@@ -1516,11 +1519,11 @@ function showLoading(msg,pct){
   if(m) m.textContent=msg||'Carregando...';
   const b=document.getElementById('loading-bar');
   if(b&&pct!=null) b.style.width=pct+'%';
-  // Mostra botão de recarga após 12s
+  // Mostra botão de recarga após 10s
   setTimeout(()=>{
     const btn=document.getElementById('loading-reload-btn');
     if(btn&&document.getElementById('loading-screen')?.style.display==='flex') btn.style.display='flex';
-  },12000);
+  },10000);
 }
 function hideLoading(){
   const s=document.getElementById('loading-screen');
@@ -1790,7 +1793,9 @@ async function initApp(user){
       }
     }catch(e){ console.warn('[watchdog] erro:',e.message); }
   }
-  setTimeout(watchdogCheck,10000);
+  // Aguarda 22s antes do 1º check — tempo suficiente para o ensureProfile
+  // com timeout (8s) + retry automático (2s espera + 6s) = ~16s total
+  setTimeout(watchdogCheck,22000);
   setInterval(watchdogCheck,30000);
   // Também roda ao tab voltar para foco (ex: alt+tab depois de dormir)
   document.addEventListener('visibilitychange',()=>{
@@ -1841,16 +1846,24 @@ async function ensureProfile(){
       }
     } catch(e){ sessionStorage.removeItem(cacheKey); }
   }
-  // No cache — fetch from DB with 8s timeout (reduzido de 12s)
+  // No cache — fetch from DB com timeout + 1 retry automático (evita tela preta)
   const withTimeout=(promise,ms)=>Promise.race([
     promise,
     new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_profile')),ms))
   ]);
   let data,error;
   try{
-    const r=await withTimeout(
-      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),8000
-    );
+    // Tenta 1ª vez (8s); se timeout, aguarda 2s e tenta mais 1x (6s) antes do fallback
+    let r;
+    try{
+      r=await withTimeout(sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),8000);
+    } catch(firstErr){
+      if(firstErr.message==='timeout_profile'){
+        console.warn('[ensureProfile] 1ª tentativa timeout — retentando em 2s...');
+        await new Promise(res=>setTimeout(res,2000));
+        r=await withTimeout(sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),6000);
+      } else { throw firstErr; }
+    }
     data=r.data; error=r.error;
   } catch(e){
     if(e.message==='timeout_profile'){
@@ -1884,7 +1897,7 @@ async function ensureProfile(){
           const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
           if(data){
             const roleAnterior=CUProfile.role;
-            CUProfile=data;
+            CUProfile=data; // perfil real chegou — remove flag _fallback automaticamente
             try{ sessionStorage.setItem(cacheKey,JSON.stringify(data)); }catch(se){}
             const initials2=(data.name||name).split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
             document.getElementById('sb-name').textContent=data.name||name;
@@ -1892,7 +1905,10 @@ async function ensureProfile(){
             document.getElementById('sb-role').textContent=roleLabels[data.role]||data.role;
             document.getElementById('u-name').textContent=data.name||name;
             document.getElementById('u-av').textContent=initials2;
-            if(data.role!==roleAnterior||roleAnterior==='vendedor'&&data.role!=='vendedor'){
+            // Sempre salva cache cross-tab assim que o perfil real chega
+            // Isso evita a tela preta na próxima abertura do app
+            try{ saveCache(); }catch(sc){}
+            if(data.role!==roleAnterior&&roleAnterior!==data.role){
               console.log('[profileRetry] Role mudou de',roleAnterior,'para',data.role,'recarregando...');
               // Limpa caches antigos com role errado
               try{
