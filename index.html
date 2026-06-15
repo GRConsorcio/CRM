@@ -1519,11 +1519,11 @@ function showLoading(msg,pct){
   if(m) m.textContent=msg||'Carregando...';
   const b=document.getElementById('loading-bar');
   if(b&&pct!=null) b.style.width=pct+'%';
-  // Mostra botão de recarga após 10s
+  // Mostra botão de recarga após 8s
   setTimeout(()=>{
     const btn=document.getElementById('loading-reload-btn');
     if(btn&&document.getElementById('loading-screen')?.style.display==='flex') btn.style.display='flex';
-  },10000);
+  },8000);
 }
 function hideLoading(){
   const s=document.getElementById('loading-screen');
@@ -1533,144 +1533,150 @@ function hideLoading(){
 }
 window.limparCacheERecarregar=function(){
   try{
-    Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
-    Object.keys(localStorage).forEach(k=>{ if(k.startsWith('crm_')||k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k); });
+    // Limpa TODO cache CRM — session e local
+    [...Object.keys(sessionStorage)].forEach(k=>{ if(k.startsWith('crm_')||k.startsWith('sb-')) sessionStorage.removeItem(k); });
+    [...Object.keys(localStorage)].forEach(k=>{ if(k.startsWith('crm_')||k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k); });
   }catch(e){}
+  _initAppInProgress=false;
+  window._initAppStartedAt=null;
+  CU=null; CUProfile=null;
   location.reload();
 };
 
+// ── Auto-limpeza silenciosa de caches com versão antiga ──
+// Roda uma vez na inicialização — sem reload, sem interrupção
+(function _autoInvalidateOldCache(){
+  try{
+    [...Object.keys(sessionStorage)].forEach(k=>{
+      if(!k.startsWith('crm_data_')&&!k.startsWith('crm_profile_')) return;
+      try{
+        const v=JSON.parse(sessionStorage.getItem(k));
+        if(v&&v._v!==CACHE_VERSION){ sessionStorage.removeItem(k); console.log('[cache] invalidado sessionStorage:',k); }
+      }catch(e){ sessionStorage.removeItem(k); }
+    });
+    [...Object.keys(localStorage)].forEach(k=>{
+      if(!k.startsWith('crm_xtab_')) return;
+      try{
+        const v=JSON.parse(localStorage.getItem(k));
+        if(v&&v._v!==CACHE_VERSION){ localStorage.removeItem(k); console.log('[cache] invalidado localStorage:',k); }
+      }catch(e){ localStorage.removeItem(k); }
+    });
+  }catch(e){}
+})();
+
 /* ═══ INIT ═══ */
+
+// ── Versão do cache: incrementar aqui invalida todos os caches antigos automaticamente ──
+const CACHE_VERSION = 4;
+
+// ── Leitura segura de cache com validação de versão e integridade ──
+function _readCache(userId){
+  // 1) sessionStorage (mesma aba) — mais fresco
+  try{
+    const raw=sessionStorage.getItem('crm_data_'+userId);
+    if(raw){
+      const c=JSON.parse(raw);
+      // Invalida se versão diferente, corrompido, ou sem profile/role
+      if(c._v!==CACHE_VERSION||!c.profile?.role||!c.profile?.user_id) throw new Error('versão/integridade inválida');
+      // Invalida se expirou (30 min para sessão)
+      if(Date.now()-c.ts>1800000) throw new Error('expirado');
+      console.log('[cache] sessionStorage OK, role='+c.profile.role);
+      return {src:'session',data:c};
+    }
+  }catch(e){
+    console.warn('[cache] sessionStorage descartado:',e.message);
+    try{sessionStorage.removeItem('crm_data_'+userId);}catch(_){}
+  }
+  // 2) localStorage (cross-tab) — profile+users sem leads
+  try{
+    const raw=localStorage.getItem('crm_xtab_'+userId);
+    if(raw){
+      const c=JSON.parse(raw);
+      if(c._v!==CACHE_VERSION||!c.profile?.role||c.profile?._fallback) throw new Error('versão/fallback');
+      if(Date.now()-c.ts>7200000) throw new Error('expirado');
+      console.log('[cache] localStorage xtab OK, role='+c.profile.role);
+      return {src:'xtab',data:c};
+    }
+  }catch(e){
+    console.warn('[cache] localStorage descartado:',e.message);
+    try{localStorage.removeItem('crm_xtab_'+userId);}catch(_){}
+  }
+  return null;
+}
+
+// ── Aplica dados do cache nas variáveis globais ──
+function _applyCache(data){
+  CUProfile=data.profile;
+  allLeads=data.leads||[];
+  allUsers=data.users||[];
+  allHist=data.hist||[];
+  allTasks=data.tasks||[];
+  allVendas=data.vendas||[];
+  allDocs=data.docs||[];
+  allEquipes=data.equipes||[];
+  allMembroEquipes=data.membros||[];
+  window._allEquipes=allEquipes;
+  window._allMembroEquipes=allMembroEquipes;
+}
+
+// ── Abre o app na UI (nav + dashboard) ──
+function _openUI(msg,pct){
+  showLoading(msg||'Abrindo CRM...',pct||80);
+  populateSelects();
+  renderNav();
+  goToDashboard();
+  hideLoading();
+  renderDashboard().catch(()=>{});
+  setupRealtime();
+  if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+  _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+  setTimeout(checkTaskAlerts,2000);
+}
+
 /* ═══ INICIALIZAÇÃO DO APP ═══ */
 async function initApp(user){
-  if(CU&&CU.id===user.id&&CUProfile) return;
+  // Só pula se nav realmente estiver visível na tela
+  const navOk=document.getElementById('nav-body')?.children?.length>0;
+  const authOff=document.getElementById('auth-screen')?.style.display==='none';
+  if(CU&&CU.id===user.id&&CUProfile&&navOk&&authOff) return;
+
+  // Guard anti-duplo com auto-reset em 15s
   if(_initAppInProgress){
-    // Se já está em progresso há mais de 15s, reseta o guard (travou)
     const now=Date.now();
     if(!window._initAppStartedAt) window._initAppStartedAt=now;
     if(now-window._initAppStartedAt<15000) return;
-    console.warn('[initApp] guard travado há +15s, resetando...');
+    console.warn('[initApp] guard >15s, forçando reset');
     _initAppInProgress=false;
   }
   _initAppInProgress=true;
   window._initAppStartedAt=Date.now();
+
   try{
     CU=user;
-    const _displayName = CU.user_metadata?.full_name || CU.nome || CU.name || CU.email || '';
-    document.getElementById('u-name').textContent = _displayName;
-    document.getElementById('u-av').textContent =
-      (_displayName || '?').charAt(0).toUpperCase();
+    const _dn=CU.user_metadata?.full_name||CU.nome||CU.name||CU.email||'';
+    document.getElementById('u-name').textContent=_dn;
+    document.getElementById('u-av').textContent=(_dn||'?').charAt(0).toUpperCase();
     document.getElementById('auth-screen').style.display='none';
-    showLoading('Verificando sessão...', 10);
+    showLoading('Abrindo CRM...',15);
 
-    // ── CACHE FIRST: mostra dados salvos instantaneamente
-    // Tenta sessionStorage (mesma aba) primeiro, depois localStorage (cross-tab)
-    let cacheData=sessionStorage.getItem('crm_data_'+CU.id);
-    if(!cacheData){
-      // Segunda aba: tenta o cache cross-tab do localStorage
-      const xtab=localStorage.getItem('crm_xtab_'+CU.id);
-      if(xtab){
-        try{
-          const x=JSON.parse(xtab);
-          // Ignora cache cross-tab se veio de fallback temporário
-          const isFallbackCache = x.profile?._fallback===true;
-          // Usa só se recente (< 2h) e não é fallback
-          if(x.ts&&(Date.now()-x.ts)<7200000&&!isFallbackCache){
-            CUProfile=x.profile;
-            allUsers=x.users||[];
-            allEquipes=x.equipes||[];
-            allMembroEquipes=x.membros||[];
-            window._allEquipes=allEquipes;
-            window._allMembroEquipes=allMembroEquipes;
-            console.log('[initApp] cross-tab cache: profile='+CUProfile?.role);
-            // Abre o app IMEDIATAMENTE com os dados do cache
-            // e carrega leads em background sem bloquear a UI
-            showLoading('Abrindo CRM...', 60);
-            populateSelects();
-            renderNav();
-            goToDashboard();
-            hideLoading();
-            renderDashboard().catch(()=>{});
-            setupRealtime();
-            setTimeout(checkTaskAlerts,2000);
-            if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-            _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-            // Carrega leads em background sem travar a tela
-            loadAll().then(()=>{
-              saveCache();
-              populateSelects();
-              renderDashboard().catch(()=>{});
-              if(isVendedor()) carregarMinhasSolicitacoes();
-              if(isAdmin()){
-                pollSolicitacoesAdmin();
-                setTimeout(verificarLeadsBloqueados,2000);
-              }
-            }).catch(e=>console.warn('[xtab] loadAll background erro:',e.message));
-            return;
-          }
-        }catch(e){ localStorage.removeItem('crm_xtab_'+CU.id); }
-      }
-    }
-    if(cacheData){
-      try{
-        const cached=JSON.parse(cacheData);
-        const isIncomplete = cached._incomplete ||
-          (cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin'&&cached.leads.length>0);
-        if(isIncomplete){
-          console.log('Cache incompleto — inicializando UI com dados parciais e recarregando leads...');
-          CUProfile=cached.profile;
-          allLeads=cached.leads||[];
-          allUsers=cached.users||[];
-          allHist=cached.hist||[];
-          allTasks=cached.tasks||[];
-          allVendas=cached.vendas||[];
-          allDocs=cached.docs||[];
-          allEquipes=cached.equipes||[];
-          allMembroEquipes=cached.membros||[];
-          window._allEquipes=allEquipes;
-          window._allMembroEquipes=allMembroEquipes;
-          showLoading('Atualizando dados...', 60);
-          populateSelects();
-          renderNav();
-          goToDashboard();
-          hideLoading();
-          renderDashboard().catch(()=>{});
-          setupRealtime();
-          setTimeout(checkTaskAlerts,2000);
-          if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-          _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-          sessionStorage.removeItem('crm_data_'+CU.id);
-          refreshInBackground();
-          return;
-        } else {
-          CUProfile=cached.profile;
-          allLeads=cached.leads||[];
-          allUsers=cached.users||[];
-          allHist=cached.hist||[];
-          allTasks=cached.tasks||[];
-          allVendas=cached.vendas||[];
-          allDocs=cached.docs||[];
-          allEquipes=cached.equipes||[];
-          allMembroEquipes=cached.membros||[];
-          window._allEquipes=allEquipes;
-          window._allMembroEquipes=allMembroEquipes;
-          showLoading('Carregando CRM...', 80);
-          populateSelects();
-          renderNav();
-          goToDashboard();
-          hideLoading();
-          renderDashboard().catch(()=>{});
-          setupRealtime();
-          setTimeout(checkTaskAlerts,2000);
-          if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-          _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-          refreshInBackground();
-          return;
-        }
-      } catch(e){ sessionStorage.removeItem('crm_data_'+CU.id); }
+    // ── CACHE FIRST: tenta abrir sem rede ──
+    const cached=_readCache(CU.id);
+    if(cached){
+      _applyCache(cached.data);
+      _openUI('Carregando...',75);
+      // Sempre atualiza em background após abrir com cache
+      loadAll().then(()=>{
+        saveCache();
+        populateSelects();
+        renderDashboard().catch(()=>{});
+        if(isVendedor()) carregarMinhasSolicitacoes();
+        if(isAdmin()){ pollSolicitacoesAdmin(); setTimeout(verificarLeadsBloqueados,2000); }
+      }).catch(e=>console.warn('[bg-refresh] erro:',e.message));
+      return;
     }
 
-    // ── PRIMEIRA VEZ: carrega normalmente
-    const tSlow=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),12000);
+    // ── SEM CACHE VÁLIDO: carrega do zero ──
+    const tSlow=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),10000);
     showLoading('Verificando perfil...', 20);
     await ensureProfile();
     showLoading('Carregando leads e dados...', 50);
@@ -1732,12 +1738,29 @@ async function initApp(user){
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
       document.getElementById('setup-warning').style.display='flex';
     } else {
-      toast('Erro: '+(e?.message||e),'err');
-      document.getElementById('auth-screen').style.display='flex';
-      document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
+      // Tenta reabrir sem mostrar login — se tiver CUProfile carregado, renderiza mesmo com erro
+      if(CUProfile&&CU){
+        try{
+          populateSelects();
+          renderNav();
+          goToDashboard();
+          hideLoading();
+          renderDashboard().catch(()=>{});
+          toast('⚠️ Erro parcial ao carregar: '+(e?.message||e),'err');
+        } catch(re){
+          // Se até o render falhou, aí sim mostra login
+          document.getElementById('auth-screen').style.display='flex';
+          document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
+        }
+      } else {
+        toast('Erro: '+(e?.message||e),'err');
+        document.getElementById('auth-screen').style.display='flex';
+        document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
+      }
     }
   } finally {
     _initAppInProgress=false;
+    window._initAppStartedAt=null;
   }
 }
 
@@ -1779,10 +1802,15 @@ async function initApp(user){
       const navRendered=document.getElementById('nav-body')?.children?.length>0;
       const appOk=CU&&CUProfile&&navRendered;
       if(authOk&&!appOk){
-        console.warn('[watchdog] Tela preta detectada — tentando recuperar...');
+        console.warn('[watchdog] Tela preta detectada — limpando cache e recuperando...');
         hideLoading();
         _initAppInProgress=false;
         window._initAppStartedAt=null;
+        // Limpa cache automaticamente sem precisar do usuário fazer nada
+        try{
+          [...Object.keys(sessionStorage)].forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
+          [...Object.keys(localStorage)].forEach(k=>{ if(k.startsWith('crm_xtab_')) localStorage.removeItem(k); });
+        }catch(_){}
         const{data:{session}}=await sb.auth.getSession();
         if(session?.user) await initApp(session.user);
         else {
@@ -1793,9 +1821,9 @@ async function initApp(user){
       }
     }catch(e){ console.warn('[watchdog] erro:',e.message); }
   }
-  // Aguarda 22s antes do 1º check — tempo suficiente para o ensureProfile
-  // com timeout (8s) + retry automático (2s espera + 6s) = ~16s total
-  setTimeout(watchdogCheck,22000);
+  // Aguarda 12s antes do 1º check (vendedor carrega rápido)
+  // Para admin/coord que podem demorar mais, o watchdog repete a cada 30s
+  setTimeout(watchdogCheck,12000);
   setInterval(watchdogCheck,30000);
   // Também roda ao tab voltar para foco (ex: alt+tab depois de dormir)
   document.addEventListener('visibilitychange',()=>{
@@ -2137,8 +2165,7 @@ async function loadAll(){
       const{data}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
       allLeads=data||[];
 
-      // Auto-refresh a cada 90s: garante que leads redistribuídos somem da lista
-      // sem precisar o vendedor recarregar a página manualmente
+      // Auto-refresh a cada 90s
       if(!window._vendedorLeadRefreshInterval){
         window._vendedorLeadRefreshInterval=setInterval(async()=>{
           try{
@@ -2149,13 +2176,33 @@ async function loadAll(){
               if(pg==='meus-leads') renderMeusLeads();
             }
           }catch(e){console.warn('Auto-refresh leads error:',e.message);}
-        },90000); // 90 segundos
+        },90000);
       }
+
+      // ── VENDEDOR: finaliza UI imediatamente após carregar leads ──
+      // Sem isso a tela fica preta se o initApp path de "primeira vez" não chegar aqui
+      populateSelects();
+      renderNav();
+      goToDashboard();
+      hideLoading();
+      renderDashboard().catch(()=>{});
+      setupRealtime();
+      setTimeout(checkTaskAlerts,2000);
+      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      carregarMinhasSolicitacoes();
+      saveCache();
+      return; // evita dupla chamada de renderNav/goToDashboard no initApp
     }
   } catch(e){
     console.error('Erro ao carregar leads:',e.message);
     toast('Erro ao carregar leads: '+e.message,'err');
     allLeads=[];
+    // Mesmo com erro, renderiza a UI para o vendedor não ficar em tela preta
+    populateSelects();
+    renderNav();
+    goToDashboard();
+    hideLoading();
   }
 
   loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
@@ -4706,6 +4753,7 @@ function saveCache(){
       proposta_quente:l.proposta_quente, observacoes:l.observacoes
     }));
     const data={
+      _v:CACHE_VERSION,
       profile:CUProfile,
       leads:slimLeads,
       users:allUsers,
@@ -4730,6 +4778,7 @@ function saveCache(){
       // Não salva xtab se o perfil é fallback temporário (role pode estar errado)
       if(!CUProfile?._fallback){
         localStorage.setItem('crm_xtab_'+CU.id, JSON.stringify({
+          _v:CACHE_VERSION,
           profile:CUProfile, users:allUsers,
           equipes:allEquipes, membros:allMembroEquipes,
           ts:Date.now()
