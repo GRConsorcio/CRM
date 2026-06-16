@@ -1686,14 +1686,53 @@ async function initApp(user){
     }
 
     // ── SEM CACHE VÁLIDO: carrega do zero ──
-    const tSlow=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),10000);
+    const tSlow=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),8000);
     showLoading('Verificando perfil...', 20);
     await ensureProfile();
+
+    // ── Se perfil veio via fallback (Supabase lento) → abre o app agora ──
+    // Não bloqueia esperando loadAll — roda em background com timeout de 15s
+    if(CUProfile?._fallback){
+      clearTimeout(tSlow);
+      showLoading('Abrindo CRM...', 70);
+      populateSelects();
+      renderNav();
+      goToDashboard();
+      hideLoading();
+      renderDashboard().catch(()=>{});
+      setupRealtime();
+      setTimeout(checkTaskAlerts,2000);
+      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      toast('⚠️ Conexão lenta — carregando dados em background...','err');
+      // loadAll em background com timeout de 15s para não pendurar
+      const bgTimeout=setTimeout(()=>{
+        toast('⚠️ Não foi possível carregar todos os dados. Tente recarregar.','err');
+      },15000);
+      loadAll().then(()=>{
+        clearTimeout(bgTimeout);
+        saveCacheLazy();
+        populateSelects();
+        renderNav();
+        renderDashboard().catch(()=>{});
+        if(isVendedor()) carregarMinhasSolicitacoes();
+        if(isAdmin()){ pollSolicitacoesAdmin(); setTimeout(verificarLeadsBloqueados,2000); }
+        toast('✅ Dados carregados!','ok');
+      }).catch(e=>{
+        clearTimeout(bgTimeout);
+        console.warn('[initApp fallback bg-load] erro:',e.message);
+      });
+      return; // sai do initApp — app já está aberto
+    }
+
     showLoading('Carregando leads e dados...', 50);
     let loadAllOk=false;
     try{
-      await loadAll();
-      loadAllOk=true;
+      // Timeout global de 20s para o loadAll não pendurar
+      await Promise.race([
+        loadAll().then(()=>{loadAllOk=true;}),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('loadAll_timeout')),20000))
+      ]);
     } catch(loadErr){
       console.warn('[initApp] loadAll erro:',loadErr.message);
     }
@@ -2034,16 +2073,21 @@ async function loadAll(){
   const isCoord=isCoordenador();
   const isSup=isSupervisor();
   const safe=async(q)=>{try{
-    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),10000));
+    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000));
     const r=await Promise.race([q,tOut]);
     return r;
   }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
   const isCoordRole=CUProfile?.role==='supervisor';
 
-  // Load equipe membros first
+  // Load equipe membros first (com timeout)
   if(!allMembroEquipes.length){
-    const{data:mb}=await sb.from('crm_equipe_membros').select('*');
-    allMembroEquipes=mb||[];
+    try{
+      const{data:mb}=await Promise.race([
+        sb.from('crm_equipe_membros').select('*'),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_membros')),6000))
+      ]);
+      allMembroEquipes=mb||[];
+    }catch(e){ console.warn('equipe_membros timeout:',e.message); allMembroEquipes=[]; }
   }
 
   // Load non-leads data in parallel
@@ -2197,7 +2241,10 @@ async function loadAll(){
       }
     } else {
       // VENDEDOR — só os próprios leads
-      const{data}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+      const{data}=await Promise.race([
+        sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_vendedor')),10000))
+      ]).catch(e=>{ console.warn('leads vendedor timeout:',e.message); return {data:[]}; });
       allLeads=data||[];
       rebuildMaps();
       invalidateDDDCache();
@@ -4476,16 +4523,23 @@ function sBadge(s,tipo,leadId,proposta_quente){
       html+=` <span class="badge" style="cursor:pointer;opacity:0.35;background:var(--surface2);border:1px solid var(--border);color:var(--muted2)" title="Marcar como Proposta Quente" onclick="event.stopPropagation();togglePropostaQuente('${leadId}',true,this)">🔥</span>`;
     }
   }
-  // Mostra badge de tipo para TODOS os usuários
+  // Mostra badge de tipo apenas se for Remalho (sempre relevante)
+  // ou se for Novo mas o status NÃO for Novo (evita duplicar "Novo Novo")
   if(tipo==="Remalho"){
     if(isAdmin()&&leadId){
       html+=` <span class="badge b-remalho" style="cursor:pointer" title="Clique para mudar para Novo" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Novo',this)">♻️ Remalho</span>`;
     } else {
       html+=` <span class="badge b-remalho">♻️ Remalho</span>`;
     }
-  } else {
+  } else if(s!=='Novo'){
+    // Só mostra badge 🆕 Novo quando o status for diferente de Novo (ex: Em Negociação mas tipo Novo)
     if(isAdmin()&&leadId){
       html+=` <span class="badge b-novo" style="cursor:pointer;opacity:0.55" title="Clique para marcar como Remalho" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Remalho',this)">🆕 Novo</span>`;
+    }
+  } else {
+    // Status=Novo e tipo=Novo — só mostra o toggle oculto para admin marcar como Remalho
+    if(isAdmin()&&leadId){
+      html+=` <span class="badge" style="cursor:pointer;opacity:0.22;background:transparent;border:1px solid var(--border);color:var(--muted2);font-size:9px" title="Marcar como Remalho" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Remalho',this)">♻️</span>`;
     }
   }
   return html;
@@ -5499,6 +5553,16 @@ function fixEncoding(str){
     .replace(/Ã»/g,'û').replace(/Ã/g,'À').replace(/Ã/g,'Â')
     .replace(/â€œ/g,'"').replace(/â€/g,'"').replace(/â€™/g,"'");
 }
+// Limpa prefixos de telefone (p:, tel:, w:, etc.) e retorna só dígitos + +
+function cleanTel(raw){
+  if(!raw) return null;
+  // Remove prefixos textuais: p:, tel:, fone:, w:, cel:, ph:
+  const s = raw.replace(/^(?:p|tel|fone|w|cel|ph|whats|phone)\s*:\s*/i,'').trim();
+  // Mantém + inicial se existir (DDI), remove o resto que não for dígito
+  const digits = s.replace(/[^\d+]/g,'');
+  return digits||null;
+}
+
 function parseCSV(text){
   const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());
   if(lines.length<2){toast('CSV precisa ter cabeçalho + pelo menos 1 linha','err');return;}
@@ -5526,7 +5590,7 @@ function parseCSV(text){
     if(!nome){erros.push(`Linha ${i+2}: nome vazio`);return;}
     csvParsedLeads.push({
       nome:fixEncoding(nome),
-      telefone:colMap.telefone>=0?fixEncoding(cols[colMap.telefone])||null:null,
+      telefone:cleanTel(colMap.telefone>=0?fixEncoding(cols[colMap.telefone]):null),
       email:colMap.email>=0?fixEncoding(cols[colMap.email])||null:null,
       interesse:colMap.interesse>=0?fixEncoding(cols[colMap.interesse])||null:null,
       origem:colMap.origem>=0?fixEncoding(cols[colMap.origem])||'CSV':'CSV',
@@ -5577,7 +5641,6 @@ async function importBulk(){
   const text=document.getElementById('bulk-text').value.trim();
   const respId=document.getElementById('bulk-resp')?.value||null;
   const tipoLead=isAdmin()?(document.getElementById('bulk-tipo')?.value||'Novo'):'Novo';
-  // Vendedor importa sempre para si mesmo
   const finalBulkRespId = isVendedor() ? CU.id : (respId||null);
   if(!text){toast('Cole a lista de contatos','err');return;}
 
@@ -5589,31 +5652,70 @@ async function importBulk(){
     let nomeRaw  = fixEncoding(parts[0]) || '';
     let telRaw   = fixEncoding(parts[1]) || null;
     let interesse= fixEncoding(parts[2]) || null;
+    let emailRaw = null;
 
-    // ── Separa telefone do nome quando vierem juntos sem pipe ──
-    // Detecta sequência de 8+ dígitos no final do nome (com espaço opcional antes)
-    // Ex: "JOSE NILSON 66984183898" → nome="JOSE NILSON", tel="66984183898"
-    if(!telRaw){
-      const phoneMatch = nomeRaw.match(/^(.+?)\s+((?:\+?\d[\s\-]?){8,15}\d)\s*$/);
-      if(phoneMatch){
-        nomeRaw = phoneMatch[1].trim();
-        telRaw  = phoneMatch[2].replace(/\s/g,'');
+    // ── 1. Extrai email de qualquer posição da linha ──
+    // Formato: qualquer texto com @ e domínio válido
+    const emailMatch = nomeRaw.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
+    if(emailMatch){
+      emailRaw = emailMatch[1];
+      nomeRaw  = nomeRaw.replace(emailMatch[0], '').trim();
+    }
+    // Também verifica nas outras partes se veio por pipe
+    if(!emailRaw && parts.length > 1){
+      for(let pi=1;pi<parts.length;pi++){
+        const em=parts[pi].match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/);
+        if(em){ emailRaw=em[1]; break; }
       }
     }
 
+    // ── 2. Extrai telefone com prefixos variados: p:, tel:, fone:, w:, cel:, ph: ──
+    // Também detecta +55XXXXXXXXXX e números puros no nome
+    if(!telRaw){
+      // Prefixo explícito: p:+55..., tel:11..., w:+55..., etc.
+      const prefixMatch = nomeRaw.match(/\b(?:p|tel|fone|w|cel|ph|whats|phone)\s*:\s*(\+?[\d\s\-().]{7,20})/i);
+      if(prefixMatch){
+        telRaw  = prefixMatch[1].replace(/[\s\-().]/g,'');
+        nomeRaw = nomeRaw.replace(prefixMatch[0], '').trim();
+      }
+    }
+
+    if(!telRaw){
+      // Número com +55 ou código de país embutido no nome (sem prefixo de texto)
+      const intlMatch = nomeRaw.match(/(\+\d{1,3}[\s\-]?(?:\d[\s\-]?){7,14}\d)/);
+      if(intlMatch){
+        telRaw  = intlMatch[1].replace(/[\s\-]/g,'');
+        nomeRaw = nomeRaw.replace(intlMatch[0], '').trim();
+      }
+    }
+
+    if(!telRaw){
+      // Número nacional puro no final ou início (8-13 dígitos)
+      const nationalMatch = nomeRaw.match(/(?:^|\s)((?:\d[\s\-]?){8,13}\d)(?:\s|$)/);
+      if(nationalMatch){
+        telRaw  = nationalMatch[1].replace(/[\s\-]/g,'');
+        nomeRaw = nomeRaw.replace(nationalMatch[0].trim(), '').trim();
+      }
+    }
+
+    // ── 3. Limpa espaços duplos e vírgulas/pontos soltos no nome ──
+    nomeRaw = nomeRaw.replace(/\s{2,}/g,' ').replace(/^[,.\-\s]+|[,.\-\s]+$/g,'').trim();
+
+    if(!nomeRaw) return null;
+
     return{
       nome:nomeRaw,
-      telefone:telRaw,
+      telefone:telRaw||null,
+      email:emailRaw||null,
       interesse,
       origem:'Lista',
-      responsavel_id:respId||null,
+      responsavel_id:finalBulkRespId||null,
       tipo_lead:tipoLead,
     };
   }).filter(Boolean);
 
   if(!leads.length){toast('Nenhum lead válido encontrado','err');return;}
-  const leadsB=leads.map(l=>({...l,responsavel_id:isVendedor()?CU.id:(l.responsavel_id||null)}));
-  await importLeads(leadsB,'Lista');
+  await importLeads(leads,'Lista');
   document.getElementById('bulk-text').value='';
 }
 
