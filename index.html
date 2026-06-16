@@ -3222,8 +3222,8 @@ async function openDetail(id,from){
         </div>`).join('')}
       </div>`:''}
       ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-        <button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">✅ Aprovar</button>
-        <button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">❌ Cancelar</button>
+        ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">✅ Aprovar</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">✅ Aprovado</span>'}
+        ${venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">❌ Cancelar</button>`:'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">❌ Cancelado</span>'}
         <button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">↩ Reverter para Lead</button>
       </div>`:''}
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
@@ -4251,12 +4251,34 @@ async function saveVendaNotas(vendaId, notas){
   }
 }
 async function updateVendaStatus(id,status){
+  // Busca status ATUAL do banco antes de qualquer coisa
+  // Evita usar cache desatualizado que causaria delta errado no Firebase
+  let statusAnterior = null;
+  let qtdCotas = 1;
+  try{
+    const{data:vendaDB}=await sb.from('crm_vendas').select('status_venda,qtd_cotas,lead_id,vendedor_id,created_at').eq('id',id).maybeSingle();
+    if(vendaDB){
+      statusAnterior = vendaDB.status_venda;
+      qtdCotas = vendaDB.qtd_cotas||1;
+      // Sincroniza memória com realidade do banco antes de prosseguir
+      const i2=allVendas.findIndex(v=>v.id===id);
+      if(i2>-1) allVendas[i2].status_venda=vendaDB.status_venda;
+    }
+  }catch(e){ console.warn('[updateVendaStatus] fetch status error:',e.message); }
+
+  // Evita ação redundante (clicar Aprovar numa venda já Aprovada)
+  if(statusAnterior===status){
+    toast('Venda já está '+status.toLowerCase(),'err');
+    return;
+  }
+
   const{error}=await sb.from('crm_vendas').update({status_venda:status}).eq('id',id);
   if(error){toast('Erro: '+error.message,'err');return;}
+
   const i=allVendas.findIndex(v=>v.id===id);
-  const vendaAntes=allVendas[i];
-  const statusAnterior=vendaAntes?.status_venda; // guarda ANTES de mudar
+  const vendaAntes=allVendas[i]; // referência ao objeto para pegar lead_id etc.
   if(i>-1) allVendas[i].status_venda=status;
+
   // Registra no histórico do lead
   if(vendaAntes?.lead_id){
     const emoji=status==='Aprovado'?'✅':'❌';
@@ -4274,30 +4296,33 @@ async function updateVendaStatus(id,status){
   renderDashboard();
 
   // ── Sincronização Firebase do Ranking ──
-  // Cancelado → -qtdCotas (venda perdida)
-  // Aprovado vindo de Cancelado → +qtdCotas (venda recuperada/re-aprovada)
-  // Aprovado vindo de Pendente → sem delta (já estava +1 desde a criação)
+  // Status anterior vem do BANCO (não do cache) — garante delta correto
+  // Cancelado (vindo de qualquer outro status) → -qtdCotas
+  // Aprovado vindo de Cancelado → +qtdCotas (re-aprovação)
+  // Aprovado vindo de Pendente → 0 (já estava +qtdCotas desde a criação)
+  console.log(`[FB Ranking] statusAnterior="${statusAnterior}" → novoStatus="${status}" | delta a calcular`);
   if(typeof sincronizarVendaFirebase==='function' && vendaAntes){
-    const lead = allLeads.find(l=>l.id===vendaAntes.lead_id);
-    const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
-    const equipe = resolverEquipeParaVenda(lead, vendedor);
-    let delta = 0;
-    if(status==='Cancelado'){
-      // Só desconta se não estava já cancelado
-      if(statusAnterior!=='Cancelado') delta = -(vendaAntes.qtd_cotas||1);
+    const lead=allLeads.find(l=>l.id===vendaAntes.lead_id);
+    const vendedor=allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
+    const equipe=resolverEquipeParaVenda(lead,vendedor);
+    let delta=0;
+    if(status==='Cancelado' && statusAnterior!=='Cancelado'){
+      delta=-(qtdCotas);
+      console.log(`[FB Ranking] Cancelando: delta=${delta}`);
     } else if(status==='Aprovado' && statusAnterior==='Cancelado'){
-      // Venda reprovada sendo aprovada novamente → devolve as cotas ao ranking
-      delta = +(vendaAntes.qtd_cotas||1);
-      console.log(`[FB Ranking] Venda re-aprovada (era Cancelado) → +${delta} cotas para "${vendedor?.name}"`);
+      delta=+(qtdCotas);
+      console.log(`[FB Ranking] Re-aprovando (era Cancelado): delta=+${delta}`);
     }
     if(delta!==0){
-      sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, delta).catch(e=>
+      sincronizarVendaFirebase(lead,vendaAntes,vendedor,equipe,delta).catch(e=>
         console.warn('Firebase ranking sync error:',e.message)
       );
+    } else {
+      console.log(`[FB Ranking] Sem delta (${statusAnterior}→${status}) — ranking não alterado`);
     }
   }
 
-  // Refresh vendas page if open, otherwise refresh detail
+  // Refresh
   if(document.getElementById('page-vendas')?.classList.contains('on')){
     renderVendasPage();
   } else if(detailLeadId){
