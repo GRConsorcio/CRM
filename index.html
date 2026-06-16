@@ -574,7 +574,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div class="panel-head"><div class="panel-title" id="ml-title">Meus Leads</div></div>
       <div class="tbl-wrap">
         <table><thead><tr>
-          <th>Nome</th><th>Telefone</th><th>Interesse</th><th>Status</th><th>Data</th><th style="text-align:center" title="Há quantos dias o lead está na sua base">Na base</th><th></th>
+          <th>Nome</th><th>Telefone</th><th>Interesse</th><th>Status</th><th>Data</th><th></th>
         </tr></thead>
         <tbody id="ml-tbody"></tbody></table>
       </div>
@@ -1775,22 +1775,9 @@ async function initApp(user){
         const{data:cfg}=await sb.from('crm_config').select('valor').eq('chave','force_logout_at').maybeSingle();
         if(cfg?.valor){
           const logoutAt=new Date(cfg.valor);
-          // Usa o iat (issued at) do access token — atualiza a cada refresh de token
-          // last_sign_in_at NÃO atualiza em refreshes, causava logout em loop
-          let tokenIssuedAt=null;
-          try{
-            const tokenParts=session.access_token?.split('.');
-            if(tokenParts&&tokenParts.length===3){
-              const payload=JSON.parse(atob(tokenParts[1]));
-              if(payload.iat) tokenIssuedAt=new Date(payload.iat*1000);
-            }
-          }catch(te){ console.warn('Token parse error:',te.message); }
-          // Fallback: last_sign_in_at (menos confiável mas melhor que nada)
-          if(!tokenIssuedAt && session.user.last_sign_in_at){
-            tokenIssuedAt=new Date(session.user.last_sign_in_at);
-          }
-          if(tokenIssuedAt && tokenIssuedAt < logoutAt){
-            console.log('Force logout triggered — token emitido antes do force_logout_at');
+          const loginAt=session.user.last_sign_in_at?new Date(session.user.last_sign_in_at):null;
+          if(loginAt&&loginAt<logoutAt){
+            console.log('Force logout triggered');
             await sb.auth.signOut({scope:'local'});
             Object.keys(localStorage).forEach(k=>{if(k.startsWith('sb-'))localStorage.removeItem(k);});
             Object.keys(sessionStorage).forEach(k=>{if(k.startsWith('crm_'))sessionStorage.removeItem(k);});
@@ -1815,11 +1802,6 @@ async function initApp(user){
       const navRendered=document.getElementById('nav-body')?.children?.length>0;
       const appOk=CU&&CUProfile&&navRendered;
       if(authOk&&!appOk){
-        // Se initApp está em progresso há menos de 20s, aguarda (não interrompe)
-        if(_initAppInProgress && window._initAppStartedAt && (Date.now()-window._initAppStartedAt)<20000){
-          console.warn('[watchdog] initApp em progresso, aguardando...');
-          return;
-        }
         console.warn('[watchdog] Tela preta detectada — limpando cache e recuperando...');
         hideLoading();
         _initAppInProgress=false;
@@ -2842,42 +2824,23 @@ async function assumirLead(leadId){
 }
 
 /* ═══ MEUS LEADS (vendedor) ═══ */
-function fmtDuracao(lead){
-  // Retorna string discreta mostrando há quantos dias o lead está na base do vendedor
-  const ref = lead.atribuido_em || lead.distribuido_em;
-  if(!ref) return '';
-  const dias = Math.floor((Date.now() - new Date(ref)) / (1000*60*60*24));
-  if(dias === 0) return '<span style="font-size:9.5px;color:var(--green);opacity:0.8;white-space:nowrap">hoje</span>';
-  if(dias === 1) return '<span style="font-size:9.5px;color:var(--muted2);white-space:nowrap">1 dia</span>';
-  // A partir de 7 dias fica laranja discreto, a partir de 10 fica vermelho suave
-  const cor = dias >= 10 ? 'color:#c0614d' : dias >= 7 ? 'color:var(--orange);opacity:0.75' : 'color:var(--muted2)';
-  return `<span style="font-size:9.5px;${cor};white-space:nowrap">${dias}d</span>`;
-}
-
 function renderMeusLeads(){
   const q=(document.getElementById('ml-srch')?.value||'').toLowerCase();
   const fs=document.getElementById('ml-f-status')?.value;
-  let f=allLeads.filter(l=>{
+  const f=allLeads.filter(l=>{
     if(l.responsavel_id!==CU.id)return false;
     if(q&&!l.nome.toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
     if(fs&&l.status!==fs)return false;
     return true;
   });
-  // Ordena: mais recentemente atribuídos primeiro (puxados aparecem no topo)
-  f.sort((a,b)=>{
-    const ta = new Date(a.atribuido_em||a.distribuido_em||a.created_at||0).getTime();
-    const tb = new Date(b.atribuido_em||b.distribuido_em||b.created_at||0).getTime();
-    return tb - ta;
-  });
   document.getElementById('ml-title').textContent=`Meus Leads — ${f.length}`;
   document.getElementById('ml-tbody').innerHTML=f.length===0
-    ?`<tr><td colspan="7"><div class="empty"><div class="ei">👤</div>Nenhum lead atribuído a você</div></td></tr>`
+    ?`<tr><td colspan="6"><div class="empty"><div class="ei">👤</div>Nenhum lead atribuído a você</div></td></tr>`
     :f.map(l=>`<tr>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','meus-leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
-        <td style="text-align:center">${fmtDuracao(l)}</td>
         <td><div style="display:flex;gap:5px">
           <button class="act" onclick="editLead('${l.id}')">✏️</button>
           <button class="act" onclick="openDetail('${l.id}','meus-leads')">Ver →</button>
@@ -2912,79 +2875,67 @@ async function puxarLeadsRemalho(){
   if(btn){ btn.disabled=true; btn.innerHTML='⏳ Puxando...'; }
 
   try{
-    // Busca leads remalho sem responsável, pool livre (equipe_id null OU vazio)
-    // Ordena mais antigo primeiro para dar prioridade a quem esperou mais
+    // Busca leads remalho sem responsável E sem equipe (pool livre), ordenados mais antigo primeiro
+    // Usa .range(0,4) para pegar exatamente 5
     const{data, error} = await sb.from('crm_leads')
       .select('*')
       .eq('tipo_lead','Remalho')
       .is('responsavel_id', null)
+      .is('equipe_id', null)
       .order('created_at', {ascending: true})
-      .range(0, 19); // pega 20 candidatos para filtrar equipe_id vazio/null
+      .range(0, 4);
 
-    if(error){
-      console.error('[Puxador] Erro na busca:', error);
-      toast('❌ Erro ao buscar leads: '+error.message,'err');
-      return;
-    }
-
-    // Filtra: aceita equipe_id null, undefined, '' ou '0'
-    const disponiveis = (data||[]).filter(l=>!l.equipe_id || l.equipe_id==='' || l.equipe_id==='0');
-
-    if(!disponiveis.length){
-      toast('🎣 Não há leads remalho disponíveis no momento','err');
+    if(error){ toast('Erro ao buscar leads: '+error.message,'err'); return; }
+    if(!data||data.length===0){
+      toast('Não há leads remalho disponíveis no momento 🎣','err');
       await atualizarContadorPuxador();
       return;
     }
 
-    // Pega no máximo 5
-    const candidatos = disponiveis.slice(0, 5);
-    const ids = candidatos.map(l=>l.id);
+    const ids = data.map(l=>l.id);
     const now = new Date().toISOString();
 
-    // Monta payload — reseta status para Novo e registra data de atribuição
-    const assignPayload = {
-      responsavel_id: CU.id,
-      distribuido_em: now,
-      status: 'Novo',
-    };
-    if(_hasAtribuidoEm) assignPayload.atribuido_em = now;
-
-    // UPDATE atômico: só atualiza leads que AINDA estão sem responsável (race condition guard)
+    // Atribui ao vendedor com double-check atômico:
+    // O filtro .is('responsavel_id', null) garante que só atualiza leads que AINDA
+    // estão livres no momento do UPDATE — evita roubar lead de outro vendedor que
+    // puxou entre o SELECT e o UPDATE (race condition).
+    const assignPayload = buildAssignPayload(CU.id, now);
     const{data: updated, error: updErr} = await sb.from('crm_leads')
       .update(assignPayload)
       .in('id', ids)
-      .is('responsavel_id', null)
-      .select('*'); // retorna o objeto completo para atualizar a memória
+      .is('responsavel_id', null)   // ← só atualiza se ainda estiver livre
+      .is('equipe_id', null)         // ← e sem equipe
+      .select('id');
 
-    if(updErr){
-      console.error('[Puxador] Erro no update:', updErr);
-      toast('❌ Erro ao atribuir leads: '+updErr.message,'err');
-      return;
-    }
+    if(updErr){ toast('Erro ao atribuir leads: '+updErr.message,'err'); return; }
 
-    const leadsAtribuidos = updated||[];
+    // Verifica quais leads foram realmente atribuídos (pode ser menos que 5
+    // se outro vendedor puxou ao mesmo tempo)
+    const idsAtribuidos = new Set((updated||[]).map(r=>r.id));
+    const leadsAtribuidos = data.filter(l=>idsAtribuidos.has(l.id));
 
     if(!leadsAtribuidos.length){
-      toast('🎣 Os leads foram puxados por outro vendedor. Tente novamente!','err');
+      toast('Os leads disponíveis foram puxados por outro vendedor. Tente novamente 🎣','err');
       await atualizarContadorPuxador();
       return;
     }
 
-    // Atualiza memória local: remove do lugar original e insere no INÍCIO
-    // para que apareçam no topo da lista "Meus Leads"
+    // Atualiza memória local apenas dos leads que foram efetivamente atribuídos
     leadsAtribuidos.forEach(lead=>{
       lead.responsavel_id = CU.id;
       lead.distribuido_em = now;
-      if(_hasAtribuidoEm) lead.atribuido_em = now;
+      lead.atribuido_em = now;
       lead.status = 'Novo';
-      // Remove da posição atual se já estava em allLeads
       const idx = allLeads.findIndex(l=>l.id===lead.id);
       if(idx > -1){
-        allLeads.splice(idx, 1);
+        allLeads[idx].responsavel_id = CU.id;
+        allLeads[idx].distribuido_em = now;
+        allLeads[idx].atribuido_em = now;
+        allLeads[idx].status = 'Novo';
+      } else {
+        allLeads.push(lead);
       }
     });
-    // Insere todos no início (ordem: mais recentemente puxado primeiro)
-    allLeads.unshift(...leadsAtribuidos);
 
     // Registra no histórico
     try{
@@ -2996,17 +2947,17 @@ async function puxarLeadsRemalho(){
         created_at: now
       }));
       await sb.from('crm_historico').insert(histRows);
-    } catch(he){ console.warn('[Puxador] Hist error:', he.message); }
+    } catch(he){ console.warn('Hist puxador error:', he.message); }
 
     saveCache();
     renderMeusLeads();
     await atualizarContadorPuxador();
     const n = leadsAtribuidos.length;
-    toast('🎣 '+n+' lead'+(n!==1?'s remalhos':' remalho')+' puxado'+(n!==1?'s':'')+' com sucesso!','ok');
+    toast(n+' lead'+(n!==1?'s remalhos':' remalho')+' puxado'+(n!==1?'s':'')+' com sucesso! 🎣','ok');
 
   } catch(e){
-    console.error('[Puxador] Erro inesperado:', e);
-    toast('❌ Erro inesperado: '+e.message,'err');
+    console.error('puxarLeadsRemalho error:', e);
+    toast('Erro inesperado: '+e.message,'err');
   } finally {
     _puxadorBusy = false;
     if(btn){ btn.disabled=false; btn.innerHTML='🎣 Puxar 5 Remalhos'; }
@@ -4195,7 +4146,6 @@ async function updateVendaStatus(id,status){
   if(error){toast('Erro: '+error.message,'err');return;}
   const i=allVendas.findIndex(v=>v.id===id);
   const vendaAntes=allVendas[i];
-  const statusAnterior=vendaAntes?.status_venda; // guarda ANTES de mudar
   if(i>-1) allVendas[i].status_venda=status;
   // Registra no histórico do lead
   if(vendaAntes?.lead_id){
@@ -4213,28 +4163,16 @@ async function updateVendaStatus(id,status){
   toast('Venda '+status.toLowerCase()+'!','ok');
   renderDashboard();
 
-  // ── Sincronização Firebase do Ranking ──
-  // Cancelado → -qtdCotas (venda perdida)
-  // Aprovado vindo de Cancelado → +qtdCotas (venda recuperada/re-aprovada)
-  // Aprovado vindo de Pendente → sem delta (já estava +1 desde a criação)
-  if(typeof sincronizarVendaFirebase==='function' && vendaAntes){
+  // ── Cancelado → -1 no ranking Firebase ──
+  // Aprovado → não muda (já estava +1 desde Pendente)
+  if(status==='Cancelado' && vendaAntes && typeof sincronizarVendaFirebase==='function'){
     const lead = allLeads.find(l=>l.id===vendaAntes.lead_id);
     const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
     const equipe = resolverEquipeParaVenda(lead, vendedor);
-    let delta = 0;
-    if(status==='Cancelado'){
-      // Só desconta se não estava já cancelado
-      if(statusAnterior!=='Cancelado') delta = -(vendaAntes.qtd_cotas||1);
-    } else if(status==='Aprovado' && statusAnterior==='Cancelado'){
-      // Venda reprovada sendo aprovada novamente → devolve as cotas ao ranking
-      delta = +(vendaAntes.qtd_cotas||1);
-      console.log(`[FB Ranking] Venda re-aprovada (era Cancelado) → +${delta} cotas para "${vendedor?.name}"`);
-    }
-    if(delta!==0){
-      sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, delta).catch(e=>
-        console.warn('Firebase ranking sync error:',e.message)
-      );
-    }
+    const delta = -(vendaAntes.qtd_cotas||1);
+    sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, delta).catch(e=>
+      console.warn('Firebase ranking sync (cancelado) error:',e.message)
+    );
   }
 
   // Refresh vendas page if open, otherwise refresh detail
