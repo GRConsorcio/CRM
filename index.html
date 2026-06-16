@@ -4173,6 +4173,24 @@ async function saveVenda(){
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
   const qtdCotas = Math.max(1, parseInt(v('v-qtd-cotas'))||1);
+
+  // Busca responsavel_id do banco (não do cache) para evitar vendedor_id errado
+  // quando admin abre venda de lead recém-atribuído que ainda não atualizou em memória
+  let vendedorId = lead?.responsavel_id || null;
+  if(!vendedorId && !existingV){
+    try{
+      const{data:leadDB}=await sb.from('crm_leads').select('responsavel_id').eq('id',vendaLeadId).maybeSingle();
+      if(leadDB?.responsavel_id){
+        vendedorId = leadDB.responsavel_id;
+        // Atualiza memória local também
+        const li=allLeads.findIndex(l=>l.id===vendaLeadId);
+        if(li>-1) allLeads[li].responsavel_id=vendedorId;
+        if(lead) lead.responsavel_id=vendedorId;
+      }
+    }catch(e){ console.warn('[saveVenda] fetch responsavel_id error:',e.message); }
+  }
+  // Fallback final: usa quem está logado (só se realmente não tiver vendedor no lead)
+  if(!vendedorId) vendedorId = CU.id;
   const updatePayload={
     cpf:v('v-cpf'),data_nascimento:v('v-nasc')||null,
     grupo:v('v-grupo')||null,cota:v('v-cota')||null,
@@ -4183,8 +4201,8 @@ async function saveVenda(){
     qtd_cotas:qtdCotas,
   };
   const insertPayload={...updatePayload,
-    lead_id:vendaLeadId,vendedor_id:lead?.responsavel_id||CU.id,
-    status_venda:'Pendente',created_at:new Date().toISOString()
+    lead_id:vendaLeadId, vendedor_id:vendedorId,
+    status_venda:'Pendente', created_at:new Date().toISOString()
   };
 
   // ── Salva/atualiza registro da venda ──
@@ -4278,11 +4296,17 @@ async function saveVenda(){
   // ── Sincroniza com Firebase dos Rankings ao criar (Pendente = +qtdCotas) ──
   if(!existingV && typeof sincronizarVendaFirebase === 'function'){
     const leadFb = allLeads.find(l=>l.id===vendaLeadId);
-    const vendedor = allUsers.find(u=>u.user_id===(vd.vendedor_id||CU.id));
-    const equipe = resolverEquipeParaVenda(leadFb, vendedor);
-    sincronizarVendaFirebase(leadFb, vd, vendedor, equipe, +qtdCotas).catch(e=>
-      console.warn('Firebase ranking sync error:',e.message)
-    );
+    // Usa vendedorId buscado do banco (não CU.id que seria o admin)
+    const vendedor = allUsers.find(u=>u.user_id===vendedorId);
+    if(vendedor){
+      const equipe = resolverEquipeParaVenda(leadFb, vendedor);
+      console.log(`[FB Ranking] Nova venda — vendedor="${vendedor.name}" equipe="${equipe?.nome}" +${qtdCotas}`);
+      sincronizarVendaFirebase(leadFb, vd, vendedor, equipe, +qtdCotas).catch(e=>
+        console.warn('Firebase ranking sync error:',e.message)
+      );
+    } else {
+      console.warn('[FB Ranking] Vendedor não encontrado em allUsers para id:',vendedorId,'— sync ignorado');
+    }
   }
 
   openDetail(vendaLeadId,fromPage);
@@ -4343,23 +4367,26 @@ async function updateVendaStatus(id,status){
   renderDashboard();
 
   // ── Sincronização Firebase do Ranking ──
-  // Status anterior vem do BANCO (não do cache) — garante delta correto
-  // Cancelado (vindo de qualquer outro status) → -qtdCotas
-  // Aprovado vindo de Cancelado → +qtdCotas (re-aprovação)
-  // Aprovado vindo de Pendente → 0 (já estava +qtdCotas desde a criação)
-  console.log(`[FB Ranking] statusAnterior="${statusAnterior}" → novoStatus="${status}" | delta a calcular`);
-  if(typeof sincronizarVendaFirebase==='function' && vendaAntes){
+  // REGRA: só sobe ao criar (Pendente) — controlado em saveVenda()
+  // Aqui: Cancelado → -qtdCotas | Cancelado→Aprovado → +qtdCotas | resto → nada
+  // statusAnterior vem SEMPRE do banco (fetch acima) — se null, não faz nada no Firebase
+  console.log(`[FB Ranking] statusAnterior="${statusAnterior}" → novoStatus="${status}"`);
+  if(typeof sincronizarVendaFirebase==='function' && vendaAntes && statusAnterior!==null){
     const lead=allLeads.find(l=>l.id===vendaAntes.lead_id);
     const vendedor=allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
     const equipe=resolverEquipeParaVenda(lead,vendedor);
     let delta=0;
     if(status==='Cancelado' && statusAnterior!=='Cancelado'){
+      // Qualquer status → Cancelado: desconta
       delta=-(qtdCotas);
-      console.log(`[FB Ranking] Cancelando: delta=${delta}`);
+      console.log(`[FB Ranking] Cancelando (${statusAnterior}→Cancelado): delta=${delta}`);
     } else if(status==='Aprovado' && statusAnterior==='Cancelado'){
+      // Cancelado → Aprovado: devolve (venda recuperada)
       delta=+(qtdCotas);
-      console.log(`[FB Ranking] Re-aprovando (era Cancelado): delta=+${delta}`);
+      console.log(`[FB Ranking] Re-aprovando (Cancelado→Aprovado): delta=+${delta}`);
     }
+    // Pendente → Aprovado = delta 0 (já subiu ao criar)
+    // Aprovado → Aprovado = bloqueado pelo guard acima (statusAnterior===status)
     if(delta!==0){
       sincronizarVendaFirebase(lead,vendaAntes,vendedor,equipe,delta).catch(e=>
         console.warn('Firebase ranking sync error:',e.message)
@@ -4367,6 +4394,8 @@ async function updateVendaStatus(id,status){
     } else {
       console.log(`[FB Ranking] Sem delta (${statusAnterior}→${status}) — ranking não alterado`);
     }
+  } else if(statusAnterior===null){
+    console.warn('[FB Ranking] statusAnterior=null (fetch falhou) — Firebase não alterado por segurança');
   }
 
   // Refresh
