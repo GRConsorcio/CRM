@@ -238,6 +238,39 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .notify.ok{border-left:3px solid var(--green)}
 .notify.err{border-left:3px solid var(--red)}
 
+
+
+/* ── NOTIFICAÇÕES ADMIN ── */
+.notif-bell-wrap{position:relative;display:inline-flex;}
+.notif-bell{background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:6px;padding:5px 10px;font-size:15px;cursor:pointer;font-family:inherit;transition:all .13s;display:flex;align-items:center;gap:5px;line-height:1}
+.notif-bell:hover{border-color:var(--gold-dim);color:var(--gold2)}
+.notif-count{position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 5px;min-width:16px;text-align:center;display:none}
+.notif-dropdown{position:absolute;right:0;top:calc(100% + 8px);width:380px;max-width:96vw;background:var(--surface);border:1px solid var(--border2);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:999;display:none;overflow:hidden}
+.notif-dropdown.open{display:block}
+.notif-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.notif-header-title{font-size:12px;font-weight:700;color:var(--gold2)}
+.notif-list{max-height:400px;overflow-y:auto}
+.notif-item{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .13s}
+.notif-item:hover{background:var(--surface2)}
+.notif-item:last-child{border-bottom:none}
+.notif-item.unread{background:rgba(201,168,76,0.04)}
+.notif-icon{font-size:16px;flex-shrink:0;margin-top:1px}
+.notif-body{flex:1;min-width:0}
+.notif-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notif-desc{font-size:11px;color:var(--muted2);line-height:1.4}
+.notif-time{font-size:10px;color:var(--muted);margin-top:3px}
+.notif-empty{text-align:center;padding:28px;font-size:12.5px;color:var(--muted2)}
+
+/* ── BUSCA BASE GERAL (vendedor) ── */
+.srch-base-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #191919;transition:background .12s}
+.srch-base-row:hover{background:rgba(255,255,255,.018)}
+.srch-base-row:last-child{border-bottom:none}
+.sol-badge{display:inline-block;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.sol-pend{background:#1e1a05;color:var(--orange)}
+.sol-aprov{background:#0a1f0a;color:var(--green)}
+.sol-neg{background:#1f0a0a;color:var(--red)}
+#sol-adm-badge{display:none;background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 6px;margin-left:6px}
+
 /* PAGINATION */
 .pg-bar{display:flex;align-items:center;gap:4px;padding:12px 18px;border-top:1px solid var(--border);flex-wrap:wrap;background:var(--surface)}
 .pg-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted2);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit;transition:all .13s;min-width:34px;text-align:center;line-height:1.4}
@@ -275,6 +308,28 @@ tr:hover td{background:rgba(255,255,255,.015)}
 </style>
 </head>
 <body>
+
+<!-- LOADING SCREEN -->
+<div id="loading-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:998;align-items:center;justify-content:center;flex-direction:column;gap:18px">
+  <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0a0a0a;font-size:20px;font-weight:900;display:flex;align-items:center;justify-content:center">GR</div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+    <div id="loading-msg" style="font-size:13px;color:var(--muted2)">Carregando...</div>
+    <div style="width:180px;height:3px;background:var(--border);border-radius:3px;overflow:hidden">
+      <div id="loading-bar" style="height:100%;width:0%;background:var(--gold);border-radius:3px;transition:width .4s ease"></div>
+    </div>
+  </div>
+  <div id="loading-reload-btn" style="display:none;margin-top:10px;flex-direction:column;align-items:center;gap:8px">
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:4px">
+      Servidor lento ou sem conexão.<br>Se tiver o CRM aberto em outra aba, feche-a primeiro.
+    </div>
+    <button onclick="location.reload()" style="background:transparent;border:1px solid var(--border2);color:var(--muted2);border-radius:7px;padding:7px 18px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:2px">
+      ↺ Tentar novamente
+    </button>
+    <button onclick="limparCacheERecarregar()" style="background:var(--gold);border:none;color:#0a0a0a;border-radius:7px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+      🗑 Limpar cache e recarregar
+    </button>
+  </div>
+</div>
 
 <!-- AUTH -->
 <div id="setup-warning" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9998;align-items:center;justify-content:center">
@@ -340,6 +395,21 @@ tr:hover td{background:rgba(255,255,255,.015)}
   <div class="topbar">
     <div class="topbar-title" id="topbar-title">Dashboard</div>
     <div class="topbar-right">
+      <!-- Notificações (admin only) -->
+      <div class="notif-bell-wrap" id="notif-bell-wrap" style="display:none">
+        <button class="notif-bell" onclick="toggleNotifDropdown()" title="Notificações">
+          🔔 <span id="notif-count" class="notif-count">0</span>
+        </button>
+        <div class="notif-dropdown" id="notif-dropdown">
+          <div class="notif-header">
+            <span class="notif-header-title">🔔 Alertas de Leads</span>
+            <button class="btn-sm" style="font-size:10px;padding:3px 8px" onclick="marcarTodasLidas()">Marcar como lidas</button>
+          </div>
+          <div class="notif-list" id="notif-list">
+            <div class="notif-empty">Sem alertas</div>
+          </div>
+        </div>
+      </div>
       <div class="user-chip">
         <div class="user-av" id="u-av">?</div>
         <span id="u-name"
@@ -366,12 +436,24 @@ tr:hover td{background:rgba(255,255,255,.015)}
         <div class="panel-body" style="max-height:280px;overflow-y:auto" id="dash-act"></div>
       </div>
     </div>
+    <!-- Ferramentas admin — só visível para admin -->
+    <div class="panel" id="dash-admin-tools" style="margin-top:12px;display:none;">
+      <div class="panel-head"><div class="panel-title">🔧 Ferramentas do Ranking</div></div>
+      <div class="panel-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px;">
+        <button class="btn-primary" style="font-size:11px;padding:7px 14px;" onclick="repararSnapDiaLuiz()">
+          🔄 Reparar SnapDia Luiz
+        </button>
+        <span style="font-size:11px;color:var(--muted);">
+          Corrige o contador "Vendas do Dia" quando aparece zerado após atualização do sistema.
+        </span>
+      </div>
+    </div>
   </div>
 
   <!-- LEADS (admin/coord) -->
   <div class="page" id="page-leads">
     <div class="filter-bar">
-      <input class="inp" id="l-srch" placeholder="🔍 Buscar por nome, telefone, e-mail ou interesse..." oninput="renderLeads(true)" style="min-width:260px">
+      <input class="inp" id="l-srch" placeholder="🔍 Buscar por nome, telefone, e-mail ou interesse..." oninput="_debouncedRenderLeads()" style="min-width:260px">
       <select id="l-f-status" onchange="renderLeads(true)">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
@@ -492,7 +574,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       <div class="panel-head"><div class="panel-title" id="ml-title">Meus Leads</div></div>
       <div class="tbl-wrap">
         <table><thead><tr>
-          <th>Nome</th><th>Telefone</th><th>Interesse</th><th>Status</th><th>Data</th><th></th>
+          <th>Nome</th><th>Telefone</th><th>Interesse</th><th>Status</th><th>Data</th><th style="text-align:center" title="Há quantos dias o lead está na sua base">Na base</th><th></th>
         </tr></thead>
         <tbody id="ml-tbody"></tbody></table>
       </div>
@@ -697,6 +779,56 @@ tr:hover td{background:rgba(255,255,255,.015)}
     </div>
   </div>
 
+  </div>
+
+
+  <!-- BUSCA NA BASE GERAL (vendedor) -->
+  <div class="page" id="page-busca-base">
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <div class="panel-title">🔍 Buscar na Base Geral</div>
+        <div style="font-size:11.5px;color:var(--muted2)">Pesquise e solicite leads ao admin</div>
+      </div>
+      <div class="panel-body">
+        <div class="filter-bar" style="margin-bottom:0">
+          <input class="inp" id="srch-base-inp" placeholder="🔍 Nome ou telefone..." style="margin:0;flex:1"
+            oninput="renderBuscaBase()">
+          <select id="srch-base-status" onchange="renderBuscaBase()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none">
+            <option value="">Todos os status</option>
+            <option value="Novo">Novo</option>
+            <option value="Em Negociação">Em Negociação</option>
+            <option value="Proposta">Proposta</option>
+            <option value="Fechado">Fechado</option>
+            <option value="Perdido">Perdido</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title" id="srch-base-title">Resultados</div>
+      </div>
+      <div class="tbl-wrap">
+        <table><thead><tr>
+          <th>Nome</th><th>Telefone</th><th>Interesse</th><th>Status</th><th>Responsável</th><th>Data</th><th></th>
+        </tr></thead>
+        <tbody id="srch-base-tbody"></tbody></table>
+      </div>
+      <div id="srch-base-pg" class="pg-bar" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- SOLICITAÇÕES (admin) -->
+  <div class="page" id="page-solicitacoes">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">📩 Solicitações de Lead</div>
+        <div style="font-size:11.5px;color:var(--muted2)">Pedidos de vendedores para receber leads</div>
+      </div>
+      <div id="sol-lista" class="panel-body">
+        <div class="empty"><div class="ei">📭</div>Nenhuma solicitação pendente</div>
+      </div>
+    </div>
   </div>
 
   <!-- MESCLAR BASE (admin only) -->
@@ -1292,6 +1424,23 @@ tr:hover td{background:rgba(255,255,255,.015)}
   </div>
 </div>
 <div class="notify" id="notify"></div>
+<!-- Modal solicitar lead -->
+<div class="modal-bg" id="modal-solicitar-lead">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">📩 Solicitar Lead</div>
+    <div id="sol-lead-info" style="background:var(--surface2);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px"></div>
+    <div class="fld">
+      <label>Motivo / observação (opcional)</label>
+      <textarea class="inp" id="sol-motivo" rows="3" placeholder="Ex: cliente já me procurou, tenho contato..." style="resize:vertical"></textarea>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('solicitar-lead')">Cancelar</button>
+      <button class="btn-save" onclick="confirmarSolicitacao()">📩 Enviar solicitação</button>
+    </div>
+  </div>
+</div>
+
+
 
 <script>
 const SUPA_URL='https://prquggwhjcvenzuziaox.supabase.co';
@@ -1301,12 +1450,17 @@ const sb=createClient(SUPA_URL,SUPA_KEY);
 
 let CU=null,CUProfile=null;
 let _initAppInProgress=false;
+let _appReadyWithFallback=false;
 let _hasAtribuidoEm=false;
 let _hasPropostaQuente=false;
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let pendingFiles=[];
 let fromPage='leads';
+// Debounced render — inicializado após definição de debounce() mais abaixo
+// Usamos uma função wrapper para que _debouncedRenderLeads esteja disponível globalmente
+// mesmo antes do debounce() ser declarado (hoisting de var)
+var _debouncedRenderLeads=function(){renderLeads(true);}; // placeholder, substituído abaixo
 
 /* ═══ AUTH ═══ */
 let authMode='login';
@@ -1356,110 +1510,268 @@ async function doLogout(){
   // Clear cache
   Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
   Object.keys(localStorage).forEach(k=>{
-    if(k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k);
+    if(k.startsWith('sb-')||k.includes('supabase')||k.startsWith('crm_xtab_')) localStorage.removeItem(k);
   });
   // Force full page reload without cache
   window.location.href=window.location.pathname+'?logout='+Date.now();
 }
 
+/* ═══ LOADING SCREEN ═══ */
+function showLoading(msg,pct){
+  const s=document.getElementById('loading-screen');
+  if(s) s.style.display='flex';
+  const m=document.getElementById('loading-msg');
+  if(m) m.textContent=msg||'Carregando...';
+  const b=document.getElementById('loading-bar');
+  if(b&&pct!=null) b.style.width=pct+'%';
+  // Mostra botão de recarga após 8s
+  setTimeout(()=>{
+    const btn=document.getElementById('loading-reload-btn');
+    if(btn&&document.getElementById('loading-screen')?.style.display==='flex') btn.style.display='flex';
+  },8000);
+}
+function hideLoading(){
+  const s=document.getElementById('loading-screen');
+  if(s) s.style.display='none';
+  const b=document.getElementById('loading-bar');
+  if(b) b.style.width='0%';
+}
+window.limparCacheERecarregar=function(){
+  try{
+    // Limpa TODO cache CRM — session e local
+    [...Object.keys(sessionStorage)].forEach(k=>{ if(k.startsWith('crm_')||k.startsWith('sb-')) sessionStorage.removeItem(k); });
+    [...Object.keys(localStorage)].forEach(k=>{ if(k.startsWith('crm_')||k.startsWith('sb-')||k.includes('supabase')) localStorage.removeItem(k); });
+  }catch(e){}
+  _initAppInProgress=false;
+  window._initAppStartedAt=null;
+  CU=null; CUProfile=null;
+  location.reload();
+};
+
+// ── Auto-limpeza silenciosa de caches com versão antiga ──
+// Roda uma vez na inicialização — sem reload, sem interrupção
+(function _autoInvalidateOldCache(){
+  try{
+    [...Object.keys(sessionStorage)].forEach(k=>{
+      if(!k.startsWith('crm_data_')&&!k.startsWith('crm_profile_')) return;
+      try{
+        const v=JSON.parse(sessionStorage.getItem(k));
+        if(v&&v._v!==CACHE_VERSION){ sessionStorage.removeItem(k); console.log('[cache] invalidado sessionStorage:',k); }
+      }catch(e){ sessionStorage.removeItem(k); }
+    });
+    [...Object.keys(localStorage)].forEach(k=>{
+      if(!k.startsWith('crm_xtab_')) return;
+      try{
+        const v=JSON.parse(localStorage.getItem(k));
+        if(v&&v._v!==CACHE_VERSION){ localStorage.removeItem(k); console.log('[cache] invalidado localStorage:',k); }
+      }catch(e){ localStorage.removeItem(k); }
+    });
+  }catch(e){}
+})();
+
 /* ═══ INIT ═══ */
+
+// ── Versão do cache: incrementar aqui invalida todos os caches antigos automaticamente ──
+const CACHE_VERSION = 4;
+
+// ── Leitura segura de cache com validação de versão e integridade ──
+function _readCache(userId){
+  // 1) sessionStorage (mesma aba) — mais fresco
+  try{
+    const raw=sessionStorage.getItem('crm_data_'+userId);
+    if(raw){
+      const c=JSON.parse(raw);
+      // Invalida se versão diferente, corrompido, ou sem profile/role
+      if(c._v!==CACHE_VERSION||!c.profile?.role||!c.profile?.user_id) throw new Error('versão/integridade inválida');
+      // Invalida se expirou (30 min para sessão)
+      if(Date.now()-c.ts>1800000) throw new Error('expirado');
+      console.log('[cache] sessionStorage OK, role='+c.profile.role);
+      return {src:'session',data:c};
+    }
+  }catch(e){
+    console.warn('[cache] sessionStorage descartado:',e.message);
+    try{sessionStorage.removeItem('crm_data_'+userId);}catch(_){}
+  }
+  // 2) localStorage (cross-tab) — profile+users sem leads
+  try{
+    const raw=localStorage.getItem('crm_xtab_'+userId);
+    if(raw){
+      const c=JSON.parse(raw);
+      if(c._v!==CACHE_VERSION||!c.profile?.role||c.profile?._fallback) throw new Error('versão/fallback');
+      if(Date.now()-c.ts>7200000) throw new Error('expirado');
+      console.log('[cache] localStorage xtab OK, role='+c.profile.role);
+      return {src:'xtab',data:c};
+    }
+  }catch(e){
+    console.warn('[cache] localStorage descartado:',e.message);
+    try{localStorage.removeItem('crm_xtab_'+userId);}catch(_){}
+  }
+  return null;
+}
+
+// ── Aplica dados do cache nas variáveis globais ──
+function _applyCache(data){
+  CUProfile=data.profile;
+  allLeads=data.leads||[];
+  allUsers=data.users||[];
+  allHist=data.hist||[];
+  allTasks=data.tasks||[];
+  allVendas=data.vendas||[];
+  allDocs=data.docs||[];
+  allEquipes=data.equipes||[];
+  allMembroEquipes=data.membros||[];
+  window._allEquipes=allEquipes;
+  window._allMembroEquipes=allMembroEquipes;
+  rebuildMaps();
+  invalidateDDDCache();
+}
+
+// ── Abre o app na UI (nav + dashboard) ──
+function _openUI(msg,pct){
+  showLoading(msg||'Abrindo CRM...',pct||80);
+  rebuildMaps();
+  invalidateDDDCache();
+  populateSelects();
+  renderNav();
+  goToDashboard();
+  hideLoading();
+  renderDashboard().catch(()=>{});
+  setupRealtime();
+  if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+  _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+  setTimeout(checkTaskAlerts,2000);
+}
+
 /* ═══ INICIALIZAÇÃO DO APP ═══ */
 async function initApp(user){
-  if(CU&&CU.id===user.id&&CUProfile) return;
-  if(_initAppInProgress) return;
+  // Só pula se nav realmente estiver visível na tela (app totalmente inicializado)
+  const navOk=document.getElementById('nav-body')?.children?.length>0;
+  const authOff=document.getElementById('auth-screen')?.style.display==='none';
+  if(CU&&CU.id===user.id&&CUProfile&&navOk&&authOff&&!CUProfile._fallback) return;
+
+  // Guard anti-duplo com auto-reset em 25s
+  if(_initAppInProgress){
+    const now=Date.now();
+    if(!window._initAppStartedAt) window._initAppStartedAt=now;
+    if(now-window._initAppStartedAt<25000) return;
+    console.warn('[initApp] guard >25s, forçando reset');
+    _initAppInProgress=false;
+  }
   _initAppInProgress=true;
+  window._appReadyWithFallback=false;
+  window._initAppStartedAt=Date.now();
+
   try{
     CU=user;
-    const _displayName = CU.user_metadata?.full_name || CU.nome || CU.name || CU.email || '';
-    document.getElementById('u-name').textContent = _displayName;
-    document.getElementById('u-av').textContent =
-      (_displayName || '?').charAt(0).toUpperCase();
+    const _dn=CU.user_metadata?.full_name||CU.nome||CU.name||CU.email||'';
+    document.getElementById('u-name').textContent=_dn;
+    document.getElementById('u-av').textContent=(_dn||'?').charAt(0).toUpperCase();
     document.getElementById('auth-screen').style.display='none';
+    showLoading('Abrindo CRM...',15);
 
-    // ── CACHE FIRST: mostra dados salvos instantaneamente
-    const cacheData=sessionStorage.getItem('crm_data_'+CU.id);
-    if(cacheData){
-      try{
-        const cached=JSON.parse(cacheData);
-        const isIncomplete = cached._incomplete ||
-          (cached.leads&&cached.leads.length<=1000&&cached.profile?.role==='admin'&&cached.leads.length>0);
-        if(isIncomplete){
-          console.log('Cache incompleto — inicializando UI com dados parciais e recarregando leads...');
-          CUProfile=cached.profile;
-          allLeads=cached.leads||[];
-          allUsers=cached.users||[];
-          allHist=cached.hist||[];
-          allTasks=cached.tasks||[];
-          allVendas=cached.vendas||[];
-          allDocs=cached.docs||[];
-          allEquipes=cached.equipes||[];
-          allMembroEquipes=cached.membros||[];
-          window._allEquipes=allEquipes;
-          window._allMembroEquipes=allMembroEquipes;
-          populateSelects();
-          renderNav();
-          goToDashboard();
-          renderDashboard().catch(()=>{});
-          setupRealtime();
-          setTimeout(checkTaskAlerts,2000);
-          if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-          _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-          sessionStorage.removeItem('crm_data_'+CU.id);
-          refreshInBackground();
-          return;
-        } else {
-          CUProfile=cached.profile;
-          allLeads=cached.leads||[];
-          allUsers=cached.users||[];
-          allHist=cached.hist||[];
-          allTasks=cached.tasks||[];
-          allVendas=cached.vendas||[];
-          allDocs=cached.docs||[];
-          allEquipes=cached.equipes||[];
-          allMembroEquipes=cached.membros||[];
-          window._allEquipes=allEquipes;
-          window._allMembroEquipes=allMembroEquipes;
-          populateSelects();
-          renderNav();
-          goToDashboard();
-          renderDashboard().catch(()=>{});
-          setupRealtime();
-          setTimeout(checkTaskAlerts,2000);
-          if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-          _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-          refreshInBackground();
-          return;
-        }
-      } catch(e){ sessionStorage.removeItem('crm_data_'+CU.id); }
+    // ── CACHE FIRST: tenta abrir sem rede ──
+    const cached=_readCache(CU.id);
+    if(cached){
+      _applyCache(cached.data);
+      _openUI('Carregando...',75);
+      // Sempre atualiza em background após abrir com cache
+      loadAll().then(()=>{
+        saveCache();
+        populateSelects();
+        renderDashboard().catch(()=>{});
+        if(isVendedor()) carregarMinhasSolicitacoes();
+        if(isAdmin()){ pollSolicitacoesAdmin(); setTimeout(verificarLeadsBloqueados,2000); }
+      }).catch(e=>console.warn('[bg-refresh] erro:',e.message));
+      return;
     }
 
-    // ── PRIMEIRA VEZ: carrega normalmente
-    const t=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),15000);
+    // ── SEM CACHE VÁLIDO: carrega do zero ──
+    const tSlow=setTimeout(()=>toast('Conexão lenta, aguarde...','err'),10000);
+    showLoading('Verificando perfil...', 20);
     await ensureProfile();
-    await loadAll();
-    clearTimeout(t);
-    saveCache();
-    if(!document.getElementById('page-dashboard')?.classList.contains('on')){
-      populateSelects();
-      renderNav();
-      goToDashboard();
-      renderDashboard().catch(()=>{});
-      setupRealtime();
-      setTimeout(checkTaskAlerts,2000);
-      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
-      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+    showLoading('Carregando leads e dados...', 50);
+    let loadAllOk=false;
+    try{
+      await loadAll();
+      loadAllOk=true;
+    } catch(loadErr){
+      console.warn('[initApp] loadAll erro:',loadErr.message);
     }
+    clearTimeout(tSlow);
+
+    // Se loadAll falhou completamente (Supabase offline), tenta usar cache do sessionStorage
+    if(!loadAllOk && !allUsers.length && !allLeads.length){
+      console.warn('[initApp] Supabase inacessível — tentando cache de emergência...');
+      const emergCache=sessionStorage.getItem('crm_data_'+CU.id);
+      if(emergCache){
+        try{
+          const ec=JSON.parse(emergCache);
+          if(ec.profile){ CUProfile=ec.profile; allLeads=ec.leads||[]; allUsers=ec.users||[];
+            allHist=ec.hist||[]; allTasks=ec.tasks||[]; allVendas=ec.vendas||[];
+            allDocs=ec.docs||[]; allEquipes=ec.equipes||[]; allMembroEquipes=ec.membros||[];
+            window._allEquipes=allEquipes; window._allMembroEquipes=allMembroEquipes;
+            toast('⚠️ Sem conexão — exibindo dados salvos','err');
+          }
+        }catch(ec){}
+      } else {
+        // Sem cache nenhum e sem internet — mostra aviso mas abre o app
+        toast('⚠️ Sem conexão com o servidor. Verifique sua internet.','err');
+      }
+    }
+
+    showLoading('Finalizando...', 90);
+    if(CUProfile&&!CUProfile._fallback){
+      // Limpa cache antigo com role possivelmente errado antes de salvar o correto
+      try{ localStorage.removeItem('crm_xtab_'+CU.id); }catch(e){}
+      if(allLeads.length||allUsers.length) saveCache();
+    }
+    // Sempre executa — a condição antiga (page-dashboard.on) nunca disparava
+    // porque o HTML já inicia com class="page on" nesse elemento
+    populateSelects();
+    renderNav();
+    if(isVendedor()) carregarMinhasSolicitacoes();
+    if(isAdmin()){
+      pollSolicitacoesAdmin(); setInterval(pollSolicitacoesAdmin,60000);
+      setTimeout(verificarLeadsBloqueados,2000);
+      setInterval(verificarLeadsBloqueados,120000);
+    }
+    goToDashboard();
+    hideLoading();
+    renderDashboard().catch(()=>{});
+    setupRealtime();
+    setTimeout(checkTaskAlerts,2000);
+    if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+    _taskAlertInterval=setInterval(checkTaskAlerts,60000);
   } catch(e){
+    hideLoading();
     console.error('initApp error:',e);
     if(e?.message?.includes('does not exist')||e?.message?.includes('não existe')){
       document.getElementById('setup-warning').style.display='flex';
     } else {
-      toast('Erro: '+(e?.message||e),'err');
-      document.getElementById('auth-screen').style.display='flex';
-      document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
+      // Tenta reabrir sem mostrar login — se tiver CUProfile carregado, renderiza mesmo com erro
+      if(CUProfile&&CU){
+        try{
+          populateSelects();
+          renderNav();
+          goToDashboard();
+          hideLoading();
+          renderDashboard().catch(()=>{});
+          window._appReadyWithFallback=true; // watchdog não deve reativar
+          toast('⚠️ Erro parcial ao carregar: '+(e?.message||e),'err');
+        } catch(re){
+          // Se até o render falhou, aí sim mostra login
+          document.getElementById('auth-screen').style.display='flex';
+          document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
+        }
+      } else {
+        toast('Erro: '+(e?.message||e),'err');
+        document.getElementById('auth-screen').style.display='flex';
+        document.getElementById('a-err').textContent='Erro ao carregar. Tente novamente.';
+      }
     }
   } finally {
     _initAppInProgress=false;
+    window._initAppStartedAt=null;
   }
 }
 
@@ -1474,9 +1786,22 @@ async function initApp(user){
         const{data:cfg}=await sb.from('crm_config').select('valor').eq('chave','force_logout_at').maybeSingle();
         if(cfg?.valor){
           const logoutAt=new Date(cfg.valor);
-          const loginAt=session.user.last_sign_in_at?new Date(session.user.last_sign_in_at):null;
-          if(loginAt&&loginAt<logoutAt){
-            console.log('Force logout triggered');
+          // Usa o iat (issued at) do access token — atualiza a cada refresh de token
+          // last_sign_in_at NÃO atualiza em refreshes, causava logout em loop
+          let tokenIssuedAt=null;
+          try{
+            const tokenParts=session.access_token?.split('.');
+            if(tokenParts&&tokenParts.length===3){
+              const payload=JSON.parse(atob(tokenParts[1]));
+              if(payload.iat) tokenIssuedAt=new Date(payload.iat*1000);
+            }
+          }catch(te){ console.warn('Token parse error:',te.message); }
+          // Fallback: last_sign_in_at (menos confiável mas melhor que nada)
+          if(!tokenIssuedAt && session.user.last_sign_in_at){
+            tokenIssuedAt=new Date(session.user.last_sign_in_at);
+          }
+          if(tokenIssuedAt && tokenIssuedAt < logoutAt){
+            console.log('Force logout triggered — token emitido antes do force_logout_at');
             await sb.auth.signOut({scope:'local'});
             Object.keys(localStorage).forEach(k=>{if(k.startsWith('sb-'))localStorage.removeItem(k);});
             Object.keys(sessionStorage).forEach(k=>{if(k.startsWith('crm_'))sessionStorage.removeItem(k);});
@@ -1490,10 +1815,62 @@ async function initApp(user){
   } catch(e){ console.warn('getSession error:',e.message); }
 })();
 
+/* ── WATCHDOG: detecta tela preta e recupera ── */
+(function startWatchdog(){
+  // Roda 10s após load e a cada 30s
+  // Se sessão existe mas app não inicializou → força init
+  async function watchdogCheck(){
+    try{
+      const authOk=document.getElementById('auth-screen')?.style.display==='none'||!document.getElementById('auth-screen');
+      const navRendered=document.getElementById('nav-body')?.children?.length>0;
+      // App está ok se: (CU+CUProfile+nav renderizado) OU (em fallback mas app abriu)
+      const appOk=(CU&&CUProfile&&navRendered)||window._appReadyWithFallback;
+      if(authOk&&!appOk){
+        // Se initApp está em progresso há menos de 25s, aguarda sem intervir
+        if(_initAppInProgress && window._initAppStartedAt && (Date.now()-window._initAppStartedAt)<25000){
+          console.warn('[watchdog] initApp em progresso, aguardando...');
+          return;
+        }
+        console.warn('[watchdog] Tela preta detectada — limpando cache e recuperando...');
+        hideLoading();
+        _initAppInProgress=false;
+        window._initAppStartedAt=null;
+        window._appReadyWithFallback=false;
+        try{
+          [...Object.keys(sessionStorage)].forEach(k=>{ if(k.startsWith('crm_')) sessionStorage.removeItem(k); });
+          [...Object.keys(localStorage)].forEach(k=>{ if(k.startsWith('crm_xtab_')) localStorage.removeItem(k); });
+        }catch(_){}
+        const{data:{session}}=await sb.auth.getSession();
+        if(session?.user) await initApp(session.user);
+        else {
+          hideLoading();
+          document.getElementById('auth-screen').style.display='flex';
+        }
+      }
+    }catch(e){ console.warn('[watchdog] erro:',e.message); }
+  }
+  // Aguarda 12s antes do 1º check (vendedor carrega rápido)
+  // Para admin/coord que podem demorar mais, o watchdog repete a cada 30s
+  setTimeout(watchdogCheck,12000);
+  setInterval(watchdogCheck,30000);
+  // Também roda ao tab voltar para foco (ex: alt+tab depois de dormir)
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible') setTimeout(watchdogCheck,1500);
+  });
+  window.addEventListener('focus',()=>{ setTimeout(watchdogCheck,1500); });
+})();
+
 /* Listener para login/logout em tempo real */
 sb.auth.onAuthStateChange(async(ev,session)=>{
   if(ev==='INITIAL_SESSION') return;
-  if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED') return;
+  // TOKEN_REFRESHED: só ignora se o app já inicializou (CU preenchido)
+  // Se CU está vazio mas sessão existe, o app travou — precisa inicializar
+  if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED'){
+    if(CU&&CUProfile) return; // app ok, ignora
+    // App não inicializou (tela preta) — força init
+    if(session?.user){ console.log('[auth] '+ev+' com app não inicializado — forçando init'); await initApp(session.user); }
+    return;
+  }
   if(ev==='SIGNED_OUT'){
     CU=null; CUProfile=null;
     _initAppInProgress=false;
@@ -1509,12 +1886,12 @@ sb.auth.onAuthStateChange(async(ev,session)=>{
 async function ensureProfile(){
   const name=CU.user_metadata?.full_name||CU.email.split('@')[0];
   const cacheKey='crm_profile_'+CU.id;
-  // Always try cache first for instant load
+  // Sempre tenta cache primeiro para abertura instantânea
   const cached=sessionStorage.getItem(cacheKey);
   if(cached){
     try{
       const p=JSON.parse(cached);
-      if(p&&p.role&&p.user_id===CU.id){
+      if(p&&p.role&&p.user_id===CU.id&&!p._fallback){
         CUProfile=p;
         console.log('Profile from cache, role:',CUProfile.role);
         // Refresh silently in background
@@ -1525,53 +1902,87 @@ async function ensureProfile(){
       }
     } catch(e){ sessionStorage.removeItem(cacheKey); }
   }
-  // No cache — fetch from DB with 12s timeout
+
+  // Fetch do DB com timeout reduzido: 5s 1ª tentativa, 4s 2ª
   const withTimeout=(promise,ms)=>Promise.race([
     promise,
     new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_profile')),ms))
   ]);
+
   let data,error;
   try{
-    const r=await withTimeout(
-      sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),12000
-    );
+    let r;
+    try{
+      r=await withTimeout(sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),5000);
+    } catch(firstErr){
+      if(firstErr.message==='timeout_profile'){
+        console.warn('[ensureProfile] 1ª tentativa timeout — retentando em 1s...');
+        await new Promise(res=>setTimeout(res,1000));
+        r=await withTimeout(sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),4000);
+      } else { throw firstErr; }
+    }
     data=r.data; error=r.error;
   } catch(e){
     if(e.message==='timeout_profile'){
       console.warn('ensureProfile timeout — usando fallback');
-      // Check sessionStorage cache first
-      const cacheKey='crm_profile_'+CU.id;
-      const cached=sessionStorage.getItem(cacheKey);
-      if(cached){
-        try{ CUProfile=JSON.parse(cached); console.log('Profile from cache:',CUProfile.role); return; }
-        catch(ce){ sessionStorage.removeItem(cacheKey); }
-      }
-      // Use temporary profile and retry in background
-      CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor'};
-      // Retry after 3s — when it succeeds, re-initialize with correct role
+
+      // 1) Tenta cache do localStorage cross-tab (mais persistente que sessionStorage)
+      try{
+        const xtab=localStorage.getItem('crm_xtab_'+CU.id);
+        if(xtab){
+          const c=JSON.parse(xtab);
+          if(c?.profile?.role&&c.profile.user_id===CU.id&&!c.profile._fallback){
+            CUProfile=c.profile;
+            console.log('[profileFallback] xtab cache encontrado, role:',CUProfile.role);
+            _setProfileUI(CUProfile.name||name, CUProfile.role);
+            return; // Perfil real do localStorage, watchdog ficará satisfeito
+          }
+        }
+      }catch(_){}
+
+      // 2) Fallback temporário — mas marca o app como inicializado para o watchdog
+      CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor',_fallback:true};
+      try{ sessionStorage.setItem(cacheKey,JSON.stringify(CUProfile)); }catch(se){}
+      _setProfileUI(name,'vendedor');
+
+      // ── CRÍTICO: marca app como pronto para o watchdog não lopar ──
+      window._appReadyWithFallback=true;
+
+      // 3) Retry em background — quando chegar, atualiza sem reload
       setTimeout(async()=>{
         try{
           const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
-          if(data&&data.role!==CUProfile.role){
-            console.log('Profile retry OK, role:',data.role);
+          if(data){
+            const roleAnterior=CUProfile?.role;
             CUProfile=data;
-            sessionStorage.setItem(cacheKey,JSON.stringify(data));
-            // Re-init with correct role
-            await loadAll();
-            saveCache();
-            renderNav();
-            renderDashboard();
-            toast('Perfil carregado: '+data.role,'ok');
-          } else if(data){
-            CUProfile=data;
-            sessionStorage.setItem(cacheKey,JSON.stringify(data));
+            window._appReadyWithFallback=false;
+            try{ sessionStorage.setItem(cacheKey,JSON.stringify(data)); }catch(se){}
+            _setProfileUI(data.name||name,data.role);
+            try{ saveCache(); }catch(sc){}
+            if(data.role!==roleAnterior){
+              console.log('[profileRetry] Role mudou para',data.role,'— recarregando nav...');
+              try{
+                Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_data_')||k.startsWith('crm_profile_')) sessionStorage.removeItem(k); });
+                Object.keys(localStorage).forEach(k=>{ if(k.startsWith('crm_xtab_')) localStorage.removeItem(k); });
+              }catch(ce){}
+              showLoading('Atualizando permissões...', 40);
+              await loadAll();
+              saveCache();
+              hideLoading();
+              renderNav();
+              populateSelects();
+              renderDashboard().catch(()=>{});
+              const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor'};
+              toast('Perfil atualizado: '+roleLabels[data.role],'ok');
+            }
           }
-        } catch(re){ console.warn('Profile retry failed:',re.message); }
+        } catch(re){ console.warn('[profileRetry] Falhou:',re.message); }
       },3000);
       return;
     }
     throw e;
   }
+
   if(error?.message?.includes('does not exist')){
     throw new Error('Tabela crm_users não existe. Execute o crm-setup-completo.sql no Supabase SQL Editor.');
   }
@@ -1582,14 +1993,22 @@ async function ensureProfile(){
     CUProfile=d2||{user_id:CU.id,name,email:CU.email,role:'vendedor'};
   } else {
     CUProfile=data;
-    try{ sessionStorage.setItem('crm_profile_'+CU.id,JSON.stringify(data)); }catch(e){}
+    try{ sessionStorage.setItem(cacheKey,JSON.stringify(data)); }catch(e){}
   }
-  const initials=CUProfile.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
-  document.getElementById('sb-name').textContent=CUProfile.name;
+  _setProfileUI(CUProfile.name,CUProfile.role);
+}
+
+function _setProfileUI(name,role){
   const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor'};
-  document.getElementById('sb-role').textContent=roleLabels[CUProfile.role]||CUProfile.role;
-  document.getElementById('u-name').textContent=CUProfile.name;
-  document.getElementById('u-av').textContent=initials;
+  const initials=(name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?';
+  const el_sbname=document.getElementById('sb-name');
+  const el_sbrole=document.getElementById('sb-role');
+  const el_uname=document.getElementById('u-name');
+  const el_uav=document.getElementById('u-av');
+  if(el_sbname) el_sbname.textContent=name||'';
+  if(el_sbrole) el_sbrole.textContent=roleLabels[role]||role||'Vendedor';
+  if(el_uname)  el_uname.textContent=name||'';
+  if(el_uav)    el_uav.textContent=initials;
 }
 
 /* ═══ PAGINAÇÃO: busca todos os registros superando o limite de 1000 do Supabase ═══ */
@@ -1615,7 +2034,7 @@ async function loadAll(){
   const isCoord=isCoordenador();
   const isSup=isSupervisor();
   const safe=async(q)=>{try{
-    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),25000));
+    const tOut=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),10000));
     const r=await Promise.race([q,tOut]);
     return r;
   }catch(e){console.warn('Query warn:',e.message);return{data:[],error:e};}};
@@ -1641,6 +2060,7 @@ async function loadAll(){
   allTasks=lt.data||[];
   allVendas=lv.data||[];
   allDocs=ld.data||[];
+  rebuildMaps();
 
   if(lu.error?.message?.includes('does not exist')){
     toast('⚠️ Tabelas não encontradas. Execute o SQL de setup no Supabase.','err');
@@ -1703,6 +2123,8 @@ async function loadAll(){
             }
             hideLoadingProgress(loadingToast,allLeads.length);
             saveCache();
+            rebuildMaps();
+            invalidateDDDCache();
             populateSelects();
             if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads(true);
             if(document.getElementById('page-dashboard')?.classList.contains('on')) renderDashboard().catch(()=>{});
@@ -1777,11 +2199,49 @@ async function loadAll(){
       // VENDEDOR — só os próprios leads
       const{data}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
       allLeads=data||[];
+      rebuildMaps();
+      invalidateDDDCache();
+
+      // Auto-refresh a cada 90s
+      if(!window._vendedorLeadRefreshInterval){
+        window._vendedorLeadRefreshInterval=setInterval(async()=>{
+          try{
+            const{data:fresh}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+            if(fresh){
+              allLeads=fresh;
+              rebuildMaps();
+              invalidateDDDCache();
+              const pg=document.querySelector('.nav-item.active')?.dataset?.page;
+              if(pg==='meus-leads') renderMeusLeads();
+            }
+          }catch(e){console.warn('Auto-refresh leads error:',e.message);}
+        },90000);
+      }
+
+      // ── VENDEDOR: finaliza UI imediatamente após carregar leads ──
+      // Sem isso a tela fica preta se o initApp path de "primeira vez" não chegar aqui
+      populateSelects();
+      renderNav();
+      goToDashboard();
+      hideLoading();
+      renderDashboard().catch(()=>{});
+      setupRealtime();
+      setTimeout(checkTaskAlerts,2000);
+      if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+      _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      carregarMinhasSolicitacoes();
+      saveCache();
+      return; // evita dupla chamada de renderNav/goToDashboard no initApp
     }
   } catch(e){
     console.error('Erro ao carregar leads:',e.message);
     toast('Erro ao carregar leads: '+e.message,'err');
     allLeads=[];
+    // Mesmo com erro, renderiza a UI para o vendedor não ficar em tela preta
+    populateSelects();
+    renderNav();
+    goToDashboard();
+    hideLoading();
   }
 
   loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
@@ -1825,6 +2285,7 @@ function isSupervisor(){return CUProfile?.role==='supervisor';}
 function isCoordenador(){return CUProfile?.role==='coordenador';}
 
 function isAdmin(){return CUProfile?.role==='admin';}
+function isVendedor(){return CUProfile?.role==='vendedor';}
 
 function populateSelects(){
   const vends=allUsers.filter(u=>u.role==='vendedor');
@@ -1845,6 +2306,45 @@ function populateSelects(){
   if(isAdmin()) populateDDDFilter();
 }
 function sel(id,html){const e=document.getElementById(id);if(e)e.innerHTML=html;}
+
+/* ══════════════════════════════════════════
+   PERFORMANCE UTILITIES
+   ══════════════════════════════════════════ */
+// Debounce — evita disparar a cada tecla
+function debounce(fn,ms){let t;return function(...a){clearTimeout(t);t=setTimeout(()=>fn.apply(this,a),ms);};}
+// Substitui o placeholder pela versão debounced real (280ms)
+_debouncedRenderLeads=debounce(function(){renderLeads(true);},280);
+
+// saveCache lazy — não bloqueia a UI, usa idle time
+let _saveCachePending=false;
+function saveCacheLazy(){
+  if(_saveCachePending) return;
+  _saveCachePending=true;
+  const run=()=>{_saveCachePending=false;saveCache();};
+  if(typeof requestIdleCallback==='function') requestIdleCallback(run,{timeout:3000});
+  else setTimeout(run,500);
+}
+
+// Maps O(1) para lookups de users e leads — substituem allUsers.find() / allLeads.find() em hot paths
+let _userMap=new Map();
+let _leadMap=new Map();
+function rebuildMaps(){
+  _userMap=new Map(allUsers.map(u=>[u.user_id,u]));
+  _leadMap=new Map(allLeads.map(l=>[l.id,l]));
+}
+function findUser(id){return _userMap.get(id)||allUsers.find(u=>u.user_id===id);}
+function findLead(id){return _leadMap.get(id)||allLeads.find(l=>l.id===id);}
+
+// Cache de DDD — reconstruído só quando allLeads muda, não a cada renderLeads()
+let _dddCache=null;
+function getDDDs(){
+  if(_dddCache) return _dddCache;
+  const m={};
+  allLeads.forEach(l=>{const d=extractDDD(l.telefone);if(d) m[d]=(m[d]||0)+1;});
+  _dddCache=m;
+  return m;
+}
+function invalidateDDDCache(){_dddCache=null;}
 
 /* ═══ NAV ═══ */
 function renderNav(){
@@ -1893,6 +2393,8 @@ function renderNav(){
     html+=`<div class="nav-sect">Meus Leads</div>
       <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">${IC.myteam}</span><span class="nav-label">Meus Leads</span></div>
       <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Meu Funil</span></div>
+      <div class="nav-item" onclick="nav('busca-base',this);renderBuscaBase()" title="Buscar na Base"><span class="nav-icon">🔍</span><span class="nav-label">Buscar na Base</span></div>
+      <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>
       <div class="nav-item" onclick="openVendasPage('todos')" title="Minhas Vendas"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Minhas Vendas</span></div>`;
     // Vendedor NÃO vê "Clientes Vendidos" — apenas a aba de Vendas acima
   }
@@ -1916,7 +2418,8 @@ function renderNav(){
 
   if(isAdm){
     html+=`<div class="nav-sect">Administração</div>
-      <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">${IC.users}</span><span class="nav-label">Usuários</span></div>`;
+      <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">${IC.users}</span><span class="nav-label">Usuários</span></div>
+      <div class="nav-item" id="nav-solicitacoes" onclick="nav('solicitacoes',this);renderSolicitacoes()" title="Solicitações"><span class="nav-icon">📩</span><span class="nav-label">Solicitações<span id="sol-adm-badge"></span></span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
   const flBtn=document.getElementById('sb-force-logout');
@@ -1942,7 +2445,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD'};
 function nav(page,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
@@ -1981,6 +2484,8 @@ function nav(page,el){
   if(page==='coord-funil') renderCoordFunil();
   if(page==='coord-dist') renderCoordDist();
   if(page==='meu-funil') renderMeuFunil();
+  if(page==='busca-base') renderBuscaBase();
+  if(page==='solicitacoes') renderSolicitacoes();
   if(page==='funil-vendedor') {/* rendered by openFunilVendedor */}
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
@@ -2022,6 +2527,8 @@ async function renderDashboard(){
   if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)">${semVend.toLocaleString('pt-BR')}</div></div>`;
   // Ranking panel: admin e coordenador veem o painel de colunas
   document.getElementById('dash-cols').style.display=(isAdmin()||isCoordenador()||isSupervisor())?'':'none';
+  const adminTools=document.getElementById('dash-admin-tools');
+  if(adminTools) adminTools.style.display=isAdmin()?'':'none';
   document.getElementById('dash-kpis').innerHTML=kpis;
 
   // Ranking de fechamentos
@@ -2044,8 +2551,8 @@ async function renderDashboard(){
   if(isAdmin()){
     if(actPanelWrap) actPanelWrap.style.display='';
     actPanel.innerHTML=allHist.slice(0,15).map(h=>{
-      const lead=allLeads.find(l=>l.id===h.lead_id);
-      const user=allUsers.find(u=>u.user_id===h.user_id);
+      const lead=findLead(h.lead_id);
+      const user=findUser(h.user_id);
       return`<div class="hist-item"><div class="hist-dot"></div><div>
         <div class="hist-text">${h.tipo} — ${lead?.nome||'Lead removido'}</div>
         <div class="hist-meta">${(h.descricao||'').slice(0,60)} · ${user?.name||'—'} · ${fmtDt(h.created_at)}</div>
@@ -2117,11 +2624,11 @@ function populateDDDFilter(){
   const sel=document.getElementById('l-f-ddd');
   if(!sel||!isAdmin()) return;
   sel.style.display='';
-  const ddds=[...new Set(allLeads.map(l=>extractDDD(l.telefone)).filter(Boolean))].sort((a,b)=>a-b);
+  const ddds=getDDDs();
+  const sorted=Object.keys(ddds).sort((a,b)=>a-b);
   const cur=sel.value;
-  sel.innerHTML='<option value="">Todos os DDDs</option>'+ddds.map(d=>`<option value="${d}">${d} (${allLeads.filter(l=>extractDDD(l.telefone)===d).length})</option>`).join('');
+  sel.innerHTML='<option value="">Todos os DDDs</option>'+sorted.map(d=>`<option value="${d}">${d} (${ddds[d]})</option>`).join('');
   if(cur) sel.value=cur;
-  // Mostrar filtro tipo lead para admins
   const tipoSel=document.getElementById('l-f-tipo');
   if(tipoSel) tipoSel.style.display='';
 }
@@ -2195,7 +2702,7 @@ function renderLeads(resetPage){
   document.getElementById('l-tbody').innerHTML=pageItems.length===0
     ?`<tr><td colspan="9"><div class="empty"><div class="ei">👥</div>${q?'Nenhum lead encontrado na sua base local.':'Nenhum lead'}</div></td></tr>`
     :pageItems.map(l=>{
-      const u=allUsers.find(u=>u.user_id===l.responsavel_id);
+      const u=findUser(l.responsavel_id);
       const isChecked=_selectedLeadIds.has(l.id);
       return`<tr>
         <td class="lead-chk-td" style="width:36px;${showChk?'':'display:none'}"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" ${isChecked?'checked':''} onchange="onLeadChkChange(this)"></td>
@@ -2207,7 +2714,7 @@ function renderLeads(resetPage){
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
         <td><div style="display:flex;gap:5px">
           <button class="act" onclick="editLead('${l.id}')">✏️</button>
-          ${isAdmin()?`<button class="act red" onclick="delLead('${l.id}')">🗑️</button>`:''}
+          ${(isAdmin()||isSupervisor())?`<button class="act red" onclick="delLead('${l.id}')">🗑️</button>`:''}
         </div></td>
       </tr>`;
     }).join('');
@@ -2395,23 +2902,42 @@ async function assumirLead(leadId){
 }
 
 /* ═══ MEUS LEADS (vendedor) ═══ */
+function fmtDuracao(lead){
+  // Retorna string discreta mostrando há quantos dias o lead está na base do vendedor
+  const ref = lead.atribuido_em || lead.distribuido_em;
+  if(!ref) return '';
+  const dias = Math.floor((Date.now() - new Date(ref)) / (1000*60*60*24));
+  if(dias === 0) return '<span style="font-size:9.5px;color:var(--green);opacity:0.8;white-space:nowrap">hoje</span>';
+  if(dias === 1) return '<span style="font-size:9.5px;color:var(--muted2);white-space:nowrap">1 dia</span>';
+  // A partir de 7 dias fica laranja discreto, a partir de 10 fica vermelho suave
+  const cor = dias >= 10 ? 'color:#c0614d' : dias >= 7 ? 'color:var(--orange);opacity:0.75' : 'color:var(--muted2)';
+  return `<span style="font-size:9.5px;${cor};white-space:nowrap">${dias}d</span>`;
+}
+
 function renderMeusLeads(){
   const q=(document.getElementById('ml-srch')?.value||'').toLowerCase();
   const fs=document.getElementById('ml-f-status')?.value;
-  const f=allLeads.filter(l=>{
+  let f=allLeads.filter(l=>{
     if(l.responsavel_id!==CU.id)return false;
     if(q&&!l.nome.toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
     if(fs&&l.status!==fs)return false;
     return true;
   });
+  // Ordena: mais recentemente atribuídos primeiro (puxados aparecem no topo)
+  f.sort((a,b)=>{
+    const ta = new Date(a.atribuido_em||a.distribuido_em||a.created_at||0).getTime();
+    const tb = new Date(b.atribuido_em||b.distribuido_em||b.created_at||0).getTime();
+    return tb - ta;
+  });
   document.getElementById('ml-title').textContent=`Meus Leads — ${f.length}`;
   document.getElementById('ml-tbody').innerHTML=f.length===0
-    ?`<tr><td colspan="6"><div class="empty"><div class="ei">👤</div>Nenhum lead atribuído a você</div></td></tr>`
+    ?`<tr><td colspan="7"><div class="empty"><div class="ei">👤</div>Nenhum lead atribuído a você</div></td></tr>`
     :f.map(l=>`<tr>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','meus-leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
+        <td style="text-align:center">${fmtDuracao(l)}</td>
         <td><div style="display:flex;gap:5px">
           <button class="act" onclick="editLead('${l.id}')">✏️</button>
           <button class="act" onclick="openDetail('${l.id}','meus-leads')">Ver →</button>
@@ -2446,67 +2972,79 @@ async function puxarLeadsRemalho(){
   if(btn){ btn.disabled=true; btn.innerHTML='⏳ Puxando...'; }
 
   try{
-    // Busca leads remalho sem responsável E sem equipe (pool livre), ordenados mais antigo primeiro
-    // Usa .range(0,4) para pegar exatamente 5
+    // Busca leads remalho sem responsável, pool livre (equipe_id null OU vazio)
+    // Ordena mais antigo primeiro para dar prioridade a quem esperou mais
     const{data, error} = await sb.from('crm_leads')
       .select('*')
       .eq('tipo_lead','Remalho')
       .is('responsavel_id', null)
-      .is('equipe_id', null)
       .order('created_at', {ascending: true})
-      .range(0, 4);
+      .range(0, 19); // pega 20 candidatos para filtrar equipe_id vazio/null
 
-    if(error){ toast('Erro ao buscar leads: '+error.message,'err'); return; }
-    if(!data||data.length===0){
-      toast('Não há leads remalho disponíveis no momento 🎣','err');
+    if(error){
+      console.error('[Puxador] Erro na busca:', error);
+      toast('❌ Erro ao buscar leads: '+error.message,'err');
+      return;
+    }
+
+    // Filtra: aceita equipe_id null, undefined, '' ou '0'
+    const disponiveis = (data||[]).filter(l=>!l.equipe_id || l.equipe_id==='' || l.equipe_id==='0');
+
+    if(!disponiveis.length){
+      toast('🎣 Não há leads remalho disponíveis no momento','err');
       await atualizarContadorPuxador();
       return;
     }
 
-    const ids = data.map(l=>l.id);
+    // Pega no máximo 5
+    const candidatos = disponiveis.slice(0, 5);
+    const ids = candidatos.map(l=>l.id);
     const now = new Date().toISOString();
 
-    // Atribui ao vendedor com double-check atômico:
-    // O filtro .is('responsavel_id', null) garante que só atualiza leads que AINDA
-    // estão livres no momento do UPDATE — evita roubar lead de outro vendedor que
-    // puxou entre o SELECT e o UPDATE (race condition).
-    const assignPayload = buildAssignPayload(CU.id, now);
+    // Monta payload — reseta status para Novo e registra data de atribuição
+    const assignPayload = {
+      responsavel_id: CU.id,
+      distribuido_em: now,
+      status: 'Novo',
+    };
+    if(_hasAtribuidoEm) assignPayload.atribuido_em = now;
+
+    // UPDATE atômico: só atualiza leads que AINDA estão sem responsável (race condition guard)
     const{data: updated, error: updErr} = await sb.from('crm_leads')
       .update(assignPayload)
       .in('id', ids)
-      .is('responsavel_id', null)   // ← só atualiza se ainda estiver livre
-      .is('equipe_id', null)         // ← e sem equipe
-      .select('id');
+      .is('responsavel_id', null)
+      .select('*'); // retorna o objeto completo para atualizar a memória
 
-    if(updErr){ toast('Erro ao atribuir leads: '+updErr.message,'err'); return; }
+    if(updErr){
+      console.error('[Puxador] Erro no update:', updErr);
+      toast('❌ Erro ao atribuir leads: '+updErr.message,'err');
+      return;
+    }
 
-    // Verifica quais leads foram realmente atribuídos (pode ser menos que 5
-    // se outro vendedor puxou ao mesmo tempo)
-    const idsAtribuidos = new Set((updated||[]).map(r=>r.id));
-    const leadsAtribuidos = data.filter(l=>idsAtribuidos.has(l.id));
+    const leadsAtribuidos = updated||[];
 
     if(!leadsAtribuidos.length){
-      toast('Os leads disponíveis foram puxados por outro vendedor. Tente novamente 🎣','err');
+      toast('🎣 Os leads foram puxados por outro vendedor. Tente novamente!','err');
       await atualizarContadorPuxador();
       return;
     }
 
-    // Atualiza memória local apenas dos leads que foram efetivamente atribuídos
+    // Atualiza memória local: remove do lugar original e insere no INÍCIO
+    // para que apareçam no topo da lista "Meus Leads"
     leadsAtribuidos.forEach(lead=>{
       lead.responsavel_id = CU.id;
       lead.distribuido_em = now;
-      lead.atribuido_em = now;
+      if(_hasAtribuidoEm) lead.atribuido_em = now;
       lead.status = 'Novo';
+      // Remove da posição atual se já estava em allLeads
       const idx = allLeads.findIndex(l=>l.id===lead.id);
       if(idx > -1){
-        allLeads[idx].responsavel_id = CU.id;
-        allLeads[idx].distribuido_em = now;
-        allLeads[idx].atribuido_em = now;
-        allLeads[idx].status = 'Novo';
-      } else {
-        allLeads.push(lead);
+        allLeads.splice(idx, 1);
       }
     });
+    // Insere todos no início (ordem: mais recentemente puxado primeiro)
+    allLeads.unshift(...leadsAtribuidos);
 
     // Registra no histórico
     try{
@@ -2518,17 +3056,17 @@ async function puxarLeadsRemalho(){
         created_at: now
       }));
       await sb.from('crm_historico').insert(histRows);
-    } catch(he){ console.warn('Hist puxador error:', he.message); }
+    } catch(he){ console.warn('[Puxador] Hist error:', he.message); }
 
-    saveCache();
+    saveCacheLazy();
     renderMeusLeads();
     await atualizarContadorPuxador();
     const n = leadsAtribuidos.length;
-    toast(n+' lead'+(n!==1?'s remalhos':' remalho')+' puxado'+(n!==1?'s':'')+' com sucesso! 🎣','ok');
+    toast('🎣 '+n+' lead'+(n!==1?'s remalhos':' remalho')+' puxado'+(n!==1?'s':'')+' com sucesso!','ok');
 
   } catch(e){
-    console.error('puxarLeadsRemalho error:', e);
-    toast('Erro inesperado: '+e.message,'err');
+    console.error('[Puxador] Erro inesperado:', e);
+    toast('❌ Erro inesperado: '+e.message,'err');
   } finally {
     _puxadorBusy = false;
     if(btn){ btn.disabled=false; btn.innerHTML='🎣 Puxar 5 Remalhos'; }
@@ -2560,15 +3098,30 @@ async function openDetail(id,from){
   fromPage=from;
   detailLeadId=id;
   let lead=allLeads.find(l=>l.id===id);
-  // Se o lead nao esta em memoria (ex: coordenador acessando venda de lead fora do seu escopo),
-  // busca diretamente do Supabase e adiciona ao allLeads temporariamente
-  if(!lead){
-    try{
-      const{data,error}=await sb.from('crm_leads').select('*').eq('id',id).maybeSingle();
-      if(error||!data){toast('Lead nao encontrado','err');return;}
-      lead=data;
-      allLeads.push(lead); // cache temporario para evitar re-fetch
-    }catch(e){toast('Erro ao buscar lead','err');return;}
+
+  // Sempre rebusca o lead do banco para garantir responsavel_id atualizado.
+  // Evita que vendedor que perdeu o lead (redistribuído) continue vendo como dono.
+  try{
+    const{data:freshLead,error:flErr}=await sb.from('crm_leads').select('*').eq('id',id).maybeSingle();
+    if(flErr||!freshLead){
+      if(!lead){toast('Lead não encontrado','err');return;}
+      // Se falhou mas temos cache, usa o cache mesmo
+    } else {
+      // Atualiza cache com dado fresco
+      const idx=allLeads.findIndex(l=>l.id===id);
+      if(idx>-1) allLeads[idx]=freshLead; else allLeads.push(freshLead);
+      lead=freshLead;
+    }
+  }catch(e){
+    if(!lead){toast('Erro ao buscar lead','err');return;}
+    // usa cache se falhar
+  }
+
+  // Bloqueia vendedor que não é mais o responsável
+  if(CUProfile?.role==='vendedor' && lead.responsavel_id && lead.responsavel_id!==CU.id){
+    toast('Este lead foi redistribuído e não pertence mais a você.','err');
+    renderMeusLeads();
+    return;
   }
   const resp=allUsers.find(u=>u.user_id===lead.responsavel_id);
   // Busca histórico sempre direto do Supabase (sem limite de cache) para não perder registros
@@ -2616,7 +3169,7 @@ async function openDetail(id,from){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
         ${canEditData?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
-        ${isAdmin()?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >🗑️ Apagar</button>`:''}
+        ${(isAdmin()||isSupervisor())?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >🗑️ Apagar</button>`:''}
         ${(isAdminOrCoord()||isSupervisor())&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">🏅 Enviar p/ Equipe</button>`:''}
         ${(isAdminOrCoord()||isSupervisor())&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">↩️ Recolher</button>`:''}
       </div>
@@ -2940,7 +3493,7 @@ function renderDistribuicao(){
       updateDistEquipePreview();
     }
   }
-  const vends=allUsers.filter(u=>u.role==='vendedor');
+  const vends=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   document.getElementById('dist-vendedores').innerHTML=vends.length===0
     ?'<div class="empty"><div class="ei">👥</div>Nenhum vendedor cadastrado</div>'
     :vends.map(u=>{
@@ -2972,7 +3525,7 @@ function renderDistribuicao(){
 }
 
 async function quickDist(leadId){
-  const vends=allUsers.filter(u=>u.role==='vendedor');
+  const vends=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   const idx=(dc?.ultimo_vendedor_idx||0)%vends.length;
@@ -2989,7 +3542,7 @@ async function quickDist(leadId){
 async function distAutoAll(){
   const semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
   if(!semVend.length){toast('Nenhum lead sem vendedor e sem equipe','err');return;}
-  const vends=allUsers.filter(u=>u.role==='vendedor');
+  const vends=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
@@ -3235,12 +3788,32 @@ async function saveLead(){
   
   // VERIFICAÇÃO DE DUPLICATA (Nome + Telefone)
   if(!editLeadId){
-    const duplicado = allLeads.find(l => 
-      l.nome.toLowerCase() === nome.toLowerCase() && 
-      (l.telefone || '').replace(/\D/g,'') === telefone.replace(/\D/g,'')
+    // Busca por telefone (mais confiável) ou nome exato
+    const telDigits = telefone.replace(/\D/g,'');
+    const duplicado = allLeads.find(l =>
+      (telDigits.length >= 8 && (l.telefone||'').replace(/\D/g,'') === telDigits) ||
+      (l.nome.toLowerCase() === nome.toLowerCase() && (l.telefone||'').replace(/\D/g,'') === telDigits)
     );
     if(duplicado){
-      toast('Lead já existe (mesmo nome e número)!','err');
+      // Mostra modal de confirmação para puxar/atribuir
+      const respNome = allUsers.find(u=>u.user_id===duplicado.responsavel_id)?.name || 'sem vendedor';
+      const msg = `"${duplicado.nome}" já está na base.\nResponsável atual: ${respNome}\n\nDeseja atribuir este lead a você?`;
+      if(confirm(msg)){
+        // Atribui ao usuário atual
+        const patchPayload = {responsavel_id: CU.id, status: duplicado.status||'Novo'};
+        await sb.from('crm_leads').update(patchPayload).eq('id', duplicado.id);
+        const i = allLeads.findIndex(l=>l.id===duplicado.id);
+        if(i>-1) Object.assign(allLeads[i], patchPayload);
+        await sb.from('crm_historico').insert({
+          lead_id: duplicado.id, user_id: CU.id,
+          tipo: '🔄 Reatribuição',
+          descricao: `Lead puxado por ${CU.name||CU.email} (já existia na base — resp. anterior: ${respNome})`,
+          created_at: new Date().toISOString()
+        });
+        toast(`Lead "${duplicado.nome}" atribuído a você!`,'ok');
+        closeModal('lead');
+        if(CUProfile?.role==='vendedor') renderMeusLeads(); else renderLeads(true);
+      }
       return;
     }
   }
@@ -3363,6 +3936,7 @@ function editLead(id){
 }
 
 async function delLead(id){
+  if(!isAdmin()&&!isSupervisor()){toast('Sem permissão para apagar leads','err');return;}
   if(!confirm('Remover lead e todo o histórico?'))return;
   await sb.from('crm_historico').delete().eq('lead_id',id);
   await sb.from('crm_tarefas').delete().eq('lead_id',id);
@@ -3533,14 +4107,25 @@ async function saveVenda(){
     if(!catFiles.foto.length){toast('Anexe o Documento com Foto','err');return;}
     if(!catFiles.contrato.length){toast('Anexe o Contrato','err');return;}
     if(!catFiles.comprovante.length){toast('Anexe o Comprovante de Pagamento','err');return;}
+  } else {
+    // Venda existente: verifica se docs obrigatórios estão faltando (upload anterior pode ter falhado parcialmente)
+    const vendaDocsSalvos = allDocs.filter(d=>d.venda_id===existingV.id);
+    const temFoto = vendaDocsSalvos.some(d=>(d.nome||'').toLowerCase().includes('foto'));
+    const temContrato = vendaDocsSalvos.some(d=>(d.nome||'').toLowerCase().includes('contrato'));
+    const temComprovante = vendaDocsSalvos.some(d=>(d.nome||'').toLowerCase().includes('comprovante'));
+    // Se algum doc obrigatório está faltando no banco E não foi anexado agora, avisa (não bloqueia — permite re-upload)
+    const faltando = [];
+    if(!temFoto && !catFiles.foto.length) faltando.push('Documento com Foto');
+    if(!temContrato && !catFiles.contrato.length) faltando.push('Contrato');
+    if(!temComprovante && !catFiles.comprovante.length) faltando.push('Comprovante de Pagamento');
+    if(faltando.length){
+      toast('⚠️ Documento(s) faltando: '+faltando.join(', ')+'. Anexe para completar a venda.','err');
+      return;
+    }
   }
 
   const lead=allLeads.find(l=>l.id===vendaLeadId);
   const qtdCotas = Math.max(1, parseInt(v('v-qtd-cotas'))||1);
-
-  // Verifica se a coluna qtd_cotas já existe no banco (pode não ter sido migrada ainda)
-  const _hasQtdCotas = allVendas.length===0 || 'qtd_cotas' in (allVendas[0]||{});
-
   const updatePayload={
     cpf:v('v-cpf'),data_nascimento:v('v-nasc')||null,
     grupo:v('v-grupo')||null,cota:v('v-cota')||null,
@@ -3548,7 +4133,7 @@ async function saveVenda(){
     valor_credito:parseBrl(v('v-credito'))||null,
     parcela:parseBrl(v('v-parcela'))||null,
     observacoes:v('v-obs')||null,
-    ...(_hasQtdCotas ? {qtd_cotas:qtdCotas} : {}),
+    qtd_cotas:qtdCotas,
   };
   const insertPayload={...updatePayload,
     lead_id:vendaLeadId,vendedor_id:lead?.responsavel_id||CU.id,
@@ -3558,27 +4143,16 @@ async function saveVenda(){
   // ── Salva/atualiza registro da venda ──
   let vd=null;
   if(existingV){
-    let{data:upd,error}=await sb.from('crm_vendas').update(updatePayload).eq('id',existingV.id).select().maybeSingle();
-    // Fallback: se falhou por coluna ausente, tenta sem qtd_cotas
-    if(error?.message?.includes('qtd_cotas')){
-      const payloadSemQtd={...updatePayload};delete payloadSemQtd.qtd_cotas;
-      const r2=await sb.from('crm_vendas').update(payloadSemQtd).eq('id',existingV.id).select().maybeSingle();
-      upd=r2.data; if(r2.error){toast('Erro ao atualizar venda: '+r2.error.message,'err');return;}
-    } else if(error){toast('Erro ao atualizar venda: '+error.message,'err');return;}
+    const{data:upd,error}=await sb.from('crm_vendas').update(updatePayload).eq('id',existingV.id).select().maybeSingle();
+    if(error){toast('Erro ao atualizar venda: '+error.message,'err');return;}
     vd=upd||existingV;
     const vi=allVendas.findIndex(vx=>vx.id===existingV.id);
     if(vi>-1) Object.assign(allVendas[vi],updatePayload);
   } else {
-    let{data:ins,error}=await sb.from('crm_vendas').insert(insertPayload).select().maybeSingle();
-    // Fallback: se falhou por coluna ausente, tenta sem qtd_cotas
-    if(error?.message?.includes('qtd_cotas')){
-      const payloadSemQtd={...insertPayload};delete payloadSemQtd.qtd_cotas;
-      const r2=await sb.from('crm_vendas').insert(payloadSemQtd).select().maybeSingle();
-      ins=r2.data; if(r2.error){toast('Erro ao salvar venda: '+r2.error.message,'err');return;}
-    } else if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
+    const{data:ins,error}=await sb.from('crm_vendas').insert(insertPayload).select().maybeSingle();
+    if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
     vd=ins;
-    // Guarda qtdCotas no objeto local mesmo sem coluna no banco
-    if(vd) { vd.qtd_cotas=qtdCotas; allVendas.unshift(vd); }
+    if(vd) allVendas.unshift(vd);
   }
 
   // ── Guarda de segurança: vd deve ter id antes de qualquer upload ──
@@ -3598,7 +4172,7 @@ async function saveVenda(){
         seq++;
         // Nome de arquivo saneado: remove caracteres problemáticos para o storage
         const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80);
-        const uniq=`${Date.now()}-${seq}-${Math.random().toString(36).slice(2,8)}`;
+        const uniq=`${Date.now()}-${seq}-${(typeof performance!=='undefined'?Math.floor(performance.now()*1000):Math.floor(Math.random()*1e9))}-${Math.random().toString(36).slice(2,8)}`;
         const storagePath=`${vendaLeadId}/${vd.id}/${cat}-${uniq}-${safeName}`;
 
         const{error:ueErr}=await sb.storage.from('crm-documentos').upload(storagePath,file,{upsert:false});
@@ -3622,25 +4196,25 @@ async function saveVenda(){
         if(dbErr){
           console.error('DB insert doc error ['+file.name+']:', dbErr.message);
           uploadErrors.push(file.name+' (db)');
-        } else if(dc){
-          allDocs.push(dc);
         }
+        // Não faz push individual — a sincronização abaixo garante consistência
       }
     }
 
     if(uploadErrors.length){
       toast('⚠️ Falha ao enviar: '+uploadErrors.slice(0,3).join(', ')+(uploadErrors.length>3?' e mais...':''),'err');
     }
-
-    // Sincroniza allDocs com banco para garantir consistência
-    try{
-      const{data:freshDocs}=await sb.from('crm_documentos').select('*').eq('lead_id',vendaLeadId);
-      if(freshDocs){
-        allDocs=allDocs.filter(d=>d.lead_id!==vendaLeadId);
-        allDocs.push(...freshDocs);
-      }
-    }catch(syncErr){console.warn('Sync docs error:',syncErr.message);}
   }
+
+  // Sincroniza allDocs com banco para garantir consistência (sempre, não só quando há novos arquivos)
+  // Isso evita documentos duplicados na memória após uploads parciais ou recarregamentos
+  try{
+    const{data:freshDocs}=await sb.from('crm_documentos').select('*').eq('lead_id',vendaLeadId);
+    if(freshDocs){
+      allDocs=allDocs.filter(d=>d.lead_id!==vendaLeadId);
+      allDocs.push(...freshDocs);
+    }
+  }catch(syncErr){console.warn('Sync docs error:',syncErr.message);}
 
   // ── Atualiza status do lead (só na criação) ──
   if(!existingV){
@@ -3650,7 +4224,7 @@ async function saveVenda(){
   }
 
   catFiles={foto:[],contrato:[],boleto:[],comprovante:[]};
-  saveCache();
+  saveCacheLazy();
   closeModal('venda');
   toast(existingV?'Venda atualizada com sucesso!':'Venda registrada com sucesso!','ok');
 
@@ -3681,6 +4255,7 @@ async function updateVendaStatus(id,status){
   if(error){toast('Erro: '+error.message,'err');return;}
   const i=allVendas.findIndex(v=>v.id===id);
   const vendaAntes=allVendas[i];
+  const statusAnterior=vendaAntes?.status_venda; // guarda ANTES de mudar
   if(i>-1) allVendas[i].status_venda=status;
   // Registra no histórico do lead
   if(vendaAntes?.lead_id){
@@ -3694,20 +4269,32 @@ async function updateVendaStatus(id,status){
     const{data:hVs}=await sb.from('crm_historico').select('*').eq('lead_id',vendaAntes.lead_id).order('created_at',{ascending:false});
     if(hVs){allHist=allHist.filter(h=>h.lead_id!==vendaAntes.lead_id);allHist.push(...hVs);}
   }
-  saveCache();
+  saveCacheLazy();
   toast('Venda '+status.toLowerCase()+'!','ok');
   renderDashboard();
 
-  // ── Cancelado → -1 no ranking Firebase ──
-  // Aprovado → não muda (já estava +1 desde Pendente)
-  if(status==='Cancelado' && vendaAntes && typeof sincronizarVendaFirebase==='function'){
+  // ── Sincronização Firebase do Ranking ──
+  // Cancelado → -qtdCotas (venda perdida)
+  // Aprovado vindo de Cancelado → +qtdCotas (venda recuperada/re-aprovada)
+  // Aprovado vindo de Pendente → sem delta (já estava +1 desde a criação)
+  if(typeof sincronizarVendaFirebase==='function' && vendaAntes){
     const lead = allLeads.find(l=>l.id===vendaAntes.lead_id);
     const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
     const equipe = resolverEquipeParaVenda(lead, vendedor);
-    const delta = -(vendaAntes.qtd_cotas||1);
-    sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, delta).catch(e=>
-      console.warn('Firebase ranking sync (cancelado) error:',e.message)
-    );
+    let delta = 0;
+    if(status==='Cancelado'){
+      // Só desconta se não estava já cancelado
+      if(statusAnterior!=='Cancelado') delta = -(vendaAntes.qtd_cotas||1);
+    } else if(status==='Aprovado' && statusAnterior==='Cancelado'){
+      // Venda reprovada sendo aprovada novamente → devolve as cotas ao ranking
+      delta = +(vendaAntes.qtd_cotas||1);
+      console.log(`[FB Ranking] Venda re-aprovada (era Cancelado) → +${delta} cotas para "${vendedor?.name}"`);
+    }
+    if(delta!==0){
+      sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, delta).catch(e=>
+        console.warn('Firebase ranking sync error:',e.message)
+      );
+    }
   }
 
   // Refresh vendas page if open, otherwise refresh detail
@@ -3785,7 +4372,7 @@ async function distManual(){
 
 /* ═══ DIST AUTO ═══ */
 async function distAuto(){
-  const vends=allUsers.filter(u=>u.role==='vendedor');
+  const vends=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   let semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
   const qtd=parseInt(v('da-qtd'))||semVend.length;
@@ -3885,7 +4472,7 @@ async function quickTipoToggle(leadId,novoTipo,el){
   if(error){toast('Erro: '+error.message,'err');el.textContent=novoTipo==='Remalho'?'🆕 Novo':'♻️ Remalho';return;}
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1) allLeads[i].tipo_lead=novoTipo;
-  saveCache();
+  saveCacheLazy();
   // Re-render wherever we are
   if(document.getElementById('page-lead-detail')?.classList.contains('on')) openDetail(leadId,fromPage);
   else if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads();
@@ -3916,7 +4503,7 @@ async function togglePropostaQuente(leadId,ativo,el){
     tipo:'🔒 Interno (Adm)',
     descricao:ativo?'🔥 Lead marcado como Proposta Quente':'🔥 Tag Proposta Quente removida'
   });
-  saveCache();
+  saveCacheLazy();
   if(document.getElementById('page-lead-detail')?.classList.contains('on')) openDetail(leadId,fromPage);
   else if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads();
   else if(document.getElementById('page-coord-leads')?.classList.contains('on')) renderCoordLeads();
@@ -3930,23 +4517,46 @@ async function togglePropostaQuente(leadId,ativo,el){
    Retorna o objeto equipe ou null.
 */
 function resolverEquipeParaVenda(lead, vendedor){
-  // 1. Lead tem equipe diretamente
+  // 1. Lead tem equipe diretamente (caminho ideal)
   if(lead?.equipe_id){
     const eq = allEquipes.find(e=>e.id===lead.equipe_id);
     if(eq) return eq;
   }
-  // 2. Busca pelo vendedor nos membros de equipe
+
+  // 2. Lead sem equipe_id — comum em leads importados direto com vendedor.
+  //    Busca todas as equipes do vendedor via allMembroEquipes e escolhe
+  //    a que bate com um Firebase configurado (chis/luiz), priorizando
+  //    equipes onde o vendedor é coordenador.
   if(vendedor?.user_id){
-    const membro = allMembroEquipes.find(m=>m.user_id===vendedor.user_id);
-    if(membro?.equipe_id){
-      const eq = allEquipes.find(e=>e.id===membro.equipe_id);
+    const membros = allMembroEquipes.filter(m=>m.user_id===vendedor.user_id);
+    if(membros.length){
+      // Preferência: equipes mapeadas nos Firebase conhecidos
+      const nomesMapeados = ['chis','danylo','luiz'];
+      const membroMapeado = membros.find(m=>{
+        const eq = allEquipes.find(e=>e.id===m.equipe_id);
+        const nomeEq = (eq?.nome||'').toLowerCase();
+        return nomesMapeados.some(n=>nomeEq.includes(n));
+      });
+      if(membroMapeado){
+        const eq = allEquipes.find(e=>e.id===membroMapeado.equipe_id);
+        if(eq){
+          console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}" (membro mapeado): "${eq.nome}"`);
+          // Atualiza equipe_id do lead em memória para evitar resolver de novo
+          if(lead) lead.equipe_id = eq.id;
+          return eq;
+        }
+      }
+      // Fallback: primeira equipe do vendedor
+      const eq = allEquipes.find(e=>e.id===membros[0].equipe_id);
       if(eq){
-        console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}": "${eq.nome}"`);
+        console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}" (fallback): "${eq.nome}"`);
+        if(lead) lead.equipe_id = eq.id;
         return eq;
       }
     }
   }
-  console.log(`[FB Ranking] Lead sem equipe e vendedor "${vendedor?.name}" sem equipe vinculada — venda não sincronizada (comportamento esperado para contas sem equipe).`);
+
+  console.warn(`[FB Ranking] Equipe não encontrada para lead=${lead?.id} vendedor="${vendedor?.name}"`);
   return null;
 }
 
@@ -4090,7 +4700,7 @@ async function revertVenda(vendaId, leadId){
   await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'📝 Anotação',descricao:'Venda revertida para lead normal (status: Proposta)',created_at:new Date().toISOString()});
   const{data}=await sb.from('crm_historico').select('*').order('created_at',{ascending:false});
   allHist=data||[];
-  saveCache();
+  saveCacheLazy();
   toast('Venda revertida! Lead voltou para Proposta.','ok');
 
   // ── Revertido → -1 no ranking Firebase ──
@@ -4127,7 +4737,7 @@ async function saveInlineEmailObs(leadId){
   if(mudancas.length){
     await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:mudancas.join(' | '),created_at:new Date().toISOString()});
   }
-  saveCache();
+  saveCacheLazy();
   toast('E-mail e observações salvos!','ok');
   openDetail(leadId,fromPage);
 }
@@ -4265,6 +4875,7 @@ function saveCache(){
       proposta_quente:l.proposta_quente, observacoes:l.observacoes
     }));
     const data={
+      _v:CACHE_VERSION,
       profile:CUProfile,
       leads:slimLeads,
       users:allUsers,
@@ -4279,11 +4890,23 @@ function saveCache(){
     try{
       sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(data));
     } catch(quota){
-      // Se ainda estourar (base muito grande), salva sem leads
       console.warn('Cache quota exceeded, saving without leads');
       const slim={...data, leads:[], _incomplete:true};
       try{ sessionStorage.setItem('crm_data_'+CU.id, JSON.stringify(slim)); } catch(e2){}
     }
+    // Salva também no localStorage (cross-tab) — profile + usuários apenas
+    // (leads ficam só no sessionStorage pois são grandes)
+    try{
+      // Não salva xtab se o perfil é fallback temporário (role pode estar errado)
+      if(!CUProfile?._fallback){
+        localStorage.setItem('crm_xtab_'+CU.id, JSON.stringify({
+          _v:CACHE_VERSION,
+          profile:CUProfile, users:allUsers,
+          equipes:allEquipes, membros:allMembroEquipes,
+          ts:Date.now()
+        }));
+      }
+    }catch(e){}
   } catch(e){ console.warn('Cache save error:',e.message); }
 }
 
@@ -4435,38 +5058,130 @@ async function runAutoReturnRules(){
   reRenderCurrent();
 }
 
+
+/* ═══ PALAVRAS QUE BLOQUEIAM RECICLAGEM ═══
+   Leads com status Perdido cujo histórico/observações contenham
+   alguma dessas expressões NÃO devem ser reciclados.
+   Comparação case-insensitive, aceita variações de escrita. */
+const PALAVRAS_BLOQUEIO_RECICL = [
+  'cliente fiat',
+  'cliente santander',
+  'fechado gr',
+  'embracon',
+];
+
+function temPalavraBloqueiaNaObs(lead){
+  // Verifica nome do lead, interesse, e todo o histórico
+  const fontes = [
+    (lead.nome||''),
+    (lead.interesse||''),
+    (lead.observacoes||''),
+    (lead.origem||''),
+  ];
+  // Adiciona textos do histórico deste lead
+  const hist = allHist.filter(h => h.lead_id === lead.id);
+  hist.forEach(h => fontes.push(h.descricao||''));
+  const texto = fontes.join(' ').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,''); // remove acentos p/ comparação
+
+  return PALAVRAS_BLOQUEIO_RECICL.some(p => {
+    const pNorm = p.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    // match simples: inclui a palavra/frase em qualquer posição
+    return texto.includes(pNorm);
+  });
+}
+
+function getLabelBloqueioPorLead(lead){
+  const fontes = [
+    (lead.nome||''),(lead.interesse||''),(lead.observacoes||''),(lead.origem||''),
+  ];
+  const hist = allHist.filter(h => h.lead_id === lead.id);
+  hist.forEach(h => fontes.push(h.descricao||''));
+  const texto = fontes.join(' ').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  for(const p of PALAVRAS_BLOQUEIO_RECICL){
+    const pNorm = p.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(texto.includes(pNorm)) return p;
+  }
+  return null;
+}
+
 /* ═══ AVALIAR PERDIDOS SEM COMENTÁRIO ═══ */
 async function openAvaliarPerdidos(){
-  // Calcula preview: quantos perdidos sem comentário real
+  // Coleta todos os perdidos e classifica em: reciclar, bloqueados, com_comentário
   const perdidos = allLeads.filter(l => l.status === 'Perdido');
-  let semComentario = 0;
+  const listaReciclar   = [];  // {lead}
+  const listaBloqueados = [];  // {lead, label}
+
   for(const l of perdidos){
     const hist = allHist.filter(h => h.lead_id === l.id);
-    // Comentário real = qualquer entrada que NÃO seja mudança de status automática
     const temComentarioReal = hist.some(h => {
       const desc = (h.descricao || '').trim();
-      // Ignora: "Status → X", "Retornado automaticamente: X"
       if(desc.startsWith('Status →')) return false;
       if(desc.startsWith('Retornado automaticamente')) return false;
       if(desc.startsWith('Venda revertida')) return false;
-      // Qualquer outro texto com ao menos 3 chars é comentário real
+      if(desc.startsWith('[BLOQUEADO')) return false;
       return desc.length >= 3;
     });
-    if(!temComentarioReal) semComentario++;
+    if(!temComentarioReal){
+      const label = getLabelBloqueioPorLead(l);
+      if(label) listaBloqueados.push({lead:l, label});
+      else listaReciclar.push(l);
+    }
   }
+
+  // Preview badge
   const prev = document.getElementById('avaliar-perdidos-preview');
   const prevTxt = document.getElementById('avaliar-perdidos-preview-txt');
-  if(semComentario > 0){
-    prevTxt.textContent = `${semComentario} lead(s) perdido(s) sem comentário serão reciclados para a base como Novo.`;
-    prev.style.display = '';
+  let parts=[];
+  if(listaReciclar.length>0) parts.push(`<span style="color:var(--red);font-weight:700">${listaReciclar.length} lead(s) serão reciclados</span>`);
+  if(listaBloqueados.length>0) parts.push(`<span style="color:var(--orange);font-weight:700">${listaBloqueados.length} bloqueado(s) de reciclagem</span>`);
+  if(!parts.length) parts.push('<span style="color:var(--green)">Nenhum lead perdido sem comentário encontrado ✅</span>');
+  prevTxt.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+  prev.style.background='var(--surface2)';prev.style.borderColor='var(--border2)';prevTxt.style.color='var(--text)';
+  prev.style.display='';
+
+  // Lista BLOQUEADOS com detalhe
+  const bloqWrap=document.getElementById('av-bloqueados-wrap');
+  const bloqList=document.getElementById('av-bloqueados-list');
+  if(listaBloqueados.length>0){
+    bloqList.innerHTML=listaBloqueados.map(({lead,label})=>{
+      const resp=allUsers.find(u=>u.user_id===lead.responsavel_id);
+      return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid rgba(251,146,60,0.12);font-size:12px">
+        <div style="flex:1">
+          <span style="font-weight:700;color:var(--text)">${lead.nome}</span>
+          <span style="color:var(--muted2);font-size:11px"> · ${lead.telefone||'—'}</span>
+          ${resp?`<span style="color:var(--muted);font-size:11px"> · ${resp.name}</span>`:''}
+        </div>
+        <span style="background:rgba(251,146,60,0.15);color:var(--orange);border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap">🚫 "${label}"</span>
+      </div>`;
+    }).join('');
+    bloqWrap.style.display='';
   } else {
-    prevTxt.textContent = `Nenhum lead perdido sem comentário encontrado.`;
-    prev.style.background = 'rgba(74,222,128,0.08)';
-    prev.style.borderColor = 'rgba(74,222,128,0.25)';
-    prevTxt.style.color = 'var(--green)';
-    prev.style.display = '';
+    bloqWrap.style.display='none';
   }
-  document.getElementById('avaliar-perdidos-btn-confirmar').disabled = semComentario === 0;
+
+  // Lista para RECICLAR
+  const recWrap=document.getElementById('av-reciclar-wrap');
+  const recList=document.getElementById('av-reciclar-list');
+  if(listaReciclar.length>0){
+    recList.innerHTML=listaReciclar.map(l=>{
+      const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+      return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid rgba(74,222,128,0.1);font-size:12px">
+        <div style="flex:1">
+          <span style="font-weight:700;color:var(--text)">${l.nome}</span>
+          <span style="color:var(--muted2);font-size:11px"> · ${l.telefone||'—'}</span>
+          ${resp?`<span style="color:var(--muted);font-size:11px"> · ${resp.name}</span>`:''}
+        </div>
+        <span style="font-size:11px;color:var(--muted2)">${fmtDt(l.updated_at||l.created_at)}</span>
+      </div>`;
+    }).join('');
+    recWrap.style.display='';
+  } else {
+    recWrap.style.display='none';
+  }
+
+  document.getElementById('avaliar-perdidos-btn-confirmar').disabled = listaReciclar.length === 0;
   document.getElementById('modal-avaliar-perdidos').classList.add('on');
 }
 
@@ -4487,7 +5202,21 @@ async function confirmarAvaliarPerdidos(){
         if(desc.startsWith('Venda revertida')) return false;
         return desc.length >= 3;
       });
-      if(!temComentarioReal) paraReciclar.push(l);
+      if(!temComentarioReal){
+        if(temPalavraBloqueiaNaObs(l)){
+          // NÃO recicla — registra histórico de bloqueio
+          try{
+            const motivo = getLabelBloqueioPorLead(l);
+            await sb.from('crm_historico').insert({
+              lead_id: l.id, user_id: CU.id, tipo: '🔒 Interno (Adm)',
+              descricao: `[BLOQUEADO DE RECICLAGEM] Palavra-chave detectada: "${motivo}" — lead mantido como Perdido`,
+              created_at: new Date().toISOString()
+            });
+          }catch(e){ console.warn('Hist bloqueio error:',e); }
+        } else {
+          paraReciclar.push(l);
+        }
+      }
     }
     if(!paraReciclar.length){
       toast('Nenhum lead para reciclar.','ok');
@@ -4688,6 +5417,12 @@ function reRenderCurrent(){
 let csvParsedLeads=[];
 
 function renderImportar(){
+  // Vendedor: esconde seletor de responsável (vai para si mesmo)
+  const isVend = isVendedor();
+  ['csv-resp-wrap','bulk-resp'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.closest('.fld') ? el.closest('.fld').style.display=isVend?'none':'':'';
+  });
   // populate resp selects for both CSV and bulk import
   const todos=allUsers.filter(u=>u.role==='vendedor'||u.role==='admin'||u.role==='coordenador'||u.role==='supervisor');
   const optBase='<option value="">Manter na base (sem responsável)</option>';
@@ -4799,8 +5534,10 @@ async function importCSV(){
   const btn=document.getElementById('csv-import-btn');
   const respId=document.getElementById('csv-resp')?.value||null;
   const tipoLead=isAdmin()?(document.getElementById('csv-tipo')?.value||'Novo'):'Novo';
+  // Vendedor importa sempre para si mesmo
+  const finalRespId = isVendedor() ? CU.id : (respId||null);
   btn.textContent='Importando...';btn.disabled=true;
-  const leadsComResp=csvParsedLeads.map(l=>({...l,responsavel_id:respId||null,tipo_lead:tipoLead}));
+  const leadsComResp=csvParsedLeads.map(l=>({...l,responsavel_id:finalRespId,tipo_lead:tipoLead}));
   await importLeads(leadsComResp,'CSV');
   csvParsedLeads=[];
   btn.style.display='none';
@@ -4815,16 +5552,34 @@ async function importBulk(){
   const text=document.getElementById('bulk-text').value.trim();
   const respId=document.getElementById('bulk-resp')?.value||null;
   const tipoLead=isAdmin()?(document.getElementById('bulk-tipo')?.value||'Novo'):'Novo';
+  // Vendedor importa sempre para si mesmo
+  const finalBulkRespId = isVendedor() ? CU.id : (respId||null);
   if(!text){toast('Cole a lista de contatos','err');return;}
 
   const lines=text.split('\n').filter(l=>l.trim());
   const leads=lines.map(line=>{
     const parts=line.split('|').map(p=>p.trim());
     if(!parts[0]) return null;
+
+    let nomeRaw  = fixEncoding(parts[0]) || '';
+    let telRaw   = fixEncoding(parts[1]) || null;
+    let interesse= fixEncoding(parts[2]) || null;
+
+    // ── Separa telefone do nome quando vierem juntos sem pipe ──
+    // Detecta sequência de 8+ dígitos no final do nome (com espaço opcional antes)
+    // Ex: "JOSE NILSON 66984183898" → nome="JOSE NILSON", tel="66984183898"
+    if(!telRaw){
+      const phoneMatch = nomeRaw.match(/^(.+?)\s+((?:\+?\d[\s\-]?){8,15}\d)\s*$/);
+      if(phoneMatch){
+        nomeRaw = phoneMatch[1].trim();
+        telRaw  = phoneMatch[2].replace(/\s/g,'');
+      }
+    }
+
     return{
-      nome:fixEncoding(parts[0]),
-      telefone:fixEncoding(parts[1])||null,
-      interesse:fixEncoding(parts[2])||null,
+      nome:nomeRaw,
+      telefone:telRaw,
+      interesse,
       origem:'Lista',
       responsavel_id:respId||null,
       tipo_lead:tipoLead,
@@ -4832,7 +5587,8 @@ async function importBulk(){
   }).filter(Boolean);
 
   if(!leads.length){toast('Nenhum lead válido encontrado','err');return;}
-  await importLeads(leads,'Lista');
+  const leadsB=leads.map(l=>({...l,responsavel_id:isVendedor()?CU.id:(l.responsavel_id||null)}));
+  await importLeads(leadsB,'Lista');
   document.getElementById('bulk-text').value='';
 }
 
@@ -4859,6 +5615,16 @@ async function importLeads(leads,fonte){
     }
 
     const respId=lead.responsavel_id||null;
+
+    // ── AUTO-RESOLVE equipe_id no import ──
+    // Leads importados com vendedor mas sem equipe_id causam falha silenciosa
+    // na sincronização Firebase (resolverEquipeParaVenda retorna null e sync é abortado).
+    let equipeId = lead.equipe_id || null;
+    if(!equipeId && respId){
+      const membro = allMembroEquipes.find(m=>m.user_id===respId);
+      if(membro?.equipe_id) equipeId = membro.equipe_id;
+    }
+
     batch.push({
       nome:nomeLead,
       telefone:lead.telefone||null,
@@ -4868,6 +5634,7 @@ async function importLeads(leads,fonte){
       status:'Novo',
       tipo_lead:lead.tipo_lead||'Novo',
       responsavel_id:respId,
+      equipe_id:equipeId,
       criado_por:CU.id,
       distribuido_em:respId?new Date().toISOString():null,
       created_at:new Date().toISOString(),
@@ -4983,12 +5750,13 @@ let _distPickerLeadId=null;
 
 function getDistVendors(){
   // Admin/coord: all vendedores; supervisor: own equipe vendedores
+  // Ordenação estável por user_id garante que o round-robin não pule vendedores
   if(isAdmin()||isCoordenador()){
-    return allUsers.filter(u=>u.role==='vendedor');
+    return allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   } else {
     const myEqIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
     const myMemberIds=[...new Set(allMembroEquipes.filter(m=>myEqIds.includes(m.equipe_id)).map(m=>m.user_id))];
-    return allUsers.filter(u=>myMemberIds.includes(u.user_id)&&u.role==='vendedor');
+    return allUsers.filter(u=>myMemberIds.includes(u.user_id)&&u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   }
 }
 
@@ -5483,7 +6251,7 @@ function openLeadsMass(){
   document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='table-cell');
   // Show delete button only for admin
   const delWrap=document.getElementById('mass-delete-btn-wrap');
-  if(delWrap) delWrap.innerHTML=isAdmin()
+  if(delWrap) delWrap.innerHTML=(isAdmin()||isSupervisor())
     ?'<div style="width:1px;height:20px;background:var(--border);display:inline-block;margin:0 2px;vertical-align:middle"></div><button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">🗑️ Apagar</button>'
     :'';
   // Origem (vendedor de origem para filtrar) — inclui "Sem vendedor"
@@ -6676,6 +7444,383 @@ if(csvZone){
   csvZone.addEventListener('dragleave',()=>csvZone.classList.remove('drag'));
   csvZone.addEventListener('drop',e=>{e.preventDefault();csvZone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)handleCSV(f);});
 }
+
+
+/*    BUSCA NA BASE GERAL — vendedor pesquisa e solicita
+   ══════════════════════════════════════════════════════ */
+let _srchBasePage=1;
+const _srchBasePerPage=30;
+let _solLeadId=null;
+
+let _srchBaseTimer=null;
+let _srchBaseResults=[];
+
+function renderBuscaBase(){
+  _srchBasePage=1;
+  const q=(document.getElementById('srch-base-inp')?.value||'').trim();
+  if(!q){
+    document.getElementById('srch-base-tbody').innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">🔍</div>Digite um nome ou telefone para buscar</div></td></tr>';
+    document.getElementById('srch-base-title').textContent='Resultados';
+    document.getElementById('srch-base-pg').style.display='none';
+    return;
+  }
+  // Debounce 400ms para não disparar a cada tecla
+  clearTimeout(_srchBaseTimer);
+  _srchBaseTimer=setTimeout(()=>_executarBuscaBase(q),400);
+}
+
+async function _executarBuscaBase(q){
+  const tbody=document.getElementById('srch-base-tbody');
+  const statusF=document.getElementById('srch-base-status')?.value||'';
+  tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:8px;color:var(--muted2);font-size:13px">Buscando...</div></div></td></tr>';
+
+  try{
+    // Busca direto no Supabase — funciona para qualquer role
+    const qLike=q.replace(/[%_]/g,'\\$&'); // escape special chars
+    let query=sb.from('crm_leads')
+      .select('id,nome,telefone,interesse,status,responsavel_id,created_at')
+      .or(`nome.ilike.%${qLike}%,telefone.ilike.%${qLike}%`)
+      .order('created_at',{ascending:false})
+      .limit(200);
+    if(statusF) query=query.eq('status',statusF);
+    const{data,error}=await query;
+    if(error) throw error;
+    _srchBaseResults=data||[];
+    _renderBuscaBasePage();
+  }catch(e){
+    tbody.innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ei">⚠️</div>Erro ao buscar: ${e.message}</div></td></tr>`;
+  }
+}
+
+function _renderBuscaBasePage(){
+  const q=(document.getElementById('srch-base-inp')?.value||'').trim();
+  const results=_srchBaseResults;
+  const total=results.length;
+  const pages=Math.max(1,Math.ceil(total/_srchBasePerPage));
+  _srchBasePage=Math.min(_srchBasePage,pages);
+  const slice=results.slice((_srchBasePage-1)*_srchBasePerPage,_srchBasePage*_srchBasePerPage);
+
+  document.getElementById('srch-base-title').textContent=
+    total===200?`Mostrando primeiros 200 resultados para "${q}" — refine a busca`
+    :`${total} resultado${total!==1?'s':''} para "${q}"`;
+
+  const tbody=document.getElementById('srch-base-tbody');
+  if(!slice.length){
+    tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei">🔍</div>Nenhum lead encontrado</div></td></tr>';
+  } else {
+    tbody.innerHTML=slice.map(l=>{
+      const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+      const isMeu=l.responsavel_id===CU.id;
+      const jaeSolicitado=window._minhasSolicita&&window._minhasSolicita[l.id];
+      let acao='';
+      if(isMeu){
+        acao='<span style="font-size:11px;color:var(--green)">✅ Já é seu</span>';
+      } else if(jaeSolicitado==='Pendente'){
+        acao='<span class="sol-badge sol-pend">⏳ Aguardando</span>';
+      } else if(jaeSolicitado==='Aprovado'){
+        acao='<span class="sol-badge sol-aprov">✅ Aprovado</span>';
+      } else {
+        acao=`<button class="act green" onclick="abrirSolicitacao('${l.id}')">📩 Solicitar</button>`;
+      }
+      return`<tr>
+        <td style="font-weight:600">${l.nome}</td>
+        <td>${l.telefone||'—'}</td>
+        <td style="color:var(--muted2);font-size:11.5px">${l.interesse||'—'}</td>
+        <td>${badgeLead(l.status)}</td>
+        <td style="font-size:11.5px;color:var(--muted2)">${resp?resp.name:'Sem responsável'}</td>
+        <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
+        <td>${acao}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Pagination
+  const pgBar=document.getElementById('srch-base-pg');
+  if(pages<=1){pgBar.style.display='none';return;}
+  pgBar.style.display='flex';
+  let pgHtml='';
+  for(let i=1;i<=pages;i++){
+    pgHtml+=`<button class="btn-sm${i===_srchBasePage?' active-pg':''}" style="${i===_srchBasePage?'border-color:var(--gold);color:var(--gold2)':''}" onclick="_srchBasePage=${i};_renderBuscaBasePage()">${i}</button>`;
+  }
+  pgBar.innerHTML=pgHtml;
+}
+
+function badgeLead(status){
+  const map={'Novo':'b-novo','Em Negociação':'b-contato','Proposta':'b-proposta','Fechado':'b-fechado','Perdido':'b-perdido'};
+  return`<span class="badge ${map[status]||'b-novo'}">${status||'Novo'}</span>`;
+}
+
+/* ── Abrir modal solicitar ── */
+function abrirSolicitacao(leadId){
+  _solLeadId=leadId;
+  // Busca no cache da pesquisa (vendedor não tem o lead em allLeads)
+  const l=_srchBaseResults.find(x=>x.id===leadId)||allLeads.find(x=>x.id===leadId);
+  if(!l) return;
+  // Guarda dados do lead para usar no confirmarSolicitacao
+  window._solLeadCache=l;
+  const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+  document.getElementById('sol-lead-info').innerHTML=`
+    <div style="font-weight:700;font-size:14px;margin-bottom:6px">${l.nome}</div>
+    <div style="font-size:11.5px;color:var(--muted2)">${l.telefone||'—'} &nbsp;·&nbsp; ${l.interesse||'—'}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">Responsável atual: ${resp?resp.name:'Sem responsável'}</div>`;
+  document.getElementById('sol-motivo').value='';
+  openModal('solicitar-lead');
+}
+
+async function confirmarSolicitacao(){
+  if(!_solLeadId) return;
+  const motivo=document.getElementById('sol-motivo').value.trim();
+  // Usa cache da busca; fallback para allLeads
+  const lead=window._solLeadCache||_srchBaseResults.find(x=>x.id===_solLeadId)||allLeads.find(x=>x.id===_solLeadId);
+  if(!lead){toast('Lead não encontrado','err');return;}
+  try{
+    const{error}=await sb.from('crm_solicitacoes_lead').insert({
+      lead_id:_solLeadId,
+      vendedor_id:CU.id,
+      vendedor_nome:CUProfile.name,
+      lead_nome:lead.nome,
+      lead_telefone:lead.telefone||null,
+      responsavel_atual_id:lead.responsavel_id||null,
+      motivo:motivo||null,
+      status:'Pendente',
+      created_at:new Date().toISOString(),
+    });
+    if(error) throw error;
+    if(!window._minhasSolicita) window._minhasSolicita={};
+    window._minhasSolicita[_solLeadId]='Pendente';
+    closeModal('solicitar-lead');
+    toast('Solicitação enviada! O admin será notificado.','ok');
+    renderBuscaBase();
+  }catch(e){
+    toast('Erro ao enviar solicitação: '+e.message,'err');
+  }
+}
+
+/* Carrega solicitações próprias do vendedor ao inicializar */
+async function carregarMinhasSolicitacoes(){
+  if(!isVendedor()) return;
+  try{
+    const{data}=await sb.from('crm_solicitacoes_lead').select('lead_id,status').eq('vendedor_id',CU.id);
+    window._minhasSolicita={};
+    (data||[]).forEach(s=>{ window._minhasSolicita[s.lead_id]=s.status; });
+  }catch(e){ console.warn('Erro ao carregar solicitações:',e); }
+}
+
+/* ══════════════════════════════════════════════════════
+   SOLICITAÇÕES — painel admin
+   ══════════════════════════════════════════════════════ */
+let _allSolicita=[];
+
+async function renderSolicitacoes(){
+  if(!isAdmin()) return;
+  try{
+    const{data,error}=await sb.from('crm_solicitacoes_lead')
+      .select('*').order('created_at',{ascending:false}).limit(200);
+    if(error) throw error;
+    _allSolicita=data||[];
+    _renderSolLista();
+    _atualizarBadgeSol();
+  }catch(e){
+    document.getElementById('sol-lista').innerHTML=`<div class="empty"><div class="ei">⚠️</div>Erro ao carregar solicitações</div>`;
+  }
+}
+
+function _renderSolLista(){
+  const el=document.getElementById('sol-lista');
+  if(!el) return;
+  if(!_allSolicita.length){
+    el.innerHTML='<div class="empty"><div class="ei">📭</div>Nenhuma solicitação ainda</div>';
+    return;
+  }
+  el.innerHTML=_allSolicita.map(s=>{
+    const lead=allLeads.find(l=>l.id===s.lead_id);
+    const respAtual=allUsers.find(u=>u.user_id===s.responsavel_atual_id);
+    const badgeMap={Pendente:'sol-pend',Aprovado:'sol-aprov',Negado:'sol-neg'};
+    const actions=s.status==='Pendente'?`
+      <button class="act green" onclick="responderSolicita('${s.id}','Aprovado')">✅ Aprovar</button>
+      <button class="act red" onclick="responderSolicita('${s.id}','Negado')">❌ Negar</button>`
+      :`<span class="sol-badge ${badgeMap[s.status]||''}">${s.status}</span>`;
+    return`<div style="padding:14px 18px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:3px">📋 ${s.lead_nome||'Lead'}</div>
+          <div style="font-size:11.5px;color:var(--muted2);margin-bottom:3px">${s.lead_telefone||'—'}</div>
+          <div style="font-size:11px;color:var(--muted)">Responsável atual: ${respAtual?respAtual.name:'Sem responsável'}</div>
+          ${s.motivo?`<div style="font-size:11.5px;color:var(--text);margin-top:6px;background:var(--surface2);border-radius:6px;padding:6px 10px">"${s.motivo}"</div>`:''}
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:12.5px;font-weight:700;color:var(--gold2);margin-bottom:4px">👤 ${s.vendedor_nome}</div>
+          <div style="font-size:10.5px;color:var(--muted2);margin-bottom:8px">${fmtDt(s.created_at)}</div>
+          <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">${actions}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function responderSolicita(solId,novoStatus){
+  const sol=_allSolicita.find(s=>s.id===solId);
+  if(!sol) return;
+  try{
+    const{error}=await sb.from('crm_solicitacoes_lead').update({status:novoStatus,respondido_em:new Date().toISOString()}).eq('id',solId);
+    if(error) throw error;
+    // Se aprovado: transfere o lead para o vendedor solicitante
+    if(novoStatus==='Aprovado'){
+      const{error:e2}=await sb.from('crm_leads').update({
+        responsavel_id:sol.vendedor_id,
+        distribuido_em:new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      }).eq('id',sol.lead_id);
+      if(!e2){
+        const idx=allLeads.findIndex(l=>l.id===sol.lead_id);
+        if(idx>-1) allLeads[idx].responsavel_id=sol.vendedor_id;
+        await sb.from('crm_historico').insert({
+          lead_id:sol.lead_id,user_id:CU.id,tipo:'📩 Solicitação',
+          descricao:`Lead transferido para ${sol.vendedor_nome} via solicitação aprovada pelo admin`,
+          created_at:new Date().toISOString()
+        });
+      }
+    }
+    toast(novoStatus==='Aprovado'?`✅ Lead transferido para ${sol.vendedor_nome}!`:'❌ Solicitação negada.','ok');
+    await renderSolicitacoes();
+    saveCache();
+  }catch(e){
+    toast('Erro: '+e.message,'err');
+  }
+}
+
+function _atualizarBadgeSol(){
+  const pendentes=_allSolicita.filter(s=>s.status==='Pendente').length;
+  const badge=document.getElementById('sol-adm-badge');
+  if(badge){
+    badge.textContent=pendentes>0?pendentes:'';
+    badge.style.display=pendentes>0?'inline':'none';
+  }
+}
+
+/* Polling de solicitações pendentes para o admin (a cada 60s) */
+async function pollSolicitacoesAdmin(){
+  if(!isAdmin()) return;
+  try{
+    const{data}=await sb.from('crm_solicitacoes_lead').select('id,status').eq('status','Pendente');
+    const pendentes=(data||[]).length;
+    const badge=document.getElementById('sol-adm-badge');
+    if(badge){
+      badge.textContent=pendentes>0?pendentes:'';
+      badge.style.display=pendentes>0?'inline':'none';
+    }
+  }catch(e){}
+}
+
+
+/* ══════════════════════════════════════════════════════
+   SISTEMA DE NOTIFICAÇÕES ADMIN
+   Detecta leads Perdidos com palavras bloqueadas e alerta
+   ══════════════════════════════════════════════════════ */
+let _notifItems = [];   // {id, leadId, leadNome, label, lida, ts}
+const _NOTIF_KEY = 'crm_notif_lidas_v1';
+
+function _getNotifLidas(){
+  try{ return JSON.parse(localStorage.getItem(_NOTIF_KEY)||'[]'); }catch(e){ return []; }
+}
+function _setNotifLidas(ids){
+  try{ localStorage.setItem(_NOTIF_KEY, JSON.stringify(ids)); }catch(e){}
+}
+
+function verificarLeadsBloqueados(){
+  if(!isAdmin()) return;
+  const lidas = _getNotifLidas();
+  const perdidos = allLeads.filter(l => l.status === 'Perdido');
+  _notifItems = [];
+  for(const l of perdidos){
+    const label = getLabelBloqueioPorLead(l);
+    if(!label) continue;
+    const nid = 'bloq_' + l.id;
+    _notifItems.push({
+      id: nid,
+      leadId: l.id,
+      leadNome: l.nome,
+      label,
+      lida: lidas.includes(nid),
+      ts: l.updated_at || l.created_at,
+    });
+  }
+  // Sort: não lidas primeiro, depois por data desc
+  _notifItems.sort((a,b)=>{
+    if(a.lida !== b.lida) return a.lida ? 1 : -1;
+    return new Date(b.ts) - new Date(a.ts);
+  });
+  _renderNotifBell();
+  _renderNotifList();
+}
+
+function _renderNotifBell(){
+  const wrap = document.getElementById('notif-bell-wrap');
+  const cnt  = document.getElementById('notif-count');
+  if(!wrap||!cnt) return;
+  wrap.style.display = isAdmin() ? 'inline-flex' : 'none';
+  const naoLidas = _notifItems.filter(n=>!n.lida).length;
+  cnt.textContent = naoLidas;
+  cnt.style.display = naoLidas > 0 ? '' : 'none';
+}
+
+function _renderNotifList(){
+  const list = document.getElementById('notif-list');
+  if(!list) return;
+  if(!_notifItems.length){
+    list.innerHTML = '<div class="notif-empty">✅ Nenhum lead com alerta de palavra-chave</div>';
+    return;
+  }
+  list.innerHTML = _notifItems.map(n=>`
+    <div class="notif-item${n.lida?'':' unread'}" onclick="irParaLeadNotif('${n.leadId}','${n.id}')">
+      <div class="notif-icon">⚠️</div>
+      <div class="notif-body">
+        <div class="notif-title">${n.leadNome}</div>
+        <div class="notif-desc">Palavra detectada: <strong style="color:var(--orange)">"${n.label}"</strong> — Lead Perdido bloqueado de reciclagem</div>
+        <div class="notif-time">${fmtDt(n.ts)}</div>
+      </div>
+      ${n.lida?'<span style="font-size:10px;color:var(--muted)">lida</span>':'<span style="width:7px;height:7px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-top:5px;display:block"></span>'}
+    </div>`).join('');
+}
+
+function toggleNotifDropdown(){
+  const dd = document.getElementById('notif-dropdown');
+  if(!dd) return;
+  dd.classList.toggle('open');
+  // Close on outside click
+  if(dd.classList.contains('open')){
+    setTimeout(()=>{
+      document.addEventListener('click', _closeNotifOutside, {once:true});
+    },10);
+  }
+}
+function _closeNotifOutside(e){
+  const dd=document.getElementById('notif-dropdown');
+  const wrap=document.getElementById('notif-bell-wrap');
+  if(dd&&wrap&&!wrap.contains(e.target)) dd.classList.remove('open');
+}
+
+function marcarTodasLidas(){
+  const ids = _notifItems.map(n=>n.id);
+  _setNotifLidas(ids);
+  _notifItems.forEach(n=>n.lida=true);
+  _renderNotifBell();
+  _renderNotifList();
+}
+
+function irParaLeadNotif(leadId, notifId){
+  // Marca como lida
+  const lidas = _getNotifLidas();
+  if(!lidas.includes(notifId)){ lidas.push(notifId); _setNotifLidas(lidas); }
+  const n = _notifItems.find(x=>x.id===notifId);
+  if(n) n.lida = true;
+  _renderNotifBell();
+  // Fecha dropdown
+  document.getElementById('notif-dropdown')?.classList.remove('open');
+  // Navega para o lead
+  openLeadDetail(leadId);
+}
+
 </script>
 
 <!-- ════ MODAL: AVALIAR PERDIDOS SEM COMENTÁRIO ════ -->
@@ -6704,6 +7849,20 @@ if(csvZone){
     </div>
     <div id="avaliar-perdidos-preview" style="background:rgba(229,85,85,0.08);border:1px solid rgba(229,85,85,0.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--red);margin-bottom:14px;display:none">
       <span id="avaliar-perdidos-preview-txt"></span>
+    </div>
+    <!-- Lista de leads BLOQUEADOS -->
+    <div id="av-bloqueados-wrap" style="display:none;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--orange);margin-bottom:8px">
+        🚫 Leads bloqueados de reciclagem — palavra-chave detectada
+      </div>
+      <div id="av-bloqueados-list" style="max-height:220px;overflow-y:auto;border:1px solid rgba(251,146,60,0.25);border-radius:8px;background:rgba(251,146,60,0.04)"></div>
+    </div>
+    <!-- Lista de leads para RECICLAR -->
+    <div id="av-reciclar-wrap" style="display:none;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--green);margin-bottom:8px">
+        🔄 Leads que serão reciclados
+      </div>
+      <div id="av-reciclar-list" style="max-height:180px;overflow-y:auto;border:1px solid rgba(74,222,128,0.2);border-radius:8px;background:rgba(74,222,128,0.04)"></div>
     </div>
     <div id="avaliar-perdidos-loading" style="text-align:center;padding:12px;color:var(--muted2);font-size:12px;display:none">⏳ Analisando leads...</div>
     <div class="modal-btns">
@@ -6860,11 +8019,23 @@ function nomeKey(n){ return n.replace(/[.#$\[\]/]/g,'_'); }
 // Lógica: semana 1 = dias 1-7, semana 2 = dias 8-14, semana 3 = dias 15-21, semana 4 = dias 22+
 // Isso bate com a lógica manual que os usuários já usam nos rankings.
 function semanaDoMes(dataISO){
-  const d = dataISO ? new Date(dataISO) : new Date();
-  const dia = d.getDate();
-  if(dia <= 7)  return 0;
-  if(dia <= 14) return 1;
-  if(dia <= 21) return 2;
+  // IMPORTANTE: usa fuso local (BRT = UTC-3) para não jogar vendas
+  // feitas após 21h BRT (00h+ UTC) no dia/semana errados.
+  let d;
+  if(dataISO){
+    // Converte para data LOCAL, não UTC
+    // new Date(iso).getDate() usa UTC — errado para BRT.
+    // Solução: formata para string local e extrai o dia.
+    d = new Date(dataISO);
+  } else {
+    d = new Date();
+  }
+  // getDate() em fuso local do browser (BRT)
+  const dia = d.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo',day:'numeric'});
+  const diaNum = parseInt(dia, 10);
+  if(diaNum <= 7)  return 0;
+  if(diaNum <= 14) return 1;
+  if(diaNum <= 21) return 2;
   return 3;
 }
 
@@ -6926,23 +8097,48 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
   // Se snapBase não existir quando s[] muda, o ranking recria snapBase com o
   // novo total — zerando as vendas do dia. Gravamos o snapBase com o valor
   // ATUAL (pré-incremento) antes de modificar s[].
+  //
+  // USA FUSO BRT (America/Sao_Paulo) — não UTC.
+  // Se usar UTC, vendas entre 21h-23h59 BRT (00h-02h59 UTC) entram no dia
+  // seguinte do UTC, causando snapDia errado e ranking mostrando dia anterior.
   const hoje = new Date();
-  const dataStr = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+  const dataStr = hoje.toLocaleDateString('pt-BR',{
+    timeZone:'America/Sao_Paulo',
+    year:'numeric',month:'2-digit',day:'2-digit'
+  }).split('/').reverse().join('-'); // "DD/MM/YYYY" → "YYYY-MM-DD"
+
   const snapDiaRef = ref(db, `${raiz}/snapDia/${vendKey}`);
   const snapDiaAtual = await get(snapDiaRef);
   const snapDiaVal = snapDiaAtual.val();
 
-  // Só grava/protege se não existir snapshot de hoje ainda
-  if(!snapDiaVal || snapDiaVal.data !== dataStr){
-    const totalAtualPreIncremento = Array.isArray(vendData.s)
-      ? vendData.s.reduce((a,b)=>a+b,0)
-      : 0;
+  // Aceita tanto a data BRT quanto a data UTC como válidas para HOJE
+  // (período de transição: snapDias antigos foram gravados em UTC)
+  const hojeUTC = new Date().toISOString().slice(0,10);
+  const snapExisteHoje = snapDiaVal && (
+    snapDiaVal.data === dataStr ||   // data BRT (correto)
+    snapDiaVal.data === hojeUTC      // data UTC (legado — aceita para não zerar)
+  );
+
+  if(!snapExisteHoje){
+    // Snap não existe OU é de dia anterior — grava novo com base no total pré-incremento
+    // ATENÇÃO: o total pré-incremento DEVE ser calculado ANTES de qualquer runTransaction
+    // Se o snap de ontem (UTC) ainda está ativo, significa que o ranking não zerou ainda —
+    // preservamos a base do snap antigo para não perder vendas do dia.
+    let base;
+    if(snapDiaVal && snapDiaVal.data === hojeUTC && snapDiaVal.data !== dataStr){
+      // Era UTC de hoje mas BRT mudou — migra o snap preservando a base existente
+      base = snapDiaVal.base;
+      console.log(`[Firebase Ranking ${fbKey}] Migrando snapDia UTC→BRT para "${vendData.nome}": base preservada=${base}`);
+    } else {
+      // Snap de dia anterior — calcula base atual
+      base = Array.isArray(vendData.s) ? vendData.s.reduce((a,b)=>a+b,0) : 0;
+    }
     await set(snapDiaRef, {
-      data: dataStr,
-      base: totalAtualPreIncremento,
+      data: dataStr,       // sempre grava com data BRT
+      base,
       nome: vendData.nome
     });
-    console.log(`[Firebase Ranking ${fbKey}] SnapDia gravado para "${vendData.nome}": base=${totalAtualPreIncremento}`);
+    console.log(`[Firebase Ranking ${fbKey}] SnapDia gravado para "${vendData.nome}": base=${base}`);
   }
 
   // Agora incrementa o s[] com segurança
@@ -6963,6 +8159,94 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
 window._crmAllEquipes        = ()=> window._allEquipes        || [];
 window._crmAllMembroEquipes  = ()=> window._allMembroEquipes  || [];
 
+
+// ══════════════════════════════════════════════════════════════
+// REPARO DO SNAPDIA — corrige base após bug de fuso UTC/BRT
+// Chama: repararSnapDiaLuiz() no console do admin
+// ══════════════════════════════════════════════════════════════
+window.repararSnapDiaLuiz = async function(){
+  try{
+    console.log('[Reparo] Iniciando reparo do snapDia Luiz...');
+    const fbKey = 'luiz';
+    const db = getDatabase(getFbApp(fbKey));
+    const raiz = await resolverRaizEquipe(fbKey, 'luiz');
+
+    // Data de hoje em BRT
+    const hoje = new Date();
+    const dataHojeBRT = hoje.toLocaleDateString('pt-BR',{
+      timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
+    }).split('/').reverse().join('-');
+
+    // Data de ontem em BRT
+    const ontem = new Date(hoje);
+    ontem.setDate(ontem.getDate()-1);
+    const dataOntemBRT = ontem.toLocaleDateString('pt-BR',{
+      timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
+    }).split('/').reverse().join('-');
+
+    console.log(`[Reparo] Hoje BRT: ${dataHojeBRT} | Ontem BRT: ${dataOntemBRT}`);
+
+    // Busca vendas de hoje no Supabase por vendedor
+    const inicioDia = dataHojeBRT + 'T00:00:00-03:00';
+    const fimDia    = dataHojeBRT + 'T23:59:59-03:00';
+    const {data:vendasHoje} = await sb.from('crm_vendas')
+      .select('id,vendedor_id,qtd_cotas,created_at,status_venda')
+      .gte('created_at', inicioDia)
+      .lte('created_at', fimDia)
+      .neq('status_venda','Cancelado');
+
+    console.log(`[Reparo] Vendas de hoje no Supabase: ${vendasHoje?.length||0}`);
+
+    // Agrupa por vendedor_id → total de cotas
+    const cotasPorVendedor = {};
+    (vendasHoje||[]).forEach(v=>{
+      const uid = v.vendedor_id;
+      if(!uid) return;
+      cotasPorVendedor[uid] = (cotasPorVendedor[uid]||0) + (v.qtd_cotas||1);
+    });
+
+    // Lê dados do Firebase
+    const dadosSnap = await get(ref(db, `${raiz}/dados`));
+    const dados = dadosSnap.val() || {};
+
+    let reparados = 0;
+    for(const [vendKey, vendData] of Object.entries(dados)){
+      const totalAtual = Array.isArray(vendData.s) ? vendData.s.reduce((a,b)=>a+b,0) : 0;
+
+      // Encontra o user_id do vendedor pelo nome (fuzzy match)
+      const nomeVend = normNome(vendData.nome||vendKey);
+      const userMatch = allUsers.find(u=>{
+        return normNome(u.name).split(' ').some(p=>p.length>2&&nomeVend.includes(p))
+            || nomeVend.split(' ').some(p=>p.length>2&&normNome(u.name).includes(p));
+      });
+
+      const cotasHoje = userMatch ? (cotasPorVendedor[userMatch.user_id]||0) : 0;
+      // Base correta = total atual MENOS as cotas de hoje
+      const baseCorreta = Math.max(0, totalAtual - cotasHoje);
+
+      const snapDiaRef = ref(db, `${raiz}/snapDia/${vendKey}`);
+      await set(snapDiaRef, {
+        data: dataHojeBRT,
+        base: baseCorreta,
+        nome: vendData.nome
+      });
+
+      console.log(`[Reparo] ${vendData.nome}: total=${totalAtual}, cotasHoje=${cotasHoje}, base corrigida=${baseCorreta}`);
+      reparados++;
+    }
+
+    const msg = `Reparo concluído: ${reparados} vendedores corrigidos. Recarregue o ranking para ver.`;
+    console.log('[Reparo]', msg);
+    alert(msg);
+  }catch(e){
+    console.error('[Reparo] Erro:', e);
+    alert('Erro no reparo: '+e.message);
+  }
+};
+
+
+
+
 window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, delta=1){
   try{
     if(!lead || !venda || !vendedor){
@@ -6970,7 +8254,7 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
       return;
     }
     if(!equipe){
-      console.log(`[FB Ranking] Vendedor "${vendedor.name}" sem equipe — venda não sincronizada.`);
+      console.warn(`[FB Ranking] Equipe não resolvida para "${vendedor.name}" — venda não sincronizada.`);
       return;
     }
 
