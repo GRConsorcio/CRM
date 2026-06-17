@@ -4299,7 +4299,7 @@ async function saveVenda(){
     // Usa vendedorId buscado do banco (não CU.id que seria o admin)
     const vendedor = allUsers.find(u=>u.user_id===vendedorId);
     if(vendedor){
-      const equipe = resolverEquipeParaVenda(leadFb, vendedor);
+      const equipe = await resolverEquipeParaVenda(leadFb, vendedor);
       console.log(`[FB Ranking] Nova venda — vendedor="${vendedor.name}" equipe="${equipe?.nome}" +${qtdCotas}`);
       sincronizarVendaFirebase(leadFb, vd, vendedor, equipe, +qtdCotas).catch(e=>
         console.warn('Firebase ranking sync error:',e.message)
@@ -4374,7 +4374,7 @@ async function updateVendaStatus(id,status){
   if(typeof sincronizarVendaFirebase==='function' && vendaAntes && statusAnterior!==null){
     const lead=allLeads.find(l=>l.id===vendaAntes.lead_id);
     const vendedor=allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
-    const equipe=resolverEquipeParaVenda(lead,vendedor);
+    const equipe=await resolverEquipeParaVenda(lead,vendedor);
     let delta=0;
     if(status==='Cancelado' && statusAnterior!=='Cancelado'){
       // Qualquer status → Cancelado: desconta
@@ -4619,53 +4619,74 @@ async function togglePropostaQuente(leadId,ativo,el){
   toast(ativo?'🔥 Proposta Quente ativada!':'Tag removida','ok');
 }
 /* ═══ RESOLVER EQUIPE PARA RANKING FIREBASE ═══
-   Tenta determinar a equipe do lead/vendedor no seguinte ordem:
-   1. equipe_id do lead
-   2. equipe do vendedor via allMembroEquipes
-   Retorna o objeto equipe ou null.
+   Tenta determinar a equipe correta do lead/vendedor:
+   1. Se o lead já tem equipe_id E o vendedor É membro dessa equipe → usa ela (caminho normal).
+   2. Se o lead não tem equipe_id, OU tem mas o vendedor NÃO pertence a ela (ex: lead
+      importado/distribuído para a equipe errada) → usa a equipe REAL do vendedor
+      (via allMembroEquipes) e TRANSFERE o lead de fato no banco (crm_leads.equipe_id),
+      registrando no histórico. Isso evita venda subir para o ranking errado (ou não subir
+      nenhum, por falta do vendedor na base daquele Firebase) quando lead e vendedor
+      estão em equipes diferentes.
+   Retorna o objeto equipe (já atualizado) ou null. É async porque pode persistir no banco.
 */
-function resolverEquipeParaVenda(lead, vendedor){
-  // 1. Lead tem equipe diretamente (caminho ideal)
-  if(lead?.equipe_id){
-    const eq = allEquipes.find(e=>e.id===lead.equipe_id);
-    if(eq) return eq;
+async function resolverEquipeParaVenda(lead, vendedor){
+  const equipeAtual = lead?.equipe_id ? (allEquipes.find(e=>e.id===lead.equipe_id)||null) : null;
+
+  // 1. Lead já tem equipe e o vendedor realmente pertence a ela → caminho normal, nada a fazer
+  if(equipeAtual && vendedor?.user_id){
+    const pertence = allMembroEquipes.some(m=>m.user_id===vendedor.user_id && m.equipe_id===equipeAtual.id);
+    if(pertence) return equipeAtual;
+    console.warn(`[FB Ranking] Lead está na equipe "${equipeAtual.nome}" mas vendedor "${vendedor.name}" não é membro dela — buscando equipe real do vendedor...`);
+  } else if(equipeAtual && !vendedor?.user_id){
+    // Sem vendedor para validar contra a equipe do lead — mantém como estava
+    return equipeAtual;
   }
 
-  // 2. Lead sem equipe_id — comum em leads importados direto com vendedor.
-  //    Busca todas as equipes do vendedor via allMembroEquipes e escolhe
+  // 2. Lead sem equipe_id, ou vendedor não pertence à equipe do lead.
+  //    Busca a(s) equipe(s) do vendedor via allMembroEquipes e escolhe
   //    a que bate com um Firebase configurado (chis/luiz), priorizando
   //    equipes onde o vendedor é coordenador.
   if(vendedor?.user_id){
     const membros = allMembroEquipes.filter(m=>m.user_id===vendedor.user_id);
     if(membros.length){
-      // Preferência: equipes mapeadas nos Firebase conhecidos
       const nomesMapeados = ['chis','danylo','luiz'];
       const membroMapeado = membros.find(m=>{
         const eq = allEquipes.find(e=>e.id===m.equipe_id);
         const nomeEq = (eq?.nome||'').toLowerCase();
         return nomesMapeados.some(n=>nomeEq.includes(n));
       });
-      if(membroMapeado){
-        const eq = allEquipes.find(e=>e.id===membroMapeado.equipe_id);
-        if(eq){
-          console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}" (membro mapeado): "${eq.nome}"`);
-          // Atualiza equipe_id do lead em memória para evitar resolver de novo
-          if(lead) lead.equipe_id = eq.id;
-          return eq;
-        }
-      }
-      // Fallback: primeira equipe do vendedor
-      const eq = allEquipes.find(e=>e.id===membros[0].equipe_id);
+      const eq = membroMapeado
+        ? allEquipes.find(e=>e.id===membroMapeado.equipe_id)
+        : allEquipes.find(e=>e.id===membros[0].equipe_id);
       if(eq){
-        console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}" (fallback): "${eq.nome}"`);
-        if(lead) lead.equipe_id = eq.id;
+        console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}": "${eq.nome}"`);
+        // Transfere o lead de fato (banco + memória) se a equipe mudou
+        if(lead && lead.equipe_id !== eq.id){
+          const nomeAnterior = equipeAtual?.nome || 'Sem equipe';
+          try{
+            await sb.from('crm_leads').update({equipe_id:eq.id}).eq('id',lead.id);
+            const li = allLeads.findIndex(l=>l.id===lead.id);
+            if(li>-1) allLeads[li].equipe_id = eq.id;
+            lead.equipe_id = eq.id;
+            await sb.from('crm_historico').insert({
+              lead_id: lead.id,
+              user_id: CU?.id,
+              tipo: '🔁 Transferência automática',
+              descricao: `Lead transferido de "${nomeAnterior}" para "${eq.nome}" automaticamente (vendedor "${vendedor.name}" pertence a essa equipe, não à anterior).`,
+              created_at: new Date().toISOString()
+            });
+            console.log(`[FB Ranking] Lead ${lead.id} transferido de "${nomeAnterior}" para "${eq.nome}"`);
+          }catch(e){
+            console.warn('[FB Ranking] Erro ao transferir lead de equipe:', e.message);
+          }
+        }
         return eq;
       }
     }
   }
 
-  console.warn(`[FB Ranking] Equipe não encontrada para lead=${lead?.id} vendedor="${vendedor?.name}"`);
-  return null;
+  console.warn(`[FB Ranking] Equipe não encontrada/confirmada para lead=${lead?.id} vendedor="${vendedor?.name}"`);
+  return equipeAtual; // melhor retornar a equipe antiga (se houver) do que null
 }
 
 function toast(msg,type='ok'){
@@ -4815,7 +4836,7 @@ async function revertVenda(vendaId, leadId){
   if(vendaAntes && typeof sincronizarVendaFirebase==='function'){
     const lead = allLeads.find(l=>l.id===leadId);
     const vendedor = allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
-    const equipe = resolverEquipeParaVenda(lead, vendedor);
+    const equipe = await resolverEquipeParaVenda(lead, vendedor);
     const delta = -(vendaAntes.qtd_cotas||1);
     sincronizarVendaFirebase(lead, vendaAntes, vendedor, equipe, delta).catch(e=>
       console.warn('Firebase ranking sync (revert) error:',e.message)
@@ -5419,10 +5440,24 @@ function setupRealtime(){
       } else if(status==='CLOSED'||status==='CHANNEL_ERROR'){
         console.warn('⚠️ Realtime desconectado, reconectando...');
         setRealtimeIndicator(false);
-        setTimeout(()=>{ realtimeChannel=null; setupRealtime(); }, 10000);
+        setTimeout(()=>{
+          // IMPORTANTE: remove o canal antigo do registro do client antes de recriar.
+          // Sem isso, sb.channel('crm-realtime') reaproveita a instância antiga
+          // (que já teve .subscribe() chamado) e o novo .on(...) lança o erro
+          // "cannot add postgres_changes callbacks ... after subscribe()",
+          // deixando o realtime permanentemente quebrado até reload da página.
+          if(realtimeChannel){ try{ sb.removeChannel(realtimeChannel); }catch(_){} }
+          realtimeChannel=null;
+          setupRealtime();
+        }, 10000);
       }
     });
-  }catch(e){console.warn('Realtime setup error:',e.message);}
+  }catch(e){
+    console.warn('Realtime setup error:',e.message);
+    // Garante que não fique uma referência "morta" travando reconexões futuras
+    if(realtimeChannel){ try{ sb.removeChannel(realtimeChannel); }catch(_){} }
+    realtimeChannel=null;
+  }
 }
 
 function setRealtimeIndicator(on){
