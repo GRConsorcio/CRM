@@ -3019,14 +3019,18 @@ async function puxarLeadsRemalho(){
   if(btn){ btn.disabled=true; btn.innerHTML='⏳ Puxando...'; }
 
   try{
-    // Busca leads remalho sem responsável, pool livre (equipe_id null OU vazio)
-    // Ordena mais antigo primeiro para dar prioridade a quem esperou mais
+    // Busca leads remalho sem responsável E sem equipe (pool livre) — filtro feito
+    // direto no banco (não em memória). Antes pegava só os 20 mais antigos sem dono
+    // e filtrava equipe_id depois; se esses 20 já tivessem equipe_id preenchido
+    // (lead remalho velho, mas amarrado a uma equipe), o filtro zerava tudo mesmo
+    // havendo leads remalho livres de verdade, só que mais novos e fora da janela.
     const{data, error} = await sb.from('crm_leads')
       .select('*')
       .eq('tipo_lead','Remalho')
       .is('responsavel_id', null)
+      .or('equipe_id.is.null,equipe_id.eq."",equipe_id.eq.0')
       .order('created_at', {ascending: true})
-      .range(0, 19); // pega 20 candidatos para filtrar equipe_id vazio/null
+      .limit(5);
 
     if(error){
       console.error('[Puxador] Erro na busca:', error);
@@ -3034,8 +3038,7 @@ async function puxarLeadsRemalho(){
       return;
     }
 
-    // Filtra: aceita equipe_id null, undefined, '' ou '0'
-    const disponiveis = (data||[]).filter(l=>!l.equipe_id || l.equipe_id==='' || l.equipe_id==='0');
+    const disponiveis = data||[];
 
     if(!disponiveis.length){
       toast('🎣 Não há leads remalho disponíveis no momento','err');
@@ -3043,8 +3046,8 @@ async function puxarLeadsRemalho(){
       return;
     }
 
-    // Pega no máximo 5
-    const candidatos = disponiveis.slice(0, 5);
+    // Já vêm no máximo 5 do banco (limit(5) acima)
+    const candidatos = disponiveis;
     const ids = candidatos.map(l=>l.id);
     const now = new Date().toISOString();
 
@@ -3126,7 +3129,7 @@ async function atualizarContadorPuxador(){
       .select('*',{count:'exact',head:true})
       .eq('tipo_lead','Remalho')
       .is('responsavel_id',null)
-      .is('equipe_id',null);
+      .or('equipe_id.is.null,equipe_id.eq."",equipe_id.eq.0');
     const wrap = document.getElementById('puxador-count-wrap');
     const span = document.getElementById('puxador-disponiveis');
     if(wrap && span){
