@@ -4637,9 +4637,33 @@ async function togglePropostaQuente(leadId,ativo,el){
 async function resolverEquipeParaVenda(lead, vendedor){
   const equipeAtual = lead?.equipe_id ? (allEquipes.find(e=>e.id===lead.equipe_id)||null) : null;
 
+  // Busca os membros-de-equipe do vendedor uma única vez, já protegida contra a
+  // corrida do "cache-first": o app abre a tela com dados salvos antes de buscar
+  // a versão atualizada no banco, então allMembroEquipes pode estar incompleto/
+  // desatualizado bem no instante em que uma venda é registrada (recarregar a
+  // página não evita isso, é uma questão de timing, não de cache velho). Por
+  // isso, sempre que a busca em memória vier vazia, confirma direto no banco
+  // antes de concluir que o vendedor não pertence a nenhuma equipe.
+  let membrosVendedor = [];
+  if(vendedor?.user_id){
+    membrosVendedor = allMembroEquipes.filter(m=>m.user_id===vendedor.user_id);
+    if(!membrosVendedor.length){
+      try{
+        const{data:freshMembros}=await sb.from('crm_equipe_membros').select('*').eq('user_id',vendedor.user_id);
+        if(freshMembros?.length){
+          membrosVendedor = freshMembros;
+          const idsExistentes = new Set(allMembroEquipes.map(m=>m.id));
+          freshMembros.forEach(m=>{ if(!idsExistentes.has(m.id)) allMembroEquipes.push(m); });
+        }
+      }catch(e){
+        console.warn('[FB Ranking] Erro ao buscar membros direto do banco:', e.message);
+      }
+    }
+  }
+
   // 1. Lead já tem equipe e o vendedor realmente pertence a ela → caminho normal, nada a fazer
   if(equipeAtual && vendedor?.user_id){
-    const pertence = allMembroEquipes.some(m=>m.user_id===vendedor.user_id && m.equipe_id===equipeAtual.id);
+    const pertence = membrosVendedor.some(m=>m.equipe_id===equipeAtual.id);
     if(pertence) return equipeAtual;
     console.warn(`[FB Ranking] Lead está na equipe "${equipeAtual.nome}" mas vendedor "${vendedor.name}" não é membro dela — buscando equipe real do vendedor...`);
   } else if(equipeAtual && !vendedor?.user_id){
@@ -4648,45 +4672,41 @@ async function resolverEquipeParaVenda(lead, vendedor){
   }
 
   // 2. Lead sem equipe_id, ou vendedor não pertence à equipe do lead.
-  //    Busca a(s) equipe(s) do vendedor via allMembroEquipes e escolhe
-  //    a que bate com um Firebase configurado (chis/luiz), priorizando
-  //    equipes onde o vendedor é coordenador.
-  if(vendedor?.user_id){
-    const membros = allMembroEquipes.filter(m=>m.user_id===vendedor.user_id);
-    if(membros.length){
-      const nomesMapeados = ['chis','danylo','luiz'];
-      const membroMapeado = membros.find(m=>{
-        const eq = allEquipes.find(e=>e.id===m.equipe_id);
-        const nomeEq = (eq?.nome||'').toLowerCase();
-        return nomesMapeados.some(n=>nomeEq.includes(n));
-      });
-      const eq = membroMapeado
-        ? allEquipes.find(e=>e.id===membroMapeado.equipe_id)
-        : allEquipes.find(e=>e.id===membros[0].equipe_id);
-      if(eq){
-        console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}": "${eq.nome}"`);
-        // Transfere o lead de fato (banco + memória) se a equipe mudou
-        if(lead && lead.equipe_id !== eq.id){
-          const nomeAnterior = equipeAtual?.nome || 'Sem equipe';
-          try{
-            await sb.from('crm_leads').update({equipe_id:eq.id}).eq('id',lead.id);
-            const li = allLeads.findIndex(l=>l.id===lead.id);
-            if(li>-1) allLeads[li].equipe_id = eq.id;
-            lead.equipe_id = eq.id;
-            await sb.from('crm_historico').insert({
-              lead_id: lead.id,
-              user_id: CU?.id,
-              tipo: '🔁 Transferência automática',
-              descricao: `Lead transferido de "${nomeAnterior}" para "${eq.nome}" automaticamente (vendedor "${vendedor.name}" pertence a essa equipe, não à anterior).`,
-              created_at: new Date().toISOString()
-            });
-            console.log(`[FB Ranking] Lead ${lead.id} transferido de "${nomeAnterior}" para "${eq.nome}"`);
-          }catch(e){
-            console.warn('[FB Ranking] Erro ao transferir lead de equipe:', e.message);
-          }
+  //    Escolhe a equipe do vendedor que bate com um Firebase configurado
+  //    (chis/luiz), priorizando equipes onde o vendedor é coordenador.
+  if(membrosVendedor.length){
+    const nomesMapeados = ['chis','danylo','luiz'];
+    const membroMapeado = membrosVendedor.find(m=>{
+      const eq = allEquipes.find(e=>e.id===m.equipe_id);
+      const nomeEq = (eq?.nome||'').toLowerCase();
+      return nomesMapeados.some(n=>nomeEq.includes(n));
+    });
+    const eq = membroMapeado
+      ? allEquipes.find(e=>e.id===membroMapeado.equipe_id)
+      : allEquipes.find(e=>e.id===membrosVendedor[0].equipe_id);
+    if(eq){
+      console.log(`[FB Ranking] Equipe resolvida pelo vendedor "${vendedor.name}": "${eq.nome}"`);
+      // Transfere o lead de fato (banco + memória) se a equipe mudou
+      if(lead && lead.equipe_id !== eq.id){
+        const nomeAnterior = equipeAtual?.nome || 'Sem equipe';
+        try{
+          await sb.from('crm_leads').update({equipe_id:eq.id}).eq('id',lead.id);
+          const li = allLeads.findIndex(l=>l.id===lead.id);
+          if(li>-1) allLeads[li].equipe_id = eq.id;
+          lead.equipe_id = eq.id;
+          await sb.from('crm_historico').insert({
+            lead_id: lead.id,
+            user_id: CU?.id,
+            tipo: '🔁 Transferência automática',
+            descricao: `Lead transferido de "${nomeAnterior}" para "${eq.nome}" automaticamente (vendedor "${vendedor.name}" pertence a essa equipe, não à anterior).`,
+            created_at: new Date().toISOString()
+          });
+          console.log(`[FB Ranking] Lead ${lead.id} transferido de "${nomeAnterior}" para "${eq.nome}"`);
+        }catch(e){
+          console.warn('[FB Ranking] Erro ao transferir lead de equipe:', e.message);
         }
-        return eq;
       }
+      return eq;
     }
   }
 
