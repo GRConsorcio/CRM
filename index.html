@@ -2080,15 +2080,18 @@ async function loadAll(){
   const isCoordRole=CUProfile?.role==='supervisor';
 
   // Load equipe membros first (com timeout)
-  if(!allMembroEquipes.length){
-    try{
-      const{data:mb}=await Promise.race([
-        sb.from('crm_equipe_membros').select('*'),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_membros')),6000))
-      ]);
-      allMembroEquipes=mb||[];
-    }catch(e){ console.warn('equipe_membros timeout:',e.message); allMembroEquipes=[]; }
-  }
+  // IMPORTANTE: sempre busca fresco do banco, mesmo se já tiver dado em memória/cache.
+  // Antes só buscava quando allMembroEquipes estava vazio — como o cache-first
+  // popula esse array ANTES de loadAll() rodar, isso fazia mudanças de equipe
+  // (vendedor adicionado/removido de uma equipe) nunca chegarem numa sessão já
+  // aberta, mesmo com loadAll() rodando em background pra "atualizar tudo".
+  try{
+    const{data:mb}=await Promise.race([
+      sb.from('crm_equipe_membros').select('*'),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_membros')),6000))
+    ]);
+    if(mb) allMembroEquipes=mb;
+  }catch(e){ console.warn('equipe_membros timeout:',e.message); /* mantém o que já tinha em memória/cache em vez de zerar */ }
 
   // Load non-leads data in parallel
   const [lu,lh,lt,lv,ld]=await Promise.all([
