@@ -8301,7 +8301,9 @@ async function resolverRaizEquipe(fbKey, nomeEquipeCRM){
     }
   }
   // Fallback: usa a primeira equipe disponível
-  return Object.keys(equipes)[0] || 'equipe_luiz';
+  const fallbackKey = Object.keys(equipes)[0] || 'equipe_luiz';
+  console.warn(`[FB Ranking] Nenhuma equipe do Firebase "luiz" bate com o nome "${nomeEquipeCRM}" — usando fallback "${fallbackKey}". Verifique se o nome da equipe no CRM corresponde ao nome cadastrado no painel do ranking.`);
+  return fallbackKey;
 }
 
 // ── Normaliza nome para comparação fuzzy ──
@@ -8319,16 +8321,39 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
   const snap = await get(dadosRef);
   const dadosVal = snap.val() || {};
   const nomeNorm = normNome(nomeVendedorCRM);
-  let vendKey = null;
-  let vendData = null;
+  const partesCRM = nomeNorm.split(' ').filter(p=>p.length>2);
+
+  // ── Escolhe o melhor candidato por SCORE, não o primeiro que bater ──
+  // Antes: pegava o primeiro vendedor cujo nome tivesse QUALQUER palavra em
+  // comum (ex: só o primeiro nome) — em equipes com dois "Rafael"/"João"/etc.
+  // isso podia jogar a cota na pessoa errada. Agora: prioriza nome completo
+  // idêntico e, na falta dele, quem tem MAIS palavras em comum (match mais
+  // específico). Em caso de empate genuíno, avisa no console (nome ambíguo)
+  // em vez de decidir silenciosamente.
+  let vendKey = null, vendData = null, melhorScore = 0;
+  const empatados = [];
   for(const [key, val] of Object.entries(dadosVal)){
     const nomeRanking = normNome(val.nome || key);
-    const partesCRM = nomeNorm.split(' ');
-    const partesRk  = nomeRanking.split(' ');
-    const match = partesCRM.some(p=>p.length>2&&partesRk.some(r=>r===p))
-               || nomeRanking.includes(nomeNorm)
-               || nomeNorm.includes(nomeRanking);
-    if(match){ vendKey=key; vendData=val; break; }
+    if(!nomeRanking) continue;
+    let score = 0;
+    if(nomeRanking === nomeNorm){
+      score = 1000; // nome completo idêntico — match perfeito
+    } else {
+      const partesRk = nomeRanking.split(' ').filter(p=>p.length>2);
+      const comuns = partesCRM.filter(p=>partesRk.includes(p)).length;
+      if(comuns>0){
+        // pontua pelo nº de palavras em comum, com bônus por substring completa
+        score = comuns;
+        if(nomeRanking.includes(nomeNorm)||nomeNorm.includes(nomeRanking)) score += 0.5;
+      }
+    }
+    if(score>0){
+      if(score>melhorScore){ melhorScore=score; vendKey=key; vendData=val; empatados.length=0; empatados.push(key); }
+      else if(score===melhorScore){ empatados.push(key); }
+    }
+  }
+  if(empatados.length>1){
+    console.warn(`[Firebase Ranking ${fbKey}] Nome "${nomeVendedorCRM}" empatou entre ${empatados.length} vendedores do ranking (${empatados.join(', ')}) — usando "${vendData?.nome}". Renomeie no ranking para evitar ambiguidade.`);
   }
   if(!vendKey){
     console.warn(`[Firebase Ranking ${fbKey}] Vendedor "${nomeVendedorCRM}" não encontrado. Disponíveis:`, Object.values(dadosVal).map(v=>v.nome));
