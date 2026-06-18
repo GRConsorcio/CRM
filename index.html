@@ -2280,6 +2280,13 @@ async function loadAll(){
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
       carregarMinhasSolicitacoes();
+      // IMPORTANTE: precisa rodar aqui também — esse bloco do vendedor faz "return"
+      // logo abaixo, então o loadEquipes() do fim da função (linha ~2297) nunca era
+      // executado para sessões de vendedor. Isso deixava allEquipes desatualizado/vazio
+      // nessas sessões, fazendo resolverEquipeParaVenda() não achar a equipe do
+      // vendedor (mesmo ele sendo membro correto dela) e a venda não subir pro
+      // ranking Firebase ("Equipe não encontrada/confirmada" / "Equipe não resolvida").
+      await loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
       saveCache();
       return; // evita dupla chamada de renderNav/goToDashboard no initApp
     }
@@ -4674,6 +4681,26 @@ async function resolverEquipeParaVenda(lead, vendedor){
   // 2. Lead sem equipe_id, ou vendedor não pertence à equipe do lead.
   //    Escolhe a equipe do vendedor que bate com um Firebase configurado
   //    (chis/luiz), priorizando equipes onde o vendedor é coordenador.
+  //
+  //    Mesma proteção aplicada acima para allMembroEquipes: se a equipe referenciada
+  //    pela membresia do vendedor não estiver (ainda) na lista allEquipes em memória
+  //    — por exemplo numa sessão de vendedor onde loadEquipes() não rodou a tempo —
+  //    busca essa equipe específica direto no banco em vez de falhar.
+  if(membrosVendedor.length){
+    const idsFaltando = [...new Set(membrosVendedor.map(m=>m.equipe_id))]
+      .filter(id=>id && !allEquipes.some(e=>e.id===id));
+    if(idsFaltando.length){
+      try{
+        const{data:freshEquipes}=await sb.from('crm_equipes').select('*').in('id',idsFaltando);
+        if(freshEquipes?.length){
+          allEquipes.push(...freshEquipes);
+          window._allEquipes = allEquipes;
+        }
+      }catch(e){
+        console.warn('[FB Ranking] Erro ao buscar equipe direto do banco:', e.message);
+      }
+    }
+  }
   if(membrosVendedor.length){
     const nomesMapeados = ['chis','danylo','luiz'];
     const membroMapeado = membrosVendedor.find(m=>{
