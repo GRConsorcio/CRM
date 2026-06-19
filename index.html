@@ -7909,26 +7909,42 @@ async function responderSolicita(solId,novoStatus){
     if(error) throw error;
     // Se aprovado: transfere o lead para o vendedor solicitante
     if(novoStatus==='Aprovado'){
-      const{error:e2}=await sb.from('crm_leads').update({
+      const now=new Date().toISOString();
+      // AUTO-RESOLVE equipe_id: sem isso o lead fica com a equipe antiga (ou nenhuma),
+      // o que pode causar inconsistência e falha silenciosa na sincronização do Firebase
+      // (mesmo problema já visto no import de leads — ver buildAssignPayload/import).
+      let equipeId=null;
+      const membro=allMembroEquipes.find(m=>m.user_id===sol.vendedor_id);
+      if(membro?.equipe_id) equipeId=membro.equipe_id;
+      const payload={
         responsavel_id:sol.vendedor_id,
-        distribuido_em:new Date().toISOString(),
-        updated_at:new Date().toISOString()
-      }).eq('id',sol.lead_id);
-      if(!e2){
-        const idx=allLeads.findIndex(l=>l.id===sol.lead_id);
-        if(idx>-1) allLeads[idx].responsavel_id=sol.vendedor_id;
-        await sb.from('crm_historico').insert({
-          lead_id:sol.lead_id,user_id:CU.id,tipo:'📩 Solicitação',
-          descricao:`Lead transferido para ${sol.vendedor_nome} via solicitação aprovada pelo admin`,
-          created_at:new Date().toISOString()
-        });
-      }
+        distribuido_em:now,
+        updated_at:now,
+        ...(equipeId?{equipe_id:equipeId}:{})
+      };
+      if(_hasAtribuidoEm) payload.atribuido_em=now;
+
+      const{error:e2}=await sb.from('crm_leads').update(payload).eq('id',sol.lead_id);
+      // IMPORTANTE: antes, um erro aqui era ignorado silenciosamente e o admin via
+      // "✅ Lead transferido!" mesmo quando o lead NÃO tinha sido transferido de
+      // verdade (ficava "sem vendedor"). Agora qualquer falha é jogada pro catch
+      // abaixo, que mostra o erro real e NÃO finge sucesso.
+      if(e2) throw e2;
+
+      const idx=allLeads.findIndex(l=>l.id===sol.lead_id);
+      if(idx>-1) Object.assign(allLeads[idx],payload);
+      await sb.from('crm_historico').insert({
+        lead_id:sol.lead_id,user_id:CU.id,tipo:'📩 Solicitação',
+        descricao:`Lead transferido para ${sol.vendedor_nome} via solicitação aprovada pelo admin`,
+        created_at:now
+      });
     }
     toast(novoStatus==='Aprovado'?`✅ Lead transferido para ${sol.vendedor_nome}!`:'❌ Solicitação negada.','ok');
     await renderSolicitacoes();
     saveCache();
   }catch(e){
-    toast('Erro: '+e.message,'err');
+    toast('Erro ao transferir o lead: '+e.message,'err');
+    console.error('[responderSolicita] Falha ao transferir lead:',e);
   }
 }
 
