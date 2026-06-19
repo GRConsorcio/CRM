@@ -8513,6 +8513,137 @@ window.repararSnapDiaLuiz = async function(){
 };
 
 
+// ══════════════════════════════════════════════════════════════
+// RECUPERAÇÃO DAS COTAS DO MÊS — recalcula a partir das vendas
+// reais gravadas no CRM (Supabase: crm_vendas), em vez de confiar
+// no array "s" do Firebase (que pode ter sido zerado por engano,
+// por exemplo ao renomear vendedores no admin do ranking).
+//
+// Não faz nenhuma escrita sem confirmação: mostra no console e
+// num confirm() a comparação "valor atual no ranking → valor
+// recalculado do CRM" para cada vendedor antes de gravar.
+//
+// Chame no console do CRM: repararCotasMesLuiz()
+// ══════════════════════════════════════════════════════════════
+window.repararCotasMesLuiz = async function(){
+  try{
+    console.log('[Reparo Mês] Iniciando recuperação das cotas do mês via CRM...');
+    const fbKey = 'luiz';
+    const db = getDatabase(getFbApp(fbKey));
+    const raiz = await resolverRaizEquipe(fbKey, 'luiz');
+
+    // 1. Acha a equipe "Luiz" cadastrada no CRM
+    const {data: todasEquipes, error: errEq} = await sb.from('crm_equipes').select('*');
+    if(errEq){ alert('Erro ao buscar equipes no CRM: '+errEq.message); return; }
+    const equipeLuiz = (todasEquipes||[]).find(e=>(e.nome||'').toLowerCase().includes('luiz'));
+    if(!equipeLuiz){
+      alert('Não encontrei nenhuma equipe com "Luiz" no nome (tabela crm_equipes). Reparo cancelado.');
+      return;
+    }
+
+    // 2. Vendedores (membros) dessa equipe
+    const {data: membros, error: errMb} = await sb.from('crm_equipe_membros').select('*').eq('equipe_id', equipeLuiz.id);
+    if(errMb){ alert('Erro ao buscar membros da equipe no CRM: '+errMb.message); return; }
+    const idsVendedores = [...new Set((membros||[]).map(m=>m.user_id))];
+    if(!idsVendedores.length){
+      alert('Não encontrei vendedores vinculados à equipe "'+equipeLuiz.nome+'" no CRM. Reparo cancelado.');
+      return;
+    }
+
+    // 3. Intervalo do mês atual em BRT (do dia 1 até agora)
+    const agoraBRT = new Date(new Date().toLocaleString('en-US',{timeZone:'America/Sao_Paulo'}));
+    const inicioMes = new Date(agoraBRT.getFullYear(), agoraBRT.getMonth(), 1);
+    const pad=n=>String(n).padStart(2,'0');
+    const inicioMesISO = `${inicioMes.getFullYear()}-${pad(inicioMes.getMonth()+1)}-${pad(inicioMes.getDate())}T00:00:00-03:00`;
+    const agoraISO = new Date().toISOString();
+    console.log(`[Reparo Mês] Equipe "${equipeLuiz.nome}" | vendedores: ${idsVendedores.length} | período: ${inicioMesISO} até agora`);
+
+    // 4. Vendas reais do mês (exclui só as Canceladas — Pendente e Aprovado contam,
+    //    igual ao comportamento original do incrementarCotaFirebase)
+    const {data: vendasMes, error: errVend} = await sb.from('crm_vendas')
+      .select('id,vendedor_id,qtd_cotas,created_at,status_venda')
+      .in('vendedor_id', idsVendedores)
+      .gte('created_at', inicioMesISO)
+      .lte('created_at', agoraISO)
+      .neq('status_venda','Cancelado');
+    if(errVend){ alert('Erro ao buscar vendas no CRM: '+errVend.message); return; }
+    console.log(`[Reparo Mês] Vendas válidas encontradas no CRM: ${(vendasMes||[]).length}`);
+
+    // 5. Agrupa por vendedor + semana do mês (mesma lógica do incrementarCotaFirebase)
+    const cotasPorVendedor = {}; // user_id -> [s0,s1,s2,...]
+    (vendasMes||[]).forEach(v=>{
+      const semanaIdx = semanaDoMes(v.created_at);
+      if(!cotasPorVendedor[v.vendedor_id]) cotasPorVendedor[v.vendedor_id]=[0,0,0,0,0,0,0,0];
+      cotasPorVendedor[v.vendedor_id][semanaIdx] += (v.qtd_cotas||1);
+    });
+
+    // 6. Lê os dados atuais do ranking (Firebase) e a config de nº de semanas
+    const dadosSnap = await get(ref(db, `${raiz}/dados`));
+    const dadosFb = dadosSnap.val() || {};
+    const configSnap = await get(ref(db, `${raiz}/config`));
+    const semanasConfig = (configSnap.val()||{}).semanas || 4;
+
+    // 7. Casa cada vendedor do CRM com o vendedor correspondente no ranking
+    //    (mesmo algoritmo de score por palavras em comum usado no incremento normal)
+    const comparacao = [];
+    const escritas = {};
+    idsVendedores.forEach(uid=>{
+      const user = allUsers.find(u=>u.user_id===uid);
+      if(!user) return;
+      const nomeNorm = normNome(user.name);
+      const partesCRM = nomeNorm.split(' ').filter(p=>p.length>2);
+      let vendKey=null, vendData=null, melhorScore=0;
+      for(const [key,val] of Object.entries(dadosFb)){
+        const nomeRanking = normNome(val.nome||key);
+        if(!nomeRanking) continue;
+        let score=0;
+        if(nomeRanking===nomeNorm){ score=1000; }
+        else{
+          const partesRk = nomeRanking.split(' ').filter(p=>p.length>2);
+          const comuns = partesCRM.filter(p=>partesRk.includes(p)).length;
+          if(comuns>0){ score=comuns; if(nomeRanking.includes(nomeNorm)||nomeNorm.includes(nomeRanking)) score+=0.5; }
+        }
+        if(score>melhorScore){ melhorScore=score; vendKey=key; vendData=val; }
+      }
+      if(!vendKey){
+        console.warn(`[Reparo Mês] Vendedor do CRM "${user.name}" não encontrado no ranking — ignorado.`);
+        return;
+      }
+
+      const novoArr = (cotasPorVendedor[uid]||[0,0,0,0]).slice(0, semanasConfig);
+      while(novoArr.length<semanasConfig) novoArr.push(0);
+      const totalNovo = novoArr.reduce((a,b)=>a+b,0);
+      const totalAtual = Array.isArray(vendData.s) ? vendData.s.reduce((a,b)=>a+b,0) : 0;
+
+      comparacao.push(`${vendData.nome}: ranking atual = ${totalAtual}  →  recalculado do CRM = ${totalNovo}  [${novoArr.join(', ')}]`);
+      escritas[vendKey] = {novoArr, nome:vendData.nome};
+    });
+
+    if(!Object.keys(escritas).length){
+      alert('Nenhuma correspondência encontrada entre vendedores do CRM e do ranking. Reparo cancelado — nada foi alterado.');
+      return;
+    }
+
+    const resumo = comparacao.join('\n');
+    console.log('[Reparo Mês] Comparação ANTES de aplicar:\n'+resumo);
+    const ok = confirm(
+      'Isto vai SOBRESCREVER as cotas do mês de cada vendedor no ranking "Luiz" com os valores recalculados a partir das vendas reais do CRM neste mês:\n\n'
+      + resumo
+      + '\n\nConfira os números acima (eles também estão no console, F12).\nConfirma a aplicação?'
+    );
+    if(!ok){ console.log('[Reparo Mês] Cancelado pelo usuário — nada foi alterado.'); return; }
+
+    for(const [vendKey,info] of Object.entries(escritas)){
+      await set(ref(db, `${raiz}/dados/${vendKey}/s`), info.novoArr);
+      console.log(`[Reparo Mês] ${info.nome}: s = [${info.novoArr.join(', ')}]`);
+    }
+
+    alert(`Reparo concluído! ${Object.keys(escritas).length} vendedor(es) tiveram as cotas do mês recalculadas a partir das vendas reais do CRM.\nRecarregue o ranking para ver os números atualizados.`);
+  }catch(e){
+    console.error('[Reparo Mês] Erro:', e);
+    alert('Erro no reparo: '+e.message);
+  }
+};
 
 
 window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, delta=1){
