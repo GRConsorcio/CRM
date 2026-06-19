@@ -18,7 +18,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 /* AUTH */
 #auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999}
 .auth-box{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:44px 40px;width:380px;text-align:center}
-.auth-logo{width:58px;height:58px;border-radius:14px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0a0a0a;font-size:23px;font-weight:900;display:flex;align-items:center;justify-content:center;margin:0 auto 18px}
+.auth-logo{width:72px;height:72px;border-radius:16px;object-fit:cover;display:block;margin:0 auto 18px;box-shadow:0 4px 18px rgba(0,0,0,.45),0 0 0 1px rgba(201,168,76,.25)}
 .auth-title{font-size:22px;font-weight:900;color:var(--gold2);margin-bottom:4px}
 .auth-sub{font-size:12px;color:var(--muted2);margin-bottom:26px}
 .auth-tabs{display:flex;gap:0;margin-bottom:22px;background:var(--surface2);border-radius:8px;padding:3px}
@@ -345,7 +345,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 </div>
 <div id="auth-screen">
   <div class="auth-box">
-    <div class="auth-logo">GR</div>
+    <img class="auth-logo" id="auth-logo-img" alt="GR Consórcio">
     <div class="auth-title">GR Consórcio</div>
     <div class="auth-sub">CRM — Acesso da equipe</div>
     <div class="auth-tabs">
@@ -366,6 +366,15 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div class="auth-err" id="a-err"></div>
   </div>
 </div>
+<script>
+// Reaproveita a logo já embutida na sidebar (em base64) na tela de login,
+// em vez de duplicar a mesma imagem gigante em base64 duas vezes no HTML.
+document.addEventListener('DOMContentLoaded', function(){
+  var src = document.querySelector('.logo-img') ? document.querySelector('.logo-img').src : '';
+  var img = document.getElementById('auth-logo-img');
+  if(src && img) img.src = src;
+});
+</script>
 
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
