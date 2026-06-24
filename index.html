@@ -3653,8 +3653,23 @@ async function distParaEquipe(){
   if(qty) semVend=semVend.slice(0,qty);
   if(!semVend.length){toast('Nenhum lead disponível com esses critérios','err');return;}
   if(!confirm(`Enviar ${semVend.length} lead(s) para a equipe "${equipe?.nome}"?`)) return;
-  const batch=semVend.map(l=>sb.from('crm_leads').update({equipe_id:equipeId,updated_at:new Date().toISOString()}).eq('id',l.id));
-  await Promise.all(batch);
+  // BUGFIX: 'updated_at' não existe em crm_leads (mesmo erro do "Aprovar"
+  // em Solicitações de Lead: "Could not find the 'updated_at' column").
+  // Isso fazia TODO update falhar, mas o Promise.all abaixo nunca checava
+  // o {error} de cada chamada — então sempre aparecia "N lead(s) enviados!"
+  // mesmo quando nenhum lead era realmente enviado para a equipe.
+  const results=await Promise.all(semVend.map(l=>sb.from('crm_leads').update({equipe_id:equipeId}).eq('id',l.id)));
+  const falhas=results.filter(r=>r.error);
+  if(falhas.length){
+    console.error('[distParaEquipe] Falhas:',falhas.map(f=>f.error.message));
+    toast(`Erro ao enviar leads: ${falhas[0].error.message}`,'err');
+    if(falhas.length<semVend.length){
+      // Atualiza localmente só os que realmente foram salvos
+      semVend.forEach((l,i)=>{ if(!results[i].error){ const idx=allLeads.findIndex(x=>x.id===l.id); if(idx>-1) allLeads[idx].equipe_id=equipeId; } });
+      saveCache();renderDistribuicao();
+    }
+    return;
+  }
   semVend.forEach(l=>{const i=allLeads.findIndex(x=>x.id===l.id);if(i>-1)allLeads[i].equipe_id=equipeId;});
   saveCache();
   toast(`${semVend.length} lead(s) enviados para "${equipe?.nome}"!`,'ok');
@@ -8059,13 +8074,16 @@ async function responderSolicita(solId,novoStatus){
       let equipeId=null;
       const membro=allMembroEquipes.find(m=>m.user_id===sol.vendedor_id);
       if(membro?.equipe_id) equipeId=membro.equipe_id;
+      // BUGFIX: este payload era montado manualmente e incluía 'updated_at',
+      // coluna que NÃO existe em crm_leads — toda aprovação falhava com
+      // "Could not find the 'updated_at' column of 'crm_leads'". As outras
+      // ~15 telas que atribuem lead a vendedor usam buildAssignPayload(),
+      // que nunca teve esse campo; agora esta também usa, resetStatus=false
+      // pra manter o status atual do lead (igual o comportamento anterior).
       const payload={
-        responsavel_id:sol.vendedor_id,
-        distribuido_em:now,
-        updated_at:now,
+        ...buildAssignPayload(sol.vendedor_id,now,false),
         ...(equipeId?{equipe_id:equipeId}:{})
       };
-      if(_hasAtribuidoEm) payload.atribuido_em=now;
 
       const{error:e2}=await sb.from('crm_leads').update(payload).eq('id',sol.lead_id);
       // IMPORTANTE: antes, um erro aqui era ignorado silenciosamente e o admin via
