@@ -2071,8 +2071,12 @@ async function fetchAllPages(queryBuilder, pageSize=1000, onProgress, startOffse
     allData=allData.concat(data);
     batch++;
     if(onProgress) onProgress(allData.length, batch);
-    if(data.length<pageSize) break;
-    from+=pageSize;
+    // BUGFIX: o Supabase pode truncar a resposta num limite de linhas (Max
+    // Rows) menor que pageSize, mesmo dentro da janela pedida pelo .range().
+    // Avançar por data.length (em vez de pageSize) garante que nenhum
+    // registro fique pulado se isso acontecer; só paramos quando o
+    // servidor de fato não retorna mais nada.
+    from+=data.length;
   }
   return allData;
 }
@@ -2154,7 +2158,28 @@ async function loadAll(){
               hideLoadingProgress(loadingToast,allLeads.length);
               return;
             }
-            // Monta batches paralelos de 5000 cada (máximo Supabase via range)
+            // BUGFIX: o Supabase trunca cada requisição num limite fixo de
+            // linhas (Max Rows, geralmente 1000) mesmo quando o .range()
+            // pede uma janela maior. Pedir 5000 de uma vez retornava só as
+            // primeiras ~1000 e o loop seguia pro próximo bloco como se
+            // tivesse pego tudo — criando buracos enormes de leads nunca
+            // carregados (por isso "somem" leads ao filtrar por status,
+            // principalmente os mais antigos, fora dos primeiros 1000).
+            // fetchRangeFull insiste na mesma janela até cobrí-la de verdade,
+            // avançando só pelo que realmente voltou em cada chamada.
+            async function fetchRangeFull(from,to){
+              let out=[];
+              let cursor=from;
+              while(cursor<=to){
+                const{data,error}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(cursor,to);
+                if(error){ console.warn('fetchRangeFull error:',error.message); break; }
+                if(!data||data.length===0) break;
+                out=out.concat(data);
+                cursor+=data.length; // avança pelo que de fato voltou, não pelo que foi pedido
+              }
+              return out;
+            }
+            // Monta batches paralelos de 5000 cada (cada um é sub-paginado internamente se o servidor truncar)
             const BATCH=5000;
             const batches=[];
             for(let from=1000;from<total;from+=BATCH){
@@ -2167,12 +2192,12 @@ async function loadAll(){
             for(let i=0;i<batches.length;i+=CONCURRENT){
               const grupo=batches.slice(i,i+CONCURRENT);
               const results=await Promise.all(
-                grupo.map(b=>sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(b.from,b.to))
+                grupo.map(b=>fetchRangeFull(b.from,b.to))
               );
-              results.forEach(r=>{
-                if(r.data&&r.data.length>0){
-                  allLeads=[...allLeads,...r.data];
-                  fetched+=r.data.length;
+              results.forEach(data=>{
+                if(data&&data.length>0){
+                  allLeads=[...allLeads,...data];
+                  fetched+=data.length;
                 }
               });
               updateLoadingProgress(loadingToast,fetched);
