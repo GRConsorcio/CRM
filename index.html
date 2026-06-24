@@ -546,7 +546,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="tbl-wrap">
         <table><thead><tr>
           <th id="l-chk-head" style="width:32px"></th>
-          <th>Nome</th><th>Telefone</th><th>Interesse</th>
+          <th>Nome</th><th>Telefone</th><th>Observações</th>
           <th>Status</th><th>Vendedor</th><th>Origem</th><th>Data</th><th></th>
         </tr></thead>
         <tbody id="l-tbody"></tbody></table>
@@ -2773,7 +2773,7 @@ function renderLeads(resetPage){
       return`<tr>
         <td class="lead-chk-td" style="width:36px;${showChk?'':'display:none'}"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" ${isChecked?'checked':''} onchange="onLeadChkChange(this)"></td>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads')">${l.nome}</td>
-        <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
+        <td>${l.telefone||'—'}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(l.observacoes||'').replace(/"/g,'&quot;')}">${l.observacoes||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
         <td>${u?`<span style="font-size:11px">${u.name}</span>`:'<span style="color:var(--orange);font-size:11px">Sem vendedor</span>'}</td>
         <td style="color:var(--muted2);font-size:11px">${l.origem||'—'}</td>
@@ -3247,20 +3247,31 @@ async function openDetail(id,from){
       <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Interesse</div><div>${lead.interesse||'—'}</div></div>
       <div>
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">E-mail
-          <button onclick="openInlineEditEmailObs('${id}')" style="background:none;border:none;color:var(--gold-dim);cursor:pointer;font-size:11px;margin-left:6px;padding:0;vertical-align:middle" title="Editar e-mail e observações">✏️</button>
+          <button onclick="openInlineEditEmail('${id}')" style="background:none;border:none;color:var(--gold-dim);cursor:pointer;font-size:11px;margin-left:6px;padding:0;vertical-align:middle" title="Editar e-mail">✏️</button>
         </div>
         <div id="email-disp-${id}">${lead.email||'—'}</div>
-        <div id="inline-edit-emailobs-${id}" style="display:none;margin-top:6px;grid-column:1/-1">
+        <div id="inline-edit-email-${id}" style="display:none;margin-top:6px">
           <input id="ie-email-${id}" class="inp" style="margin-bottom:6px;font-size:12px" value="${lead.email||''}" placeholder="E-mail">
-          <textarea id="ie-obs-${id}" class="inp" style="min-height:54px;font-size:12px" placeholder="Observações...">${lead.observacoes||''}</textarea>
-          <div style="display:flex;gap:6px;margin-top:6px">
-            <button class="btn-primary" style="flex:1;font-size:11.5px;padding:7px" onclick="saveInlineEmailObs('${id}')">Salvar</button>
-            <button class="btn-sm" onclick="document.getElementById('inline-edit-emailobs-${id}').style.display='none'">Cancelar</button>
+          <div style="display:flex;gap:6px">
+            <button class="btn-primary" style="flex:1;font-size:11.5px;padding:7px" onclick="saveInlineEmail('${id}')">Salvar</button>
+            <button class="btn-sm" onclick="document.getElementById('inline-edit-email-${id}').style.display='none'">Cancelar</button>
           </div>
         </div>
       </div>
       <div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Vendedor</div><div>${resp?.name||'Sem vendedor'}</div></div>
-      ${lead.observacoes?`<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Observações</div><div style="font-size:12.5px;color:var(--muted2)">${lead.observacoes}</div></div>`:''}
+      <div style="grid-column:1/-1">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Observações
+          <button onclick="openInlineEditObs('${id}')" style="background:none;border:none;color:var(--gold-dim);cursor:pointer;font-size:11px;margin-left:6px;padding:0;vertical-align:middle" title="Editar observações">✏️</button>
+        </div>
+        <div id="obs-disp-${id}" style="font-size:12.5px;color:var(--muted2)">${lead.observacoes||'—'}</div>
+        <div id="inline-edit-obs-${id}" style="display:none;margin-top:6px">
+          <textarea id="ie-obs-${id}" class="inp" style="min-height:54px;font-size:12px" placeholder="Observações...">${lead.observacoes||''}</textarea>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button class="btn-primary" style="flex:1;font-size:11.5px;padding:7px" onclick="saveInlineObs('${id}')">Salvar</button>
+            <button class="btn-sm" onclick="document.getElementById('inline-edit-obs-${id}').style.display='none'">Cancelar</button>
+          </div>
+        </div>
+      </div>
       ${lead.equipe_id?`<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:4px">Equipe</div><div style="font-size:12.5px;color:var(--blue)">${allEquipes.find(e=>e.id===lead.equipe_id)?.nome||'—'}</div></div>`:''}
     </div>`;
 
@@ -4924,28 +4935,43 @@ async function revertVenda(vendaId, leadId){
   openDetail(leadId,fromPage);
 }
 
-/* ═══ INLINE EDIT EMAIL + OBSERVAÇÕES ═══ */
-function openInlineEditEmailObs(leadId){
-  const el=document.getElementById('inline-edit-emailobs-'+leadId);
+/* ═══ INLINE EDIT E-MAIL (separado de Observações) ═══ */
+function openInlineEditEmail(leadId){
+  const el=document.getElementById('inline-edit-email-'+leadId);
   if(el) el.style.display=el.style.display==='none'?'block':'none';
 }
-async function saveInlineEmailObs(leadId){
+async function saveInlineEmail(leadId){
   const email=(document.getElementById('ie-email-'+leadId)?.value||'').trim();
-  const obs=(document.getElementById('ie-obs-'+leadId)?.value||'').trim();
   const leadAntes=allLeads.find(l=>l.id===leadId);
-  const{error}=await sb.from('crm_leads').update({email:email||null,observacoes:obs||null}).eq('id',leadId);
+  const{error}=await sb.from('crm_leads').update({email:email||null}).eq('id',leadId);
   if(error){toast('Erro ao salvar: '+error.message,'err');return;}
   const li=allLeads.findIndex(l=>l.id===leadId);
-  if(li>-1){allLeads[li].email=email||null;allLeads[li].observacoes=obs||null;}
-  // Log apenas se algo mudou
-  const mudancas=[];
-  if(leadAntes&&(email||'')!==(leadAntes.email||'')) mudancas.push('E-mail atualizado');
-  if(leadAntes&&(obs||'')!==(leadAntes.observacoes||'')) mudancas.push('Observações atualizadas');
-  if(mudancas.length){
-    await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:mudancas.join(' | '),created_at:new Date().toISOString()});
+  if(li>-1) allLeads[li].email=email||null;
+  if(leadAntes&&(email||'')!==(leadAntes.email||'')){
+    await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:'E-mail atualizado',created_at:new Date().toISOString()});
   }
   saveCacheLazy();
-  toast('E-mail e observações salvos!','ok');
+  toast('E-mail salvo!','ok');
+  openDetail(leadId,fromPage);
+}
+
+/* ═══ INLINE EDIT OBSERVAÇÕES (separado de E-mail) ═══ */
+function openInlineEditObs(leadId){
+  const el=document.getElementById('inline-edit-obs-'+leadId);
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
+}
+async function saveInlineObs(leadId){
+  const obs=(document.getElementById('ie-obs-'+leadId)?.value||'').trim();
+  const leadAntes=allLeads.find(l=>l.id===leadId);
+  const{error}=await sb.from('crm_leads').update({observacoes:obs||null}).eq('id',leadId);
+  if(error){toast('Erro ao salvar: '+error.message,'err');return;}
+  const li=allLeads.findIndex(l=>l.id===leadId);
+  if(li>-1) allLeads[li].observacoes=obs||null;
+  if(leadAntes&&(obs||'')!==(leadAntes.observacoes||'')){
+    await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:'Observações atualizadas',created_at:new Date().toISOString()});
+  }
+  saveCacheLazy();
+  toast('Observações salvas!','ok');
   openDetail(leadId,fromPage);
 }
 
