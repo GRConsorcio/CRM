@@ -281,7 +281,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .pg-info{font-size:11px;color:var(--muted2);margin-left:auto;white-space:nowrap}
 
 /* LASSO SELECT */
-#lasso-box{position:fixed;border:2px solid var(--gold);background:rgba(201,168,76,0.08);border-radius:3px;pointer-events:none;z-index:9000;display:none}
+#lasso-box,.lasso-box{position:fixed;border:2px solid var(--gold);background:rgba(201,168,76,0.08);border-radius:3px;pointer-events:none;z-index:9000;display:none}
 .lead-row-sel td{background:rgba(201,168,76,0.07)!important}
 /* DUPLICATE MODAL */
 #modal-dup-bg{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9500;display:none;align-items:center;justify-content:center}
@@ -3470,7 +3470,8 @@ function renderFunil(){
         const vd=allVendas.find(v=>v.lead_id===l.id);
         const isAprov=vd?.status_venda==='Aprovado';
         const isCanc=vd?.status_venda==='Cancelado';
-        const cardBorder=isAprov?'2px solid #4ade80':isCanc?'2px solid #e55':'1px solid var(--border)';
+        const isSel=_massSelectedIds.has(l.id);
+        const cardBorder=isAprov?'2px solid #4ade80':isCanc?'2px solid #e55':(isSel?'1px solid var(--gold)':'1px solid var(--border)');
         const cardBg=isAprov?'rgba(74,222,128,0.06)':isCanc?'rgba(229,85,85,0.06)':'var(--surface)';
         return`<div class="funil-card" draggable="${_massMode?'false':'true'}"
           data-lead-id="${l.id}" id="funil-card-${l.id}"
@@ -3484,7 +3485,8 @@ function renderFunil(){
           <div style="display:flex;align-items:center;gap:8px">
             <input type="checkbox" class="mass-chk" data-id="${l.id}"
               style="accent-color:var(--gold);width:16px;height:16px;flex-shrink:0;display:${_massMode?'block':'none'}"
-              onclick="event.stopPropagation()" onchange="updateMassCount();updateCardStyle('${l.id}')">
+              ${isSel?'checked':''}
+              onclick="event.stopPropagation()" onchange="onMassChkChange(this)">
             <div style="flex:1">
               <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
               ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="opacity:.7">📞</span>${l.telefone}</div>`:''}
@@ -6103,6 +6105,19 @@ function getCoordLeads(){
 }
 
 /* ═══ COORD: LEADS DA EQUIPE ═══ */
+// BUGFIX: a seleção em massa desta página vivia só no DOM. Como a busca
+// roda em cada tecla digitada (oninput) e os filtros redesenham a tabela
+// inteira, qualquer leads selecionados eram perdidos silenciosamente no
+// meio da seleção. Agora persiste num Set, do mesmo jeito que "Todos os
+// Leads" já fazia — e isso também é o que permite o clique-e-arraste
+// (lasso) funcionar entre re-renders.
+let _coordMassMode=false;
+let _coordSelectedIds=new Set();
+function onCoordChkChange(chk){
+  if(chk.checked) _coordSelectedIds.add(chk.dataset.id);
+  else _coordSelectedIds.delete(chk.dataset.id);
+  updateCoordMassCount();
+}
 function renderCoordLeads(){
   const q=(document.getElementById('cl-srch')?.value||'').toLowerCase();
   const fs=document.getElementById('cl-f-status')?.value;
@@ -6122,8 +6137,9 @@ function renderCoordLeads(){
     ?`<tr><td colspan="8"><div class="empty"><div class="ei">👥</div>Nenhum lead</div></td></tr>`
     :leads.map(l=>{
       const u=allUsers.find(u=>u.user_id===l.responsavel_id);
+      const isChecked=_coordSelectedIds.has(l.id);
       return`<tr>
-        <td><input type="checkbox" class="coord-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" onchange="updateCoordMassCount()"></td>
+        <td><input type="checkbox" class="coord-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" ${isChecked?'checked':''} onchange="onCoordChkChange(this)"></td>
         <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','coord-leads')">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
@@ -6135,38 +6151,49 @@ function renderCoordLeads(){
 }
 
 function toggleCoordMass(on){
+  _coordMassMode=on;
   const bar=document.getElementById('coord-mass-bar');
   if(bar) bar.style.display=on?'flex':'none';
   const mbs=getCoordMembers();
   const rSel=document.getElementById('coord-mass-resp');
   if(rSel) rSel.innerHTML='<option value="">Transferir para...</option>'+
     allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
-  if(!on) document.querySelectorAll('.coord-chk').forEach(c=>{c.checked=false;});
+  if(!on){ document.querySelectorAll('.coord-chk').forEach(c=>{c.checked=false;}); _coordSelectedIds.clear(); }
   updateCoordMassCount();
 }
-function coordSelectAll(sel){document.querySelectorAll('.coord-chk').forEach(c=>{c.checked=sel;});updateCoordMassCount();}
+function coordSelectAll(sel){
+  document.querySelectorAll('.coord-chk').forEach(c=>{
+    c.checked=sel;
+    if(sel) _coordSelectedIds.add(c.dataset.id); else _coordSelectedIds.delete(c.dataset.id);
+  });
+  updateCoordMassCount();
+}
 function updateCoordMassCount(){
-  const n=document.querySelectorAll('.coord-chk:checked').length;
+  const n=_coordSelectedIds.size;
   const el=document.getElementById('coord-mass-count');
   if(el) el.textContent=n?n+' selecionado'+(n!==1?'s':''):'';
 }
 async function coordMassTransfer(){
-  const ids=[...document.querySelectorAll('.coord-chk:checked')].map(c=>c.dataset.id);
+  const ids=[..._coordSelectedIds];
   const respId=document.getElementById('coord-mass-resp')?.value;
   if(!ids.length){toast('Selecione leads','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
   await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',ids);
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
-  saveCache();renderCoordLeads();
+  saveCache();
+  _coordSelectedIds.clear();
+  renderCoordLeads();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
 }
 async function coordMassRemover(){
-  const ids=[...document.querySelectorAll('.coord-chk:checked')].map(c=>c.dataset.id);
+  const ids=[..._coordSelectedIds];
   if(!ids.length){toast('Selecione leads','err');return;}
   if(!confirm('Remover vendedor de '+ids.length+' lead'+(ids.length!==1?'s':'')+'?'))return;
   await sb.from('crm_leads').update({responsavel_id:null}).in('id',ids);
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=null;});
-  saveCache();renderCoordLeads();
+  saveCache();
+  _coordSelectedIds.clear();
+  renderCoordLeads();
   toast('Vendedor removido de '+ids.length+' lead'+(ids.length!==1?'s':''),'ok');
 }
 
@@ -6197,7 +6224,8 @@ function renderCoordFunil(){
         const vd=allVendas.find(v=>v.lead_id===l.id);
         const isAprov=vd?.status_venda==='Aprovado';
         const isCanc=vd?.status_venda==='Cancelado';
-        const cardBorder=isAprov?'2px solid #4ade80':isCanc?'2px solid #e55':'1px solid var(--border)';
+        const isSel=_cfSelectedIds.has(l.id);
+        const cardBorder=isAprov?'2px solid #4ade80':isCanc?'2px solid #e55':(isSel?'1px solid var(--gold)':'1px solid var(--border)');
         const cardBg=isAprov?'rgba(74,222,128,0.06)':isCanc?'rgba(229,85,85,0.06)':'var(--surface)';
         return`<div class="funil-card" draggable="${_cfMassMode?'false':'true'}"
           data-lead-id="${l.id}" id="cf-card-${l.id}"
@@ -6205,11 +6233,12 @@ function renderCoordFunil(){
           onclick="${_cfMassMode?'toggleCfCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'coord-leads\')'}"
           style="background:${cardBg};border:${cardBorder};border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s;cursor:pointer;position:relative"
           onmouseover="if(!${isAprov}&&!${isCanc})this.style.borderColor='var(--gold-dim)'"
-          onmouseout="if(!${isAprov}&&!${isCanc})this.style.borderColor='var(--border)'">
+          onmouseout="if(!${isAprov}&&!${isCanc})this.style.borderColor=document.querySelector('.cf-chk[data-id=\'${l.id}\']')?.checked?'var(--gold)':'var(--border)'">
           <div style="display:flex;align-items:center;gap:8px">
             <input type="checkbox" class="cf-chk" data-id="${l.id}"
               style="accent-color:var(--gold);width:16px;height:16px;flex-shrink:0;display:${_cfMassMode?'block':'none'}"
-              onclick="event.stopPropagation()" onchange="updateCfCount()">
+              ${isSel?'checked':''}
+              onclick="event.stopPropagation()" onchange="onCfChkChange(this)">
             <div style="flex:1">
               <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
               ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">📞 ${l.telefone}</div>`:''}
@@ -6230,6 +6259,7 @@ async function cfOnDrop(e,newStage){
 }
 function toggleCfMass(on){
   _cfMassMode=on;
+  if(!on) _cfSelectedIds.clear();
   const bar=document.getElementById('cf-mass-bar');
   if(bar){
     bar.style.display=on?'flex':'none';
@@ -6252,46 +6282,83 @@ function toggleCfMass(on){
 function toggleCfCard(e,id){
   e.stopPropagation();
   const chk=document.querySelector(`.cf-chk[data-id="${id}"]`);
-  if(chk){chk.checked=!chk.checked;updateCfCount();}
+  if(chk){chk.checked=!chk.checked;onCfChkChange(chk);}
 }
-// Drag select for coord funil table (Leads da Equipe table)
-let _cfDragSelecting=false,_cfDragSelectVal=null;
-document.addEventListener('mouseup',()=>{_cfDragSelecting=false;_cfDragSelectVal=null;});
-function initCfDragSelect(){
-  const grid=document.getElementById('coord-funil-grid');
-  if(!grid||grid._cfDragInit) return;
-  grid._cfDragInit=true;
+// BUGFIX: seleção da página "Funil da Equipe" (supervisor) era guardada só
+// no DOM e se perdia sempre que a lista era redesenhada (trocar vendedor,
+// mover lead de etapa, etc). Agora persiste num Set, igual às outras telas.
+let _cfSelectedIds=new Set();
+function onCfChkChange(chk){
+  if(chk.checked) _cfSelectedIds.add(chk.dataset.id);
+  else _cfSelectedIds.delete(chk.dataset.id);
+  updateCfCount();
+}
+// ═══ DRAG-SELECT GENÉRICO PARA CARDS DE FUNIL (coord-funil e funis-equipe) ═══
+// BUGFIX: a versão antiga fazia toggle tanto no mousedown quanto no onclick
+// do card — um clique simples (sem arrastar) marcava no mousedown e
+// desmarcava de novo no click, cancelando a si mesmo. Na prática, clicar
+// em 1 card para selecioná-lo não funcionava; só arrastando. Agora o
+// mousedown apenas "arma" o possível arraste; o toggle real só acontece
+// quando o mouse de fato entra em outro card (confirmando arraste) — um
+// clique simples continua sendo tratado pelo onclick do card normalmente.
+function initCardDragSelect(gridId,chkClass,isMassModeOn){
+  const grid=document.getElementById(gridId);
+  if(!grid||grid._dragSelInit) return;
+  grid._dragSelInit=true;
+  let st={active:false,moved:false,chk:null,val:null};
   grid.addEventListener('mousedown',e=>{
-    if(!_cfMassMode) return;
-    const chk=e.target.closest('[data-lead-id]')?.querySelector('.cf-chk');
-    if(!chk) return;
-    _cfDragSelecting=true;_cfDragSelectVal=!chk.checked;
-    chk.checked=_cfDragSelectVal;updateCfCount();e.preventDefault();
+    if(!isMassModeOn()) return;
+    const card=e.target.closest('[data-lead-id]');
+    const chk=card&&card.querySelector('.'+chkClass);
+    if(!chk||e.target===chk) return; // clique direto no checkbox: deixa o nativo cuidar
+    st={active:true,moved:false,chk,val:!chk.checked};
   });
   grid.addEventListener('mouseover',e=>{
-    if(!_cfDragSelecting||!_cfMassMode) return;
-    const chk=e.target.closest('[data-lead-id]')?.querySelector('.cf-chk');
-    if(chk&&chk.checked!==_cfDragSelectVal){chk.checked=_cfDragSelectVal;updateCfCount();}
+    if(!st.active||!isMassModeOn()) return;
+    const card=e.target.closest('[data-lead-id]');
+    const chk=card&&card.querySelector('.'+chkClass);
+    if(!chk) return;
+    if(!st.moved){
+      st.moved=true;
+      if(st.chk.checked!==st.val){st.chk.checked=st.val;st.chk.dispatchEvent(new Event('change'));}
+    }
+    if(chk.checked!==st.val){chk.checked=st.val;chk.dispatchEvent(new Event('change'));}
   });
+  document.addEventListener('mouseup',()=>{st.active=false;});
 }
+function initCfDragSelect(){ initCardDragSelect('coord-funil-grid','cf-chk',()=>_cfMassMode); }
 function selectCfByCount(n){
   const chks=document.querySelectorAll('.cf-chk');
-  let cnt=0;chks.forEach(c=>{c.checked=(cnt<n);cnt++;});updateCfCount();
+  let cnt=0;chks.forEach(c=>{
+    const sel=cnt<n;
+    c.checked=sel;
+    if(sel) _cfSelectedIds.add(c.dataset.id); else _cfSelectedIds.delete(c.dataset.id);
+    cnt++;
+  });
+  updateCfCount();
 }
-function cfSelectAll(sel){document.querySelectorAll('.cf-chk').forEach(c=>{c.checked=sel;});updateCfCount();}
+function cfSelectAll(sel){
+  document.querySelectorAll('.cf-chk').forEach(c=>{
+    c.checked=sel;
+    if(sel) _cfSelectedIds.add(c.dataset.id); else _cfSelectedIds.delete(c.dataset.id);
+  });
+  updateCfCount();
+}
 function updateCfCount(){
-  const n=document.querySelectorAll('.cf-chk:checked').length;
+  const n=_cfSelectedIds.size;
   const el=document.getElementById('cf-mass-count');
   if(el) el.textContent=n?n+' selecionado'+(n!==1?'s':''):'';
 }
 async function cfMassTransfer(){
-  const ids=[...document.querySelectorAll('.cf-chk:checked')].map(c=>c.dataset.id);
+  const ids=[..._cfSelectedIds];
   const respId=document.getElementById('cf-mass-resp')?.value;
   if(!ids.length){toast('Selecione leads','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
   await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',ids);
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
-  saveCache();renderCoordFunil();
+  saveCache();
+  _cfSelectedIds.clear();
+  renderCoordFunil();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
 }
 
@@ -6371,20 +6438,32 @@ let _massMode=false;
 let _massVendedorId=null;
 let _leadsMassMode=false;
 let _cfMassMode=false;
+// BUGFIX: seleção em massa do Funil (mass-chk) não sobrevivia a re-renders
+// (mudar filtro de vendedor, redesenhar ao mover estágio, etc apagava tudo
+// silenciosamente). Agora persiste num Set, igual ao padrão usado em
+// "Todos os Leads" (_selectedLeadIds).
+let _massSelectedIds=new Set();
+function onMassChkChange(chk){
+  if(chk.checked) _massSelectedIds.add(chk.dataset.id);
+  else _massSelectedIds.delete(chk.dataset.id);
+  updateMassCount();
+  updateCardStyle(chk.dataset.id);
+}
 
 
 function toggleMassCard(e,leadId){
   e.stopPropagation();
   const chk=document.querySelector('.mass-chk[data-id="'+leadId+'"]');
-  if(chk){ chk.checked=!chk.checked; updateMassCount(); updateCardStyle(leadId); }
+  if(chk){ chk.checked=!chk.checked; onMassChkChange(chk); }
 }
 function updateCardStyle(leadId){
-  const card=document.getElementById('funil-card-'+leadId);
+  const card=document.getElementById('funil-card-'+leadId)||document.getElementById('fve-card-'+leadId);
   const chk=document.querySelector('.mass-chk[data-id="'+leadId+'"]');
   if(card&&chk) card.style.borderColor=chk.checked?'var(--gold)':'var(--border)';
 }
 function toggleMassMode(){
   _massMode=!_massMode;
+  if(!_massMode) _massSelectedIds.clear();
   const bar=document.getElementById('mass-action-bar');
   const btn=document.getElementById('mass-toggle-btn');
   if(bar) bar.style.display=_massMode?'flex':'none';
@@ -6402,6 +6481,7 @@ function toggleMassMode(){
 function massSelectAll(sel){
   document.querySelectorAll('.mass-chk').forEach(c=>{
     c.checked=sel;
+    if(sel) _massSelectedIds.add(c.dataset.id); else _massSelectedIds.delete(c.dataset.id);
     updateCardStyle(c.dataset.id);
   });
   updateMassCount();
@@ -6423,6 +6503,7 @@ async function massTransfer(){
   if(error){toast('Erro: '+error.message,'err');return;}
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();populateSelects();
+  _massSelectedIds.clear();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' transferido'+(ids.length!==1?'s':'')+'!','ok');
   if(_massVendedorId) openFunilVendedor(_massVendedorId);
 }
@@ -6435,6 +6516,7 @@ async function massRemove(){
   if(error){toast('Erro: '+error.message,'err');return;}
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=null;});
   saveCache();populateSelects();
+  _massSelectedIds.clear();
   toast(ids.length+' lead'+(ids.length!==1?'s':'')+' sem vendedor','ok');
   if(_massVendedorId) openFunilVendedor(_massVendedorId);
 }
@@ -6731,6 +6813,9 @@ function renderFunisEquipe(){
 
 function openFunilVendedor(userId){
   if(!userId) return;
+  // BUGFIX: trocar de vendedor mantinha leads de outro vendedor "selecionados"
+  // de forma invisível no Set, contaminando a próxima transferência em massa.
+  if(_massVendedorId&&_massVendedorId!==userId) _massSelectedIds.clear();
   _massVendedorId=userId;
   const user=allUsers.find(u=>u.user_id===userId);
   const leads=allLeads.filter(l=>l.responsavel_id===userId);
@@ -6753,7 +6838,7 @@ function openFunilVendedor(userId){
         <div style="font-size:11px;color:var(--muted2)">${leads.length} lead${leads.length!==1?'s':''} · ${leads.filter(l=>l.status==='Fechado').length} fechado${leads.filter(l=>l.status==='Fechado').length!==1?'s':''}</div>
       </div>
     </div>
-    <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px">
+    <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px" id="funis-equipe-grid">
       ${STAGES.map(s=>{
         const ls=leads.filter(l=>l.status===s);
         return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:80px;min-width:200px;flex:1">
@@ -6761,17 +6846,32 @@ function openFunilVendedor(userId){
             ${s} <span style="color:var(--muted2)">(${ls.length})</span>
           </div>
           ${ls.length===0?'<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Vazio</div>':''}
-          ${ls.map(l=>`<div onclick="openDetail('${l.id}','leads')"
-            style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px;margin-bottom:7px;cursor:pointer;transition:all .13s"
+          ${ls.map(l=>{
+            const isSel=_massSelectedIds.has(l.id);
+            return`<div data-lead-id="${l.id}" id="fve-card-${l.id}" onclick="${_massMode?'toggleMassCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'leads\')'}"
+            style="background:var(--surface);border:1px solid ${isSel?'var(--gold)':'var(--border)'};border-radius:8px;padding:9px;margin-bottom:7px;cursor:pointer;transition:all .13s"
             onmouseover="this.style.borderColor='var(--gold-dim)'"
-            onmouseout="this.style.borderColor='var(--border)'">
-            <div style="font-size:11.5px;font-weight:700;margin-bottom:2px">${l.nome}</div>
-            <div style="font-size:10px;color:var(--muted2)">${l.interesse||'—'}</div>
-          </div>`).join('')}
+            onmouseout="this.style.borderColor=document.querySelector('.mass-chk[data-id=\'${l.id}\']')?.checked?'var(--gold)':'var(--border)'">
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="checkbox" class="mass-chk" data-id="${l.id}"
+                style="accent-color:var(--gold);width:16px;height:16px;flex-shrink:0;display:${_massMode?'block':'none'}"
+                ${isSel?'checked':''}
+                onclick="event.stopPropagation()" onchange="onMassChkChange(this)">
+              <div style="flex:1">
+                <div style="font-size:11.5px;font-weight:700;margin-bottom:2px">${l.nome}</div>
+                <div style="font-size:10px;color:var(--muted2)">${l.interesse||'—'}</div>
+              </div>
+            </div>
+          </div>`;
+          }).join('')}
         </div>`;
       }).join('')}
     </div>`;
+  if(_massMode) setTimeout(initFunisEquipeDragSelect,0);
 }
+
+// Drag select for "Funis da Equipe" (funil por vendedor) kanban
+function initFunisEquipeDragSelect(){ initCardDragSelect('funis-equipe-grid','mass-chk',()=>_massMode); }
 
 /* ═══ ENVIAR LEAD PARA EQUIPE ═══ */
 let _enviarLeadId=null;
@@ -7592,13 +7692,24 @@ async function mesclarTransfer(){
 }
 
 /* ═══════════════════════════════════════════════
-   LASSO (RUBBER-BAND) BOX SELECTION — tabela de leads
-   Clique e arraste sobre a tabela para selecionar linhas
+   LASSO (RUBBER-BAND) BOX SELECTION — tabelas de leads
+   Clique e arraste sobre a tabela para selecionar linhas.
+   Função genérica reaproveitada em "Todos os Leads" (admin/coord)
+   e "Leads da Equipe" (supervisor).
+
+   BUGFIX: a versão original só MARCAVA linhas (chk.checked=true) e
+   nunca desmarcava — se você arrastasse demais e voltasse encolhendo
+   a caixinha, as linhas que saíam do retângulo ficavam selecionadas
+   para sempre, sem jeito de desfazer arrastando de volta. Agora o
+   estado original de cada linha (antes deste arraste) é guardado no
+   início e restaurado quando ela sai do retângulo, então encolher a
+   caixa desfaz exatamente o que esse arraste havia adicionado, sem
+   tocar em seleções feitas antes dele.
 ═══════════════════════════════════════════════ */
-(function(){
-  // Cria o elemento da caixinha visualmente
+function initLassoSelect(opts){
+  const{wrapSelector,rowSelector,chkClass,isMassModeOn,selectedSet,onUpdate}=opts;
   const box=document.createElement('div');
-  box.id='lasso-box';
+  box.className='lasso-box';
   box.style.cssText=[
     'position:fixed',
     'border:2px solid #c9a84c',
@@ -7613,16 +7724,21 @@ async function mesclarTransfer(){
 
   let active=false;
   let sx=0,sy=0; // start coords
+  let origState=null; // Map<id,bool> — estado de cada linha antes deste arraste
 
-  // Inicia lasso só quando estiver no modo seleção em massa
   document.addEventListener('mousedown',function(e){
-    if(!_leadsMassMode) return;
-    const tblWrap=document.querySelector('#page-leads .tbl-wrap');
-    if(!tblWrap||!tblWrap.contains(e.target)) return;
+    if(!isMassModeOn()) return;
+    const wrap=document.querySelector(wrapSelector);
+    if(!wrap||!wrap.contains(e.target)) return;
     // Não inicia se clicou num checkbox, botão ou link
     if(e.target.tagName==='INPUT'||e.target.closest('button')||e.target.closest('a')) return;
     active=true;
     sx=e.clientX; sy=e.clientY;
+    origState=new Map();
+    document.querySelectorAll(rowSelector).forEach(row=>{
+      const chk=row.querySelector(chkClass);
+      if(chk) origState.set(chk.dataset.id,chk.checked);
+    });
     box.style.left=sx+'px';
     box.style.top=sy+'px';
     box.style.width='0';
@@ -7642,26 +7758,44 @@ async function mesclarTransfer(){
     box.style.width=w+'px';
     box.style.height=h+'px';
 
-    // Seleciona todas as linhas que cruzam o retângulo
-    document.querySelectorAll('#l-tbody tr').forEach(function(row){
-      const chk=row.querySelector('.lead-chk');
+    document.querySelectorAll(rowSelector).forEach(function(row){
+      const chk=row.querySelector(chkClass);
       if(!chk) return;
       const r=row.getBoundingClientRect();
       const hit=(r.top<(y+h))&&(r.bottom>y)&&(r.left<(x+w))&&(r.right>x);
-      if(hit){
-        chk.checked=true;
-        _selectedLeadIds.add(chk.dataset.id);
+      const novoEstado=hit?true:(origState.get(chk.dataset.id)||false);
+      if(chk.checked!==novoEstado){
+        chk.checked=novoEstado;
+        if(novoEstado) selectedSet.add(chk.dataset.id); else selectedSet.delete(chk.dataset.id);
       }
     });
-    updateLeadsMassCount();
+    onUpdate();
   });
 
   document.addEventListener('mouseup',function(){
     if(!active) return;
     active=false;
+    origState=null;
     box.style.display='none';
   });
-})();
+}
+
+initLassoSelect({
+  wrapSelector:'#page-leads .tbl-wrap',
+  rowSelector:'#l-tbody tr',
+  chkClass:'.lead-chk',
+  isMassModeOn:()=>_leadsMassMode,
+  selectedSet:_selectedLeadIds,
+  onUpdate:updateLeadsMassCount
+});
+initLassoSelect({
+  wrapSelector:'#page-coord-leads .tbl-wrap',
+  rowSelector:'#cl-tbody tr',
+  chkClass:'.coord-chk',
+  isMassModeOn:()=>_coordMassMode,
+  selectedSet:_coordSelectedIds,
+  onUpdate:updateCoordMassCount
+});
 
 // Close modals on bg click
 ['enviar-equipe','recolher'].forEach(id=>{
