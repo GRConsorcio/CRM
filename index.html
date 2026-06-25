@@ -3308,7 +3308,7 @@ async function openDetail(id,from){
   // Venda se existir
   if(venda){
     html+=`<div style="padding:16px 18px;border-bottom:1px solid var(--border)">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">🏦 Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':'b-pend'}">${venda.status_venda}</span></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">🏦 Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':'b-pend'}">${venda.status_venda||'Pendente'}</span></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12.5px">
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">CPF</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Nascimento</div><strong>${venda.data_nascimento?fmtDateStr(venda.data_nascimento):'—'}</strong></div>
@@ -4938,7 +4938,7 @@ function renderVendasPage(){
       <td style="color:var(--gold2);font-weight:700">${v.valor_credito?brl(v.valor_credito):'—'}</td>
       <td style="font-size:11.5px">${v.parcela?brl(v.parcela):'—'}</td>
       <td style="color:var(--muted2);font-size:11px">${v.grupo||'—'} / ${v.cota||'—'}</td>
-      <td><span class="badge ${badgeCls}">${v.status_venda}</span></td>
+      <td><span class="badge ${badgeCls}">${v.status_venda||'Pendente'}</span></td>
       <td style="color:var(--muted2);font-size:11px">${fmtDt(v.created_at)}</td>
       <td>
         ${canManage?`<div style="display:flex;gap:4px">
@@ -5303,6 +5303,7 @@ async function runAutoReturnRules(){
   const ids10=retornar10.map(x=>x.id);
   const ids7=retornar7.map(x=>x.id);
   const ids3=retornar3.map(x=>x.id);
+  const idsTodos=todos.map(x=>x.id);
 
   // status sempre resetado para 'Novo' — lead não volta com status antigo para o próximo vendedor
   const upBase={responsavel_id:null,equipe_id:null,distribuido_em:null,atribuido_em:null,status:'Novo'};
@@ -5311,6 +5312,22 @@ async function runAutoReturnRules(){
   if(ids10.length) await updateInBatches(ids10, upBase);
   if(ids7.length)  await updateInBatches(ids7,  upBase);
   if(ids3.length)  await updateInBatches(ids3,  up3);
+
+  // ── Limpa tarefas pendentes do ciclo anterior ──
+  // Sem isso, um "agendamento" criado quando o lead ainda era de outro vendedor
+  // (ex: "ligar segunda-feira") continuava na tabela crm_tarefas e voltava a
+  // aparecer em Tarefas assim que o lead era reciclado/puxado de novo, dando a
+  // impressão de um agendamento automático que ninguém criou neste ciclo.
+  // Tarefas já concluídas são preservadas como histórico.
+  try{
+    const BATCH=100;
+    for(let i=0;i<idsTodos.length;i+=BATCH){
+      const batch=idsTodos.slice(i,i+BATCH);
+      const{error:teErr}=await sb.from('crm_tarefas').delete().in('lead_id',batch).eq('concluida',false);
+      if(teErr) console.warn('Auto-return: limpeza de tarefas error:',teErr.message);
+    }
+    allTasks=allTasks.filter(t=>!(idsTodos.includes(t.lead_id)&&!t.concluida));
+  }catch(e){ console.warn('Auto-return: limpeza de tarefas exception:',e.message); }
 
   // Atualiza memória local
   todos.forEach(item=>{
@@ -5522,6 +5539,14 @@ async function confirmarAvaliarPerdidos(){
       distribuido_em: null
     }).in('id', ids);
     if(error){ toast('Erro ao atualizar leads: ' + error.message, 'err'); return; }
+    // 1.5 Limpa tarefas pendentes do ciclo anterior (mesmo motivo do retorno
+    // automático: evita "agendamento" antigo reaparecer quando o lead é
+    // reciclado/puxado de novo). Tarefas já concluídas são preservadas.
+    try{
+      const{error:teErr}=await sb.from('crm_tarefas').delete().in('lead_id',ids).eq('concluida',false);
+      if(teErr) console.warn('Avaliar Perdidos: limpeza de tarefas error:',teErr.message);
+      allTasks=allTasks.filter(t=>!(ids.includes(t.lead_id)&&!t.concluida));
+    }catch(e){ console.warn('Avaliar Perdidos: limpeza de tarefas exception:',e.message); }
     // 2. Atualiza cache local
     ids.forEach(id => {
       const i = allLeads.findIndex(l => l.id === id);
@@ -5565,6 +5590,7 @@ async function confirmarAvaliarPerdidos(){
 
 /* ═══ REALTIME SUBSCRIPTIONS ═══ */
 let realtimeChannel = null;
+let _realtimeReconnectTimer = null; // evita agendar reconexões duplicadas
 
 function setupRealtime(){
   try{
@@ -5598,10 +5624,23 @@ function setupRealtime(){
       if(status==='SUBSCRIBED'){
         console.log('✅ Realtime conectado');
         setRealtimeIndicator(true);
+        // Cancela qualquer reconexão pendente de uma falha anterior — sem isso,
+        // um timer "fantasma" de uma queda anterior derrubava a conexão que
+        // tinha acabado de ser restabelecida com sucesso, causando o loop
+        // infinito de conectar/desconectar visto no console.
+        if(_realtimeReconnectTimer){ clearTimeout(_realtimeReconnectTimer); _realtimeReconnectTimer=null; }
       } else if(status==='CLOSED'||status==='CHANNEL_ERROR'){
         console.warn('⚠️ Realtime desconectado, reconectando...');
         setRealtimeIndicator(false);
-        setTimeout(()=>{
+        // O Supabase pode emitir CLOSED/CHANNEL_ERROR várias vezes em sequência
+        // para a MESMA queda de conexão. Sem essa proteção, cada disparo agendava
+        // seu próprio setTimeout, e múltiplos reconectores ficavam disputando entre
+        // si — um deles recriava o canal com sucesso e outro, mais atrasado, já
+        // derrubava de novo. Por isso só agenda um novo timer se não houver
+        // nenhum pendente ainda.
+        if(_realtimeReconnectTimer) return;
+        _realtimeReconnectTimer=setTimeout(()=>{
+          _realtimeReconnectTimer=null;
           // IMPORTANTE: remove o canal antigo do registro do client antes de recriar.
           // Sem isso, sb.channel('crm-realtime') reaproveita a instância antiga
           // (que já teve .subscribe() chamado) e o novo .on(...) lança o erro
