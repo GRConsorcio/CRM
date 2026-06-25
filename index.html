@@ -3325,7 +3325,7 @@ async function openDetail(id,from){
           <div class="doc-name">${d.nome}</div>
           <div class="doc-size">${fmtSize(d.tamanho)}</div>
           <div class="doc-actions">
-            <button class="act" onclick="downloadDoc('${d.storage_path}','${d.nome}')">⬇️</button>
+            <button class="act" onclick="downloadDoc('${d.storage_path}','${escJs(d.nome)}')">⬇️</button>
             ${isAdminOrCoord()?`<button class="act red" onclick="delDoc('${d.id}','${d.storage_path}')">🗑️</button>`:''}
           </div>
         </div>`).join('')}
@@ -3366,7 +3366,7 @@ async function openDetail(id,from){
             <div class="doc-name">${d.nome}</div>
             <div class="doc-size" style="font-size:10px;color:var(--muted2)">${fmtSize(d.tamanho)}</div>
             <div class="doc-actions">
-              <button class="act" onclick="downloadDoc('${d.storage_path}','${d.nome}')">⬇️</button>
+              <button class="act" onclick="downloadDoc('${d.storage_path}','${escJs(d.nome)}')">⬇️</button>
               ${canWork?`<button class="act red" onclick="delDoc('${d.id}','${d.storage_path}')">🗑️</button>`:''}
             </div>
           </div>`).join('')}
@@ -3493,12 +3493,22 @@ function goBackLeads(){
 const STAGES=['Novo','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
 
 // ═══ FUNIL: fila de atendimento ═══
+// Detecta se a coluna updated_at existe de fato na tabela (pode não existir
+// ainda se a migração SQL não foi rodada no Supabase — mesmo caso já visto
+// com a coluna proposta_quente). Sem essa checagem, updates que tentassem
+// gravar updated_at numa tabela sem essa coluna voltavam com erro 400 do
+// PostgREST, e funções como moveStage mostravam isso erroneamente como
+// "Sem permissão para mover este lead".
+function hasUpdatedAtCol(){
+  return allLeads.length>0 && 'updated_at' in allLeads[0];
+}
 // Sempre que alguma informação é adicionada a um lead (comentário, edição,
 // mudança de status, e-mail/observação, etc.) marcamos updated_at=agora.
 // As colunas do funil são ordenadas por updated_at (mais antigo primeiro),
 // então o lead recém-atualizado vai para o final da coluna e o próximo lead
 // "esquecido" sobe para o topo — criando um ciclo natural de atendimento.
 async function touchLeadUpdatedAt(leadId){
+  if(!hasUpdatedAtCol()) return; // coluna ainda não existe — não tenta gravar
   const now=new Date().toISOString();
   const lead=allLeads.find(l=>l.id===leadId);
   if(lead) lead.updated_at=now;
@@ -3587,11 +3597,12 @@ async function onDropStage(e,newStage){
 
 async function moveStage(id,status){
   const now=new Date().toISOString();
+  const payload=hasUpdatedAtCol()?{status,updated_at:now}:{status};
   // Coordinator and admin can move any lead; vendedor only their own
-  const{error}=await sb.from('crm_leads').update({status,updated_at:now}).eq('id',id);
-  if(error){toast('Sem permissão para mover este lead','err');return;}
+  const{error}=await sb.from('crm_leads').update(payload).eq('id',id);
+  if(error){console.warn('moveStage error:',error.message);toast('Erro ao mover lead: '+error.message,'err');return;}
   const idx=allLeads.findIndex(l=>l.id===id);
-  if(idx>-1){ allLeads[idx].status=status; allLeads[idx].updated_at=now; }
+  if(idx>-1){ allLeads[idx].status=status; if(payload.updated_at) allLeads[idx].updated_at=now; }
   const leadAtual=allLeads.find(l=>l.id===id);
   const statusAnterior=leadAtual?.status||'?';
   await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'🔄 Status',descricao:`Status: "${statusAnterior}" → "${status}"`,created_at:new Date().toISOString()});
@@ -3790,7 +3801,7 @@ function renderEquipe(){
       <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-gold':u.role==='supervisor'?'b-coord':'b-vend'}">${u.role}</span></td>
       <td>${leads}</td>
       <td style="color:var(--green)">${fechs}</td>
-      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${u.name}','${u.role}')">Perfil</button>`:'—'}</td>
+      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button>`:'—'}</td>
     </tr>`;
   }).join('');
 }
@@ -3896,7 +3907,7 @@ function openModal(type){
             <div class="doc-icon">${d.tipo==='pdf'?'📄':'🖼️'}</div>
             <div class="doc-name" style="font-size:11px">${d.nome}</div>
             <div class="doc-actions">
-              <button class="act" onclick="downloadDoc('${d.storage_path}','${d.nome}')" title="Baixar">⬇️</button>
+              <button class="act" onclick="downloadDoc('${d.storage_path}','${escJs(d.nome)}')" title="Baixar">⬇️</button>
               <button class="act red" onclick="delDocFromModal('${d.id}','${d.storage_path}','${cat}')" title="Remover">🗑️</button>
             </div>
           </div>`).join('');
@@ -3977,7 +3988,7 @@ async function saveLead(){
   };
   // updated_at marca o lead como "tocado agora" — usado pelo Funil para
   // mandá-lo ao final da coluna (fila de atendimento)
-  if(editLeadId) payload.updated_at=new Date().toISOString();
+  if(editLeadId&&hasUpdatedAtCol()) payload.updated_at=new Date().toISOString();
   // Remove campos undefined do payload
   Object.keys(payload).forEach(k=>{if(payload[k]===undefined)delete payload[k];});
   if(editLeadId){
@@ -4614,6 +4625,11 @@ async function saveRole(){
 /* ═══ UTILS ═══ */
 function v(id){return(document.getElementById(id)?.value||'').trim();}
 function sv(id,val){const e=document.getElementById(id);if(e)e.value=val;}
+// Escapa valores antes de embutir em argumentos de onclick="...('...')" —
+// sem isso, um nome de arquivo/usuário com apóstrofo (ex: "comprovante_maria's.pdf")
+// quebra o atributo inline e gera "Uncaught SyntaxError: missing ) after argument list",
+// travando a página inteira silenciosamente para quem abrir aquele card/lead.
+function escJs(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 function fmtDt(iso){if(!iso)return'—';return new Date(iso).toLocaleDateString('pt-BR');}
 function fmtDateStr(s){if(!s)return'';const[y,m,d]=s.split('-');return`${d}/${m}/${y}`;}
 function fmtSize(b){if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
@@ -4679,10 +4695,11 @@ async function quickTipoToggle(leadId,novoTipo,el){
   const emoji=novoTipo==='Remalho'?'♻️':'🆕';
   el.textContent='...';
   const now=new Date().toISOString();
-  const{error}=await sb.from('crm_leads').update({tipo_lead:novoTipo,updated_at:now}).eq('id',leadId);
+  const payload=hasUpdatedAtCol()?{tipo_lead:novoTipo,updated_at:now}:{tipo_lead:novoTipo};
+  const{error}=await sb.from('crm_leads').update(payload).eq('id',leadId);
   if(error){toast('Erro: '+error.message,'err');el.textContent=novoTipo==='Remalho'?'🆕 Novo':'♻️ Remalho';return;}
   const i=allLeads.findIndex(l=>l.id===leadId);
-  if(i>-1){ allLeads[i].tipo_lead=novoTipo; allLeads[i].updated_at=now; }
+  if(i>-1){ allLeads[i].tipo_lead=novoTipo; if(payload.updated_at) allLeads[i].updated_at=now; }
   saveCacheLazy();
   // Re-render wherever we are
   if(document.getElementById('page-lead-detail')?.classList.contains('on')) openDetail(leadId,fromPage);
@@ -4697,7 +4714,8 @@ async function togglePropostaQuente(leadId,ativo,el){
   const prev=el.innerHTML;
   el.textContent='...';
   const now=new Date().toISOString();
-  const{error}=await sb.from('crm_leads').update({proposta_quente:ativo,updated_at:now}).eq('id',leadId);
+  const payload=hasUpdatedAtCol()?{proposta_quente:ativo,updated_at:now}:{proposta_quente:ativo};
+  const{error}=await sb.from('crm_leads').update(payload).eq('id',leadId);
   if(error){
     el.innerHTML=prev;
     if(error.message?.includes('column')&&error.message?.includes('proposta_quente')){
@@ -4708,7 +4726,7 @@ async function togglePropostaQuente(leadId,ativo,el){
     return;
   }
   const i=allLeads.findIndex(l=>l.id===leadId);
-  if(i>-1){ allLeads[i].proposta_quente=ativo; allLeads[i].updated_at=now; }
+  if(i>-1){ allLeads[i].proposta_quente=ativo; if(payload.updated_at) allLeads[i].updated_at=now; }
   // Registra no histórico
   await sb.from('crm_historico').insert({
     lead_id:leadId,user_id:CU.id,
@@ -4999,10 +5017,11 @@ async function saveInlineEmail(leadId){
   const email=(document.getElementById('ie-email-'+leadId)?.value||'').trim();
   const leadAntes=allLeads.find(l=>l.id===leadId);
   const now=new Date().toISOString();
-  const{error}=await sb.from('crm_leads').update({email:email||null,updated_at:now}).eq('id',leadId);
+  const payload=hasUpdatedAtCol()?{email:email||null,updated_at:now}:{email:email||null};
+  const{error}=await sb.from('crm_leads').update(payload).eq('id',leadId);
   if(error){toast('Erro ao salvar: '+error.message,'err');return;}
   const li=allLeads.findIndex(l=>l.id===leadId);
-  if(li>-1){ allLeads[li].email=email||null; allLeads[li].updated_at=now; }
+  if(li>-1){ allLeads[li].email=email||null; if(payload.updated_at) allLeads[li].updated_at=now; }
   if(leadAntes&&(email||'')!==(leadAntes.email||'')){
     await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:'E-mail atualizado',created_at:new Date().toISOString()});
   }
@@ -5020,10 +5039,11 @@ async function saveInlineObs(leadId){
   const obs=(document.getElementById('ie-obs-'+leadId)?.value||'').trim();
   const leadAntes=allLeads.find(l=>l.id===leadId);
   const now=new Date().toISOString();
-  const{error}=await sb.from('crm_leads').update({observacoes:obs||null,updated_at:now}).eq('id',leadId);
+  const payload=hasUpdatedAtCol()?{observacoes:obs||null,updated_at:now}:{observacoes:obs||null};
+  const{error}=await sb.from('crm_leads').update(payload).eq('id',leadId);
   if(error){toast('Erro ao salvar: '+error.message,'err');return;}
   const li=allLeads.findIndex(l=>l.id===leadId);
-  if(li>-1){ allLeads[li].observacoes=obs||null; allLeads[li].updated_at=now; }
+  if(li>-1){ allLeads[li].observacoes=obs||null; if(payload.updated_at) allLeads[li].updated_at=now; }
   if(leadAntes&&(obs||'')!==(leadAntes.observacoes||'')){
     await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:'Observações atualizadas',created_at:new Date().toISOString()});
   }
