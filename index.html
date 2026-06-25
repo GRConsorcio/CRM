@@ -2390,9 +2390,14 @@ function populateSelects(){
   sel('ta-lead',leadsOpts);
   sel('dm-lead',allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id).slice(0,500).map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
   // filter selects
+  // IMPORTANTE: preserva o valor selecionado antes de recriar as opções.
+  // Sem isso, toda vez que populateSelects() roda (a cada evento do Realtime
+  // em crm_leads/crm_users) o innerHTML era trocado e o <select> resetava
+  // para "Todos os vendedores", fazendo o filtro de vendedor escolhido pelo
+  // usuário ser perdido sozinho, mesmo com a página filtrada (ex: Perdidos + vendedor).
   const respFilter='<option value="">Todos os vendedores</option>'+vendOpts;
   const lf=document.getElementById('l-f-resp');
-  if(lf) lf.innerHTML=respFilter;
+  if(lf){ const curResp=lf.value; lf.innerHTML=respFilter; if(curResp) lf.value=curResp; }
   // DDD filter — admin only
   if(isAdmin()) populateDDDFilter();
 }
