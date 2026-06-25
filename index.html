@@ -3491,12 +3491,30 @@ function goBackLeads(){
 
 /* ═══ FUNIL ═══ */
 const STAGES=['Novo','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
+
+// ═══ FUNIL: fila de atendimento ═══
+// Sempre que alguma informação é adicionada a um lead (comentário, edição,
+// mudança de status, e-mail/observação, etc.) marcamos updated_at=agora.
+// As colunas do funil são ordenadas por updated_at (mais antigo primeiro),
+// então o lead recém-atualizado vai para o final da coluna e o próximo lead
+// "esquecido" sobe para o topo — criando um ciclo natural de atendimento.
+async function touchLeadUpdatedAt(leadId){
+  const now=new Date().toISOString();
+  const lead=allLeads.find(l=>l.id===leadId);
+  if(lead) lead.updated_at=now;
+  try{
+    await sb.from('crm_leads').update({updated_at:now}).eq('id',leadId);
+  }catch(e){ console.warn('touchLeadUpdatedAt error:',e.message); }
+}
+function ordenarFilaFunil(leads){
+  return [...leads].sort((a,b)=>new Date(a.updated_at||a.created_at)-new Date(b.updated_at||b.created_at));
+}
 const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Em Negociação':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
 function renderFunil(){
   const isAdmin=isAdminOrCoord();
   document.getElementById('funil-grid').innerHTML=STAGES.map(s=>{
     // Vendedor só vê os próprios leads; admin vê todos
-    const ls=allLeads.filter(l=>l.status===s&&(isAdmin||l.responsavel_id===CU.id));
+    const ls=ordenarFilaFunil(allLeads.filter(l=>l.status===s&&(isAdmin||l.responsavel_id===CU.id)));
     return`<div class="funil-col-wrap" data-stage="${s}"
       style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:120px;min-width:220px;flex:1;transition:all .15s"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
@@ -3568,11 +3586,12 @@ async function onDropStage(e,newStage){
 }
 
 async function moveStage(id,status){
+  const now=new Date().toISOString();
   // Coordinator and admin can move any lead; vendedor only their own
-  const{error}=await sb.from('crm_leads').update({status}).eq('id',id);
+  const{error}=await sb.from('crm_leads').update({status,updated_at:now}).eq('id',id);
   if(error){toast('Sem permissão para mover este lead','err');return;}
   const idx=allLeads.findIndex(l=>l.id===id);
-  if(idx>-1) allLeads[idx].status=status;
+  if(idx>-1){ allLeads[idx].status=status; allLeads[idx].updated_at=now; }
   const leadAtual=allLeads.find(l=>l.id===id);
   const statusAnterior=leadAtual?.status||'?';
   await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'🔄 Status',descricao:`Status: "${statusAnterior}" → "${status}"`,created_at:new Date().toISOString()});
@@ -3956,6 +3975,9 @@ async function saveLead(){
     observacoes:v('ld-obs')||null,criado_por:CU.id,
     ...(tipoLead!==undefined?{tipo_lead:tipoLead}:{}),
   };
+  // updated_at marca o lead como "tocado agora" — usado pelo Funil para
+  // mandá-lo ao final da coluna (fila de atendimento)
+  if(editLeadId) payload.updated_at=new Date().toISOString();
   // Remove campos undefined do payload
   Object.keys(payload).forEach(k=>{if(payload[k]===undefined)delete payload[k];});
   if(editLeadId){
@@ -4083,6 +4105,7 @@ async function saveHist(){
   const{data,error:he}=await sb.from('crm_historico').insert({lead_id:detailLeadId,user_id:CU.id,tipo:v('h-tipo'),descricao:desc,created_at:new Date().toISOString()}).select().maybeSingle();
   if(he){toast('Erro ao salvar contato: '+he.message,'err');return;}
   if(data) allHist.unshift(data);
+  await touchLeadUpdatedAt(detailLeadId); // vai para o final da fila do funil
   document.getElementById('h-desc').value='';
   closeModal('hist');
   toast('Contato registrado!','ok');
@@ -4655,10 +4678,11 @@ function sBadge(s,tipo,leadId,proposta_quente){
 async function quickTipoToggle(leadId,novoTipo,el){
   const emoji=novoTipo==='Remalho'?'♻️':'🆕';
   el.textContent='...';
-  const{error}=await sb.from('crm_leads').update({tipo_lead:novoTipo}).eq('id',leadId);
+  const now=new Date().toISOString();
+  const{error}=await sb.from('crm_leads').update({tipo_lead:novoTipo,updated_at:now}).eq('id',leadId);
   if(error){toast('Erro: '+error.message,'err');el.textContent=novoTipo==='Remalho'?'🆕 Novo':'♻️ Remalho';return;}
   const i=allLeads.findIndex(l=>l.id===leadId);
-  if(i>-1) allLeads[i].tipo_lead=novoTipo;
+  if(i>-1){ allLeads[i].tipo_lead=novoTipo; allLeads[i].updated_at=now; }
   saveCacheLazy();
   // Re-render wherever we are
   if(document.getElementById('page-lead-detail')?.classList.contains('on')) openDetail(leadId,fromPage);
@@ -4672,7 +4696,8 @@ async function togglePropostaQuente(leadId,ativo,el){
   if(!(isAdminOrCoord()||isSupervisor())){toast('Sem permissão','err');return;}
   const prev=el.innerHTML;
   el.textContent='...';
-  const{error}=await sb.from('crm_leads').update({proposta_quente:ativo}).eq('id',leadId);
+  const now=new Date().toISOString();
+  const{error}=await sb.from('crm_leads').update({proposta_quente:ativo,updated_at:now}).eq('id',leadId);
   if(error){
     el.innerHTML=prev;
     if(error.message?.includes('column')&&error.message?.includes('proposta_quente')){
@@ -4683,7 +4708,7 @@ async function togglePropostaQuente(leadId,ativo,el){
     return;
   }
   const i=allLeads.findIndex(l=>l.id===leadId);
-  if(i>-1) allLeads[i].proposta_quente=ativo;
+  if(i>-1){ allLeads[i].proposta_quente=ativo; allLeads[i].updated_at=now; }
   // Registra no histórico
   await sb.from('crm_historico').insert({
     lead_id:leadId,user_id:CU.id,
@@ -4973,10 +4998,11 @@ function openInlineEditEmail(leadId){
 async function saveInlineEmail(leadId){
   const email=(document.getElementById('ie-email-'+leadId)?.value||'').trim();
   const leadAntes=allLeads.find(l=>l.id===leadId);
-  const{error}=await sb.from('crm_leads').update({email:email||null}).eq('id',leadId);
+  const now=new Date().toISOString();
+  const{error}=await sb.from('crm_leads').update({email:email||null,updated_at:now}).eq('id',leadId);
   if(error){toast('Erro ao salvar: '+error.message,'err');return;}
   const li=allLeads.findIndex(l=>l.id===leadId);
-  if(li>-1) allLeads[li].email=email||null;
+  if(li>-1){ allLeads[li].email=email||null; allLeads[li].updated_at=now; }
   if(leadAntes&&(email||'')!==(leadAntes.email||'')){
     await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:'E-mail atualizado',created_at:new Date().toISOString()});
   }
@@ -4993,10 +5019,11 @@ function openInlineEditObs(leadId){
 async function saveInlineObs(leadId){
   const obs=(document.getElementById('ie-obs-'+leadId)?.value||'').trim();
   const leadAntes=allLeads.find(l=>l.id===leadId);
-  const{error}=await sb.from('crm_leads').update({observacoes:obs||null}).eq('id',leadId);
+  const now=new Date().toISOString();
+  const{error}=await sb.from('crm_leads').update({observacoes:obs||null,updated_at:now}).eq('id',leadId);
   if(error){toast('Erro ao salvar: '+error.message,'err');return;}
   const li=allLeads.findIndex(l=>l.id===leadId);
-  if(li>-1) allLeads[li].observacoes=obs||null;
+  if(li>-1){ allLeads[li].observacoes=obs||null; allLeads[li].updated_at=now; }
   if(leadAntes&&(obs||'')!==(leadAntes.observacoes||'')){
     await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:'Observações atualizadas',created_at:new Date().toISOString()});
   }
@@ -6014,7 +6041,7 @@ function renderMeuFunil(){
     leads=allLeads.filter(l=>l.responsavel_id===CU.id);
   }
   document.getElementById('meu-funil-grid').innerHTML=STAGES.map(s=>{
-    const ls=leads.filter(l=>l.status===s);
+    const ls=ordenarFilaFunil(leads.filter(l=>l.status===s));
     return`<div class="funil-col-wrap" data-stage="${s}"
       style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:120px;min-width:220px;flex:1;transition:all .15s"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
@@ -6283,7 +6310,7 @@ function renderCoordFunil(){
   let leads=getCoordLeads();
   if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
   document.getElementById('coord-funil-grid').innerHTML=STAGES.map(s=>{
-    const ls=leads.filter(l=>l.status===s);
+    const ls=ordenarFilaFunil(leads.filter(l=>l.status===s));
     return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:100px;min-width:220px;flex:1;transition:all .15s"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
       ondragleave="this.classList.remove('drag-over')"
@@ -6911,7 +6938,7 @@ function openFunilVendedor(userId){
     </div>
     <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px" id="funis-equipe-grid">
       ${STAGES.map(s=>{
-        const ls=leads.filter(l=>l.status===s);
+        const ls=ordenarFilaFunil(leads.filter(l=>l.status===s));
         return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:80px;min-width:200px;flex:1">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${SCOL[s]};margin-bottom:10px">
             ${s} <span style="color:var(--muted2)">(${ls.length})</span>
