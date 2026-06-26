@@ -66,8 +66,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .main{margin-left:222px;flex:1;min-width:0;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .22s}
 .sidebar.collapsed~.main{margin-left:54px}
 .topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
-.topbar-title{font-size:15px;font-weight:700;color:var(--gold2)}
-.topbar-right{display:flex;align-items:center;gap:10px}
+.topbar-title{font-size:15px;font-weight:700;color:var(--gold2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;margin-right:12px}
+.topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .user-chip{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px 4px 4px;font-size:11.5px;color:var(--muted2)}
 .user-av{width:26px;height:26px;border-radius:50%;background:var(--gold);color:#0a0a0a;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center}
 .btn-sm{background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit;transition:all .13s}
@@ -311,7 +311,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 
 <!-- LOADING SCREEN -->
 <div id="loading-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:998;align-items:center;justify-content:center;flex-direction:column;gap:18px">
-  <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0a0a0a;font-size:20px;font-weight:900;display:flex;align-items:center;justify-content:center">GR</div>
+  <img id="loading-logo-img" alt="GR Consórcio" style="width:48px;height:48px;border-radius:12px;object-fit:cover;box-shadow:0 4px 18px rgba(0,0,0,.45),0 0 0 1px rgba(201,168,76,.25)">
   <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
     <div id="loading-msg" style="font-size:13px;color:var(--muted2)">Carregando...</div>
     <div style="width:180px;height:3px;background:var(--border);border-radius:3px;overflow:hidden">
@@ -322,11 +322,8 @@ tr:hover td{background:rgba(255,255,255,.015)}
     <div style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:4px">
       Servidor lento ou sem conexão.<br>Se tiver o CRM aberto em outra aba, feche-a primeiro.
     </div>
-    <button onclick="location.reload()" style="background:transparent;border:1px solid var(--border2);color:var(--muted2);border-radius:7px;padding:7px 18px;font-size:12px;cursor:pointer;font-family:inherit;margin-bottom:2px">
+    <button onclick="location.reload()" style="background:var(--gold);border:none;color:#0a0a0a;border-radius:7px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
       ↺ Tentar novamente
-    </button>
-    <button onclick="limparCacheERecarregar()" style="background:var(--gold);border:none;color:#0a0a0a;border-radius:7px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
-      🗑 Limpar cache e recarregar
     </button>
   </div>
 </div>
@@ -367,12 +364,14 @@ tr:hover td{background:rgba(255,255,255,.015)}
   </div>
 </div>
 <script>
-// Reaproveita a logo já embutida na sidebar (em base64) na tela de login,
-// em vez de duplicar a mesma imagem gigante em base64 duas vezes no HTML.
+// Reaproveita a logo já embutida na sidebar (em base64) na tela de login e na de carregamento,
+// em vez de duplicar a mesma imagem gigante em base64 três vezes no HTML.
 document.addEventListener('DOMContentLoaded', function(){
   var src = document.querySelector('.logo-img') ? document.querySelector('.logo-img').src : '';
   var img = document.getElementById('auth-logo-img');
   if(src && img) img.src = src;
+  var loadingImg = document.getElementById('loading-logo-img');
+  if(src && loadingImg) loadingImg.src = src;
 });
 </script>
 
@@ -1463,6 +1462,7 @@ let _appReadyWithFallback=false;
 let _hasAtribuidoEm=false;
 let _hasPropostaQuente=false;
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
+let _leadNomeCache={}; // cache de nomes buscados on-demand p/ vendas cujo lead não está em allLeads
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let pendingFiles=[];
 let fromPage='leads';
@@ -1642,7 +1642,7 @@ function _openUI(msg,pct){
   invalidateDDDCache();
   populateSelects();
   renderNav();
-  goToDashboard();
+  goToDashboard();tryRestoreLastPage();
   hideLoading();
   renderDashboard().catch(()=>{});
   setupRealtime();
@@ -1706,7 +1706,7 @@ async function initApp(user){
       showLoading('Abrindo CRM...', 70);
       populateSelects();
       renderNav();
-      goToDashboard();
+      goToDashboard();tryRestoreLastPage();
       hideLoading();
       renderDashboard().catch(()=>{});
       setupRealtime();
@@ -1783,7 +1783,7 @@ async function initApp(user){
       setTimeout(verificarLeadsBloqueados,2000);
       setInterval(verificarLeadsBloqueados,120000);
     }
-    goToDashboard();
+    goToDashboard();tryRestoreLastPage();
     hideLoading();
     renderDashboard().catch(()=>{});
     setupRealtime();
@@ -1801,7 +1801,7 @@ async function initApp(user){
         try{
           populateSelects();
           renderNav();
-          goToDashboard();
+          goToDashboard();tryRestoreLastPage();
           hideLoading();
           renderDashboard().catch(()=>{});
           window._appReadyWithFallback=true; // watchdog não deve reativar
@@ -2139,7 +2139,7 @@ async function loadAll(){
       allLeads=first1k||[];
       populateSelects();
       renderNav();
-      goToDashboard();
+      goToDashboard();tryRestoreLastPage();
       renderDashboard().catch(()=>{});
       setupRealtime();
       setTimeout(checkTaskAlerts,2000);
@@ -2249,7 +2249,7 @@ async function loadAll(){
       toast(`Base carregada: ${allLeads.length.toLocaleString('pt-BR')} leads disponíveis (20% do pool)`,'ok');
       populateSelects();
       renderNav();
-      goToDashboard();
+      goToDashboard();tryRestoreLastPage();
       renderDashboard().catch(()=>{});
       setupRealtime();
       setTimeout(checkTaskAlerts,2000);
@@ -2268,8 +2268,17 @@ async function loadAll(){
         coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id);
       }
       if(coordEquipes.length>0){
+        // BUGFIX: antes buscava só leads com equipe_id setado diretamente (equipe_id.in.(...)).
+        // Leads atribuídos a um vendedor da equipe mas sem equipe_id preenchido no próprio
+        // lead nunca entravam em allLeads — por isso "vendas da equipe" desaparecia pro
+        // supervisor (getVisibleVendas/dashboard dependem desses leads estarem carregados
+        // pra casar via responsavel_id). Agora busca por equipe_id OU responsavel_id de
+        // qualquer membro dessas equipes — sempre limitado às equipes do próprio supervisor.
+        const myMemberIds=[...new Set(allMembroEquipes.filter(m=>coordEquipes.includes(m.equipe_id)).map(m=>m.user_id))];
+        const orParts=['equipe_id.in.('+coordEquipes.join(',')+')'];
+        if(myMemberIds.length) orParts.push('responsavel_id.in.('+myMemberIds.join(',')+')');
         allLeads=await fetchAllPages(
-          sb.from('crm_leads').select('*').or('equipe_id.in.('+coordEquipes.join(',')+')')
+          sb.from('crm_leads').select('*').or(orParts.join(','))
             .order('created_at',{ascending:false})
         );
       } else {
@@ -2306,7 +2315,7 @@ async function loadAll(){
       // Sem isso a tela fica preta se o initApp path de "primeira vez" não chegar aqui
       populateSelects();
       renderNav();
-      goToDashboard();
+      goToDashboard();tryRestoreLastPage();
       hideLoading();
       renderDashboard().catch(()=>{});
       setupRealtime();
@@ -2331,7 +2340,7 @@ async function loadAll(){
     // Mesmo com erro, renderiza a UI para o vendedor não ficar em tela preta
     populateSelects();
     renderNav();
-    goToDashboard();
+    goToDashboard();tryRestoreLastPage();
     hideLoading();
   }
 
@@ -2542,7 +2551,31 @@ function renderNav(){
 }
 
 const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD'};
+/* ═══ PERSISTÊNCIA DE PÁGINA ATUAL (item solicitado: não voltar sempre pro dashboard) ═══
+   Salva a última página visitada por usuário (localStorage, sobrevive a refresh/F5 e a
+   logins futuros no mesmo navegador). Páginas de "detalhe" (que dependem de um ID
+   específico que não é salvo, ex: detalhe de um lead) ficam de fora — pra essas, ao
+   recarregar a gente cai na listagem-mãe em vez de tentar abrir um detalhe sem contexto. */
+const PAGES_NAO_RESTAURAVEIS=new Set(['lead-detail','equipe-detail','funil-vendedor']);
+function _lastPageKey(){ return 'crm_last_page_'+(CU?.id||'anon'); }
+function saveLastPage(page){
+  if(!page||PAGES_NAO_RESTAURAVEIS.has(page)) return;
+  try{ localStorage.setItem(_lastPageKey(),page); }catch(e){}
+}
+function tryRestoreLastPage(){
+  try{
+    const saved=localStorage.getItem(_lastPageKey());
+    if(!saved||PAGES_NAO_RESTAURAVEIS.has(saved)) return false;
+    if(!document.getElementById('page-'+saved)) return false; // página não existe nessa sessão/perfil
+    const navEl=document.querySelector(`.nav-item[onclick*="nav('${saved}'"]`)
+      || document.querySelector(`.nav-item[onclick*='nav(\\'${saved}\\'']`);
+    nav(saved,navEl||null);
+    return true;
+  }catch(e){ console.warn('[tryRestoreLastPage] erro:',e.message); return false; }
+}
+
 function nav(page,el){
+  saveLastPage(page);
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
   document.getElementById('page-'+page).classList.add('on');
@@ -2590,13 +2623,14 @@ function toggleSidebar(){document.getElementById('sidebar').classList.toggle('co
 async function renderDashboard(){
   // Escopo de leads por perfil
   let myLeads;
+  let _myEquipeIds=[],_myMemberIds=[];
   if(isAdmin()||isCoordenador()){
     myLeads=allLeads; // tudo
   } else if(isSupervisor()){
     // Supervisor: leads da sua equipe
-    const myEquipeIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
-    const myMemberIds=[...new Set(allMembroEquipes.filter(m=>myEquipeIds.includes(m.equipe_id)).map(m=>m.user_id))];
-    myLeads=allLeads.filter(l=>myEquipeIds.includes(l.equipe_id)||myMemberIds.includes(l.responsavel_id));
+    _myEquipeIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
+    _myMemberIds=[...new Set(allMembroEquipes.filter(m=>_myEquipeIds.includes(m.equipe_id)).map(m=>m.user_id))];
+    myLeads=allLeads.filter(l=>_myEquipeIds.includes(l.equipe_id)||_myMemberIds.includes(l.responsavel_id));
   } else {
     myLeads=allLeads.filter(l=>l.responsavel_id===CU.id);
   }
@@ -2627,10 +2661,17 @@ async function renderDashboard(){
   if(adminTools) adminTools.style.display=isAdmin()?'':'none';
   document.getElementById('dash-kpis').innerHTML=kpis;
 
-  // Ranking de fechamentos
+  // Ranking de fechamentos — BUGFIX: antes usava allLeads + allUsers sem nenhum escopo,
+  // então supervisor via o ranking de fechamentos de TODA a empresa (outras equipes incluídas).
+  // Agora usa myLeads (já escopado acima) e restringe a lista de usuários do ranking também.
+  const rankUsers = (isAdmin()||isCoordenador())
+    ? allUsers
+    : isSupervisor()
+      ? allUsers.filter(u=>_myMemberIds.includes(u.user_id))
+      : allUsers.filter(u=>u.user_id===CU.id);
   const byVend={};
-  allLeads.filter(l=>l.status==='Fechado'&&l.responsavel_id).forEach(l=>{byVend[l.responsavel_id]=(byVend[l.responsavel_id]||0)+1;});
-  const ranked=allUsers.map(u=>({name:u.name,count:byVend[u.user_id]||0})).sort((a,b)=>b.count-a.count).filter(u=>u.count>0);
+  myLeads.filter(l=>l.status==='Fechado'&&l.responsavel_id).forEach(l=>{byVend[l.responsavel_id]=(byVend[l.responsavel_id]||0)+1;});
+  const ranked=rankUsers.map(u=>({name:u.name,count:byVend[u.user_id]||0})).sort((a,b)=>b.count-a.count).filter(u=>u.count>0);
   const medals=['🥇','🥈','🥉'];
   document.getElementById('dash-rank').innerHTML=ranked.length===0
     ?'<div class="empty"><div class="ei">🏆</div>Nenhum fechamento ainda</div>'
@@ -3502,6 +3543,18 @@ const STAGES=['Novo','Sem Contato','Em Negociação','Proposta','Fechado','Perdi
 function hasUpdatedAtCol(){
   return allLeads.length>0 && 'updated_at' in allLeads[0];
 }
+// Detecta se a coluna stage_entered_at existe (precisa rodar o SQL de migração no Supabase).
+// Marca quando o lead ENTROU no estágio atual — separado de updated_at (que marca
+// qualquer edição). Isso permite diferenciar "acabou de mudar de coluna" (vai pro topo)
+// de "foi editado/comentado sem trocar de coluna" (vai pro final).
+function hasStageEnteredAtCol(){
+  return allLeads.length>0 && 'stage_entered_at' in allLeads[0];
+}
+// Monta o fragmento de payload {stage_entered_at: agora} pra usar em QUALQUER lugar que
+// troque o status/estágio de um lead. Sem isso, o lead movido não vai pro topo da nova coluna.
+function stageEnteredPayload(now){
+  return hasStageEnteredAtCol()?{stage_entered_at:now||new Date().toISOString()}:{};
+}
 // Sempre que alguma informação é adicionada a um lead (comentário, edição,
 // mudança de status, e-mail/observação, etc.) marcamos updated_at=agora.
 // As colunas do funil são ordenadas por updated_at (mais antigo primeiro),
@@ -3516,9 +3569,52 @@ async function touchLeadUpdatedAt(leadId){
     await sb.from('crm_leads').update({updated_at:now}).eq('id',leadId);
   }catch(e){ console.warn('touchLeadUpdatedAt error:',e.message); }
 }
+/* Ordena a fila de cada coluna do funil:
+   1) Leads que ACABARAM de entrar nesse estágio (ainda não editados depois disso) ficam no
+      TOPO, com o mais recente primeiro.
+   2) Leads que foram EDITADOS/comentados depois de entrar no estágio (adicionou informação,
+      observação etc.) descem pro FINAL, ordenados do mais "esquecido" pro mais recente —
+      assim o próximo lead que precisa de atenção sobe naturalmente.
+   Se a coluna stage_entered_at ainda não existe no banco (migração não rodada), cai de
+   volta no comportamento antigo (só por updated_at). */
 function ordenarFilaFunil(leads){
-  return [...leads].sort((a,b)=>new Date(a.updated_at||a.created_at)-new Date(b.updated_at||b.created_at));
+  if(!hasStageEnteredAtCol()){
+    return [...leads].sort((a,b)=>new Date(a.updated_at||a.created_at)-new Date(b.updated_at||b.created_at));
+  }
+  return [...leads].sort((a,b)=>{
+    const aEntrou=a.stage_entered_at?new Date(a.stage_entered_at):null;
+    const bEntrou=b.stage_entered_at?new Date(b.stage_entered_at):null;
+    const aEditado=a.updated_at&&aEntrou?new Date(a.updated_at)>aEntrou:!!a.updated_at&&!aEntrou;
+    const bEditado=b.updated_at&&bEntrou?new Date(b.updated_at)>bEntrou:!!b.updated_at&&!bEntrou;
+    if(aEditado!==bEditado) return aEditado?1:-1; // não-editados (frescos) primeiro
+    if(!aEditado&&!bEditado){
+      // Ambos frescos: o que entrou mais recentemente no estágio fica no topo
+      return (bEntrou||0)-(aEntrou||0);
+    }
+    // Ambos editados: mais antigo editado primeiro (sobe), mais recente editado por último (desce)
+    return new Date(a.updated_at||a.created_at)-new Date(b.updated_at||b.created_at);
+  });
 }
+
+/* Calcula quanto tempo falta até o lead ser rotacionado automaticamente (mesmas
+   regras do runAutoReturnRules: Perdido=3d, Em Negociação/Proposta=10d, Novo/Sem Contato=7d).
+   Retorna null se não aplicável (sem vendedor, Fechado, ou ainda sem data de atribuição). */
+const ROTACAO_LIMITE_DIAS={'Perdido':3,'Em Negociação':10,'Proposta':10,'Novo':7,'Sem Contato':7};
+function prazoRotacaoInfo(lead){
+  if(!lead.responsavel_id) return null;
+  const limite=ROTACAO_LIMITE_DIAS[lead.status];
+  if(!limite) return null; // status sem regra de rotação (ex: Fechado)
+  const refDate=lead.atribuido_em||lead.distribuido_em;
+  if(!refDate) return null; // ainda sem data — será zerada no próximo ciclo do admin
+  const diasDesdeAtribuicao=(Date.now()-new Date(refDate).getTime())/(1000*60*60*24);
+  const diasRestantes=Math.ceil(limite-diasDesdeAtribuicao);
+  let label,cor;
+  if(diasRestantes>2){ label=`${diasRestantes} dias para rotação`; cor='var(--muted2)'; }
+  else if(diasRestantes>0){ label=`${diasRestantes} dia${diasRestantes!==1?'s':''} para rotação`; cor='var(--orange)'; }
+  else{ label='Atrasado — será rotacionado'; cor='var(--red)'; }
+  return{diasRestantes,label,cor};
+}
+
 const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Em Negociação':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
 function renderFunil(){
   const isAdmin=isAdminOrCoord();
@@ -3540,6 +3636,7 @@ function renderFunil(){
         const isAprov=vd?.status_venda==='Aprovado';
         const isCanc=vd?.status_venda==='Cancelado';
         const isSel=_massSelectedIds.has(l.id);
+        const prazo=prazoRotacaoInfo(l);
         const cardBorder=isAprov?'2px solid #4ade80':isCanc?'2px solid #e55':(isSel?'1px solid var(--gold)':'1px solid var(--border)');
         const cardBg=isAprov?'rgba(74,222,128,0.06)':isCanc?'rgba(229,85,85,0.06)':'var(--surface)';
         return`<div class="funil-card" draggable="${_massMode?'false':'true'}"
@@ -3561,6 +3658,7 @@ function renderFunil(){
               ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="opacity:.7">📞</span>${l.telefone}</div>`:''}
               <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
               ${resp?`<div style="font-size:9.5px;color:var(--muted)">👤 ${resp.name}</div>`:''}
+              ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">⏱ ${prazo.label}</div>`:''}
             </div>
           </div>
           ${_massMode?'':
@@ -3597,12 +3695,12 @@ async function onDropStage(e,newStage){
 
 async function moveStage(id,status){
   const now=new Date().toISOString();
-  const payload=hasUpdatedAtCol()?{status,updated_at:now}:{status};
+  const payload={status,...(hasUpdatedAtCol()?{updated_at:now}:{}),...stageEnteredPayload(now)};
   // Coordinator and admin can move any lead; vendedor only their own
   const{error}=await sb.from('crm_leads').update(payload).eq('id',id);
   if(error){console.warn('moveStage error:',error.message);toast('Erro ao mover lead: '+error.message,'err');return;}
   const idx=allLeads.findIndex(l=>l.id===id);
-  if(idx>-1){ allLeads[idx].status=status; if(payload.updated_at) allLeads[idx].updated_at=now; }
+  if(idx>-1){ allLeads[idx].status=status; if(payload.updated_at) allLeads[idx].updated_at=now; if(payload.stage_entered_at) allLeads[idx].stage_entered_at=now; }
   const leadAtual=allLeads.find(l=>l.id===id);
   const statusAnterior=leadAtual?.status||'?';
   await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'🔄 Status',descricao:`Status: "${statusAnterior}" → "${status}"`,created_at:new Date().toISOString()});
@@ -3989,6 +4087,15 @@ async function saveLead(){
   // updated_at marca o lead como "tocado agora" — usado pelo Funil para
   // mandá-lo ao final da coluna (fila de atendimento)
   if(editLeadId&&hasUpdatedAtCol()) payload.updated_at=new Date().toISOString();
+  // Se o status mudou nessa mesma edição, marca stage_entered_at também —
+  // o lead deve ir pro TOPO da nova coluna, não pro final (isso só se aplica
+  // a mudança de estágio; edição "pura" sem trocar status vai pro final via updated_at acima).
+  if(editLeadId){
+    const leadAntesStage=allLeads.find(l=>l.id===editLeadId);
+    if(leadAntesStage&&statusVal&&statusVal!==leadAntesStage.status){
+      Object.assign(payload,stageEnteredPayload(payload.updated_at));
+    }
+  }
   // Remove campos undefined do payload
   Object.keys(payload).forEach(k=>{if(payload[k]===undefined)delete payload[k];});
   if(editLeadId){
@@ -4037,6 +4144,7 @@ async function saveLead(){
     // INSERT: don't add to local array — realtime syncLead() handles it
     // This prevents duplicates (local insert + realtime event = 2 entries)
     payload.created_at=new Date().toISOString();
+    Object.assign(payload,stageEnteredPayload(payload.created_at));
     const{data,error}=await sb.from('crm_leads').insert(payload).select().maybeSingle();
     if(error){
       console.error('saveLead error:',error);
@@ -4396,9 +4504,10 @@ async function saveVenda(){
 
   // ── Atualiza status do lead (só na criação) ──
   if(!existingV){
-    await sb.from('crm_leads').update({status:'Fechado'}).eq('id',vendaLeadId);
+    const nowFech=new Date().toISOString();
+    await sb.from('crm_leads').update({status:'Fechado',...stageEnteredPayload(nowFech)}).eq('id',vendaLeadId);
     const li=allLeads.findIndex(l=>l.id===vendaLeadId);
-    if(li>-1) allLeads[li].status='Fechado';
+    if(li>-1){ allLeads[li].status='Fechado'; if(hasStageEnteredAtCol()) allLeads[li].stage_entered_at=nowFech; }
   }
 
   catFiles={foto:[],contrato:[],boleto:[],comprovante:[]};
@@ -4947,9 +5056,17 @@ function renderVendasPage(){
     const vendedor=allUsers.find(u=>u.user_id===v.vendedor_id);
     const badgeCls=v.status_venda==='Aprovado'?'b-aprov':v.status_venda==='Cancelado'?'b-canc':'b-pend';
     const canManage=isAdmin()||isCoordenador();
-    // Se o lead não está em allLeads (ex: coordenador vendo venda de lead fora do seu escopo),
-    // exibe CPF ou grupo como referência e ainda permite abrir o detalhe via fetch on-demand
-    const leadNome=lead?.nome||(v.cpf?v.cpf:(v.grupo?`Grupo ${v.grupo}`:'(sem nome)'));
+    // Se o lead não está em allLeads (ex: coordenador vendo venda de lead fora do escopo carregado em memória),
+    // NÃO mostramos o CPF como nome — buscamos o nome real on-demand (1x, com cache) e atualizamos a célula.
+    let leadNome;
+    if(lead?.nome){
+      leadNome=lead.nome;
+    } else if(_leadNomeCache[v.lead_id]){
+      leadNome=_leadNomeCache[v.lead_id];
+    } else {
+      leadNome=`<span id="vp-nome-${v.id}" style="color:var(--muted2)">Carregando nome...</span>`;
+      buscarNomeLeadOnDemand(v.lead_id, v.id);
+    }
     return`<tr>
       <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${v.lead_id}','vendas')">${leadNome}</td>
       <td style="font-size:11.5px">${vendedor?.name||'—'}</td>
@@ -4969,6 +5086,22 @@ function renderVendasPage(){
   }).join('');
 }
 
+/* Busca o nome real do lead quando ele não está carregado em allLeads (em vez de exibir o CPF). */
+async function buscarNomeLeadOnDemand(leadId, vendaId){
+  try{
+    const{data,error}=await sb.from('crm_leads').select('id,nome,cpf,telefone').eq('id',leadId).maybeSingle();
+    const nome = (!error && data?.nome) ? data.nome : null;
+    _leadNomeCache[leadId] = nome || (data?.telefone ? data.telefone : 'Lead não encontrado');
+    const cell=document.getElementById('vp-nome-'+vendaId);
+    if(cell) cell.outerHTML = _leadNomeCache[leadId];
+  }catch(e){
+    console.warn('[buscarNomeLeadOnDemand] erro:', e.message);
+    _leadNomeCache[leadId] = 'Lead não encontrado';
+    const cell=document.getElementById('vp-nome-'+vendaId);
+    if(cell) cell.outerHTML = _leadNomeCache[leadId];
+  }
+}
+
 /* ═══ REVERTER VENDA → LEAD NORMAL ═══ */
 async function revertVenda(vendaId, leadId){
   if(!confirm('Reverter esta venda? O lead voltará ao status anterior e a venda será removida.'))return;
@@ -4984,9 +5117,10 @@ async function revertVenda(vendaId, leadId){
   allVendas=allVendas.filter(v=>v.id!==vendaId);
   allDocs=allDocs.filter(d=>d.venda_id!==vendaId);
   // Revert lead status
-  await sb.from('crm_leads').update({status:'Proposta'}).eq('id',leadId);
+  const nowRev=new Date().toISOString();
+  await sb.from('crm_leads').update({status:'Proposta',...stageEnteredPayload(nowRev)}).eq('id',leadId);
   const li=allLeads.findIndex(l=>l.id===leadId);
-  if(li>-1) allLeads[li].status='Proposta';
+  if(li>-1){ allLeads[li].status='Proposta'; if(hasStageEnteredAtCol()) allLeads[li].stage_entered_at=nowRev; }
   // Log in history
   await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'📝 Anotação',descricao:'Venda revertida para lead normal (status: Proposta)',created_at:new Date().toISOString()});
   const{data}=await sb.from('crm_historico').select('*').order('created_at',{ascending:false});
@@ -5182,7 +5316,8 @@ function saveCache(){
       responsavel_id:l.responsavel_id, equipe_id:l.equipe_id,
       tipo_lead:l.tipo_lead, created_at:l.created_at,
       distribuido_em:l.distribuido_em, atribuido_em:l.atribuido_em,
-      proposta_quente:l.proposta_quente, observacoes:l.observacoes
+      proposta_quente:l.proposta_quente, observacoes:l.observacoes,
+      updated_at:l.updated_at, stage_entered_at:l.stage_entered_at
     }));
     const data={
       _v:CACHE_VERSION,
@@ -6049,6 +6184,7 @@ async function importLeads(leads,fonte){
       criado_por:CU.id,
       distribuido_em:respId?new Date().toISOString():null,
       created_at:new Date().toISOString(),
+      ...stageEnteredPayload(),
     });
   }
 
@@ -6112,6 +6248,7 @@ function renderMeuFunil(){
       ${ls.length===0?'<div style="font-size:11px;color:var(--muted);text-align:center;padding:10px 0">Vazio</div>':''}
       ${ls.map(l=>{
         const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+        const prazo=prazoRotacaoInfo(l);
         return`<div class="funil-card"
         draggable="true"
         data-lead-id="${l.id}"
@@ -6125,6 +6262,7 @@ function renderMeuFunil(){
         ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${l.telefone}</div>`:''}
         <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
         ${resp?`<div style="font-size:9.5px;color:var(--muted)">👤 ${resp.name}</div>`:''}
+        ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">⏱ ${prazo.label}</div>`:''}
         <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:8px">
           ${STAGES.filter(x=>x!==s).map(x=>`<button onclick="event.stopPropagation();moveStageAndRefreshMeuFunil('${l.id}','${x}')"
             style="background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:4px;padding:2px 5px;font-size:9px;cursor:pointer;font-family:inherit;transition:all .13s"
@@ -6922,11 +7060,11 @@ async function leadsMassChangeStatus(){
   let erros=0;
   for(let i=0;i<ids.length;i+=100){
     const batch=ids.slice(i,i+100);
-    const{error}=await sb.from('crm_leads').update({status:novoStatus}).in('id',batch);
+    const{error}=await sb.from('crm_leads').update({status:novoStatus,...stageEnteredPayload(now)}).in('id',batch);
     if(error){erros++;console.warn('Erro batch status:',error.message);continue;}
     batch.forEach(id=>{
       const idx=allLeads.findIndex(l=>l.id===id);
-      if(idx>-1) allLeads[idx].status=novoStatus;
+      if(idx>-1){ allLeads[idx].status=novoStatus; if(hasStageEnteredAtCol()) allLeads[idx].stage_entered_at=now; }
     });
   }
   // Registra no histórico em lote (1 entrada por lead)
@@ -6968,16 +7106,37 @@ function renderFunisEquipe(){
     '<div class="empty"><div class="ei">🔭</div>Selecione um vendedor para ver o funil dele</div>';
 }
 
-function openFunilVendedor(userId){
+async function openFunilVendedor(userId){
   if(!userId) return;
   // BUGFIX: trocar de vendedor mantinha leads de outro vendedor "selecionados"
   // de forma invisível no Set, contaminando a próxima transferência em massa.
   if(_massVendedorId&&_massVendedorId!==userId) _massSelectedIds.clear();
   _massVendedorId=userId;
   const user=allUsers.find(u=>u.user_id===userId);
-  const leads=allLeads.filter(l=>l.responsavel_id===userId);
   const wrap=document.getElementById('funis-equipe-wrap');
   if(!wrap) return;
+
+  // BUGFIX: antes os leads vinham só do cache local `allLeads`, que:
+  // - para Coordenador NUNCA contém leads com responsavel_id (o pool dele é só leads sem dono),
+  //   então o funil de qualquer vendedor aparecia sempre "Vazio" pra esse perfil;
+  // - para Admin pode ainda estar no meio do carregamento em lotes (52k+ leads),
+  //   então abrir o funil rápido demais também mostrava "Vazio" até a carga terminar.
+  // Agora busca direto do Supabase pelos leads desse vendedor específico, sempre fresco.
+  wrap.innerHTML=`<div class="empty"><div class="ei">⏳</div>Carregando funil de ${user?.name||'vendedor'}...</div>`;
+  let leads=[];
+  try{
+    const{data,error}=await sb.from('crm_leads').select('*').eq('responsavel_id',userId).order('created_at',{ascending:false});
+    if(error) throw error;
+    leads=data||[];
+    // Aproveita pra atualizar o cache local com esses leads (não duplica)
+    const idsNovos=new Set(leads.map(l=>l.id));
+    allLeads=[...allLeads.filter(l=>!idsNovos.has(l.id)),...leads];
+  }catch(e){
+    console.warn('[openFunilVendedor] erro ao buscar leads:',e.message);
+    wrap.innerHTML=`<div class="empty"><div class="ei">⚠️</div>Erro ao carregar funil. Tente novamente.</div>`;
+    return;
+  }
+
   // Show mass action controls and populate transfer select
   const massBtn=document.getElementById('mass-toggle-btn');
   if(massBtn) massBtn.style.display='inline-flex';
@@ -7005,6 +7164,7 @@ function openFunilVendedor(userId){
           ${ls.length===0?'<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Vazio</div>':''}
           ${ls.map(l=>{
             const isSel=_massSelectedIds.has(l.id);
+            const prazo=prazoRotacaoInfo(l);
             return`<div data-lead-id="${l.id}" id="fve-card-${l.id}" onclick="${_massMode?'toggleMassCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'leads\')'}"
             style="background:var(--surface);border:1px solid ${isSel?'var(--gold)':'var(--border)'};border-radius:8px;padding:9px;margin-bottom:7px;cursor:pointer;transition:all .13s"
             onmouseover="this.style.borderColor='var(--gold-dim)'"
@@ -7017,6 +7177,7 @@ function openFunilVendedor(userId){
               <div style="flex:1">
                 <div style="font-size:11.5px;font-weight:700;margin-bottom:2px">${l.nome}</div>
                 <div style="font-size:10px;color:var(--muted2)">${l.interesse||'—'}</div>
+                ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">⏱ ${prazo.label}</div>`:''}
               </div>
             </div>
           </div>`;
@@ -7431,6 +7592,17 @@ function renderEquipes(){
 }
 
 async function openEquipeDetail(id){
+  // BUGFIX/segurança: antes confiava que quem chamasse essa função só faria isso
+  // a partir de um card já filtrado na tela. Mas a função em si não checava nada,
+  // então dava pra abrir o detalhe de QUALQUER equipe direto pelo console/JS.
+  // Agora valida de novo aqui, na fonte, que supervisor/vendedor só abre a própria equipe.
+  if(!isAdmin()&&!isCoordenador()){
+    const myEquipeIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
+    if(!myEquipeIds.includes(id)){
+      toast('Você não tem acesso a essa equipe','err');
+      return;
+    }
+  }
   detailEquipeId=id;
   const eq=allEquipes.find(e=>e.id===id);
   if(!eq)return;
