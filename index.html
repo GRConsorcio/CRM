@@ -2147,6 +2147,12 @@ async function loadAll(){
           );
           const idsNovos=new Set(delta.map(l=>l.id));
           allLeads=[...allLeads.filter(l=>!idsNovos.has(l.id)),...delta];
+          // Mantém o teto de ADMIN_LEADS_CAP — sem isso, o cache cresceria sem limite
+          // conforme leads novos vão sendo criados ao longo do tempo.
+          if(allLeads.length>ADMIN_LEADS_CAP){
+            allLeads.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+            allLeads=allLeads.slice(0,ADMIN_LEADS_CAP);
+          }
           setLastSyncTime(new Date().toISOString());
           rebuildMaps();
           invalidateDDDCache();
@@ -2188,7 +2194,10 @@ async function loadAll(){
             // Conta total de registros
             const{count}=await sb.from('crm_leads').select('*',{count:'exact',head:true});
             const total=count||0;
-            if(total<=1000){
+            // Não busca mais que o teto definido (ADMIN_LEADS_CAP) — controla custo/espaço.
+            // Os mais antigos continuam acessíveis via "Buscar na Base Completa".
+            const totalToFetch=Math.min(total,ADMIN_LEADS_CAP);
+            if(totalToFetch<=1000){
               hideLoadingProgress(loadingToast,allLeads.length);
               setLastSyncTime(new Date().toISOString());
               saveCache();
@@ -2218,8 +2227,8 @@ async function loadAll(){
             // Monta batches paralelos de 5000 cada (cada um é sub-paginado internamente se o servidor truncar)
             const BATCH=5000;
             const batches=[];
-            for(let from=1000;from<total;from+=BATCH){
-              batches.push({from,to:Math.min(from+BATCH-1,total-1)});
+            for(let from=1000;from<totalToFetch;from+=BATCH){
+              batches.push({from,to:Math.min(from+BATCH-1,totalToFetch-1)});
             }
             updateLoadingProgress(loadingToast,1000);
             // Dispara em grupos de 8 simultâneos para não sobrecarregar
@@ -2239,6 +2248,11 @@ async function loadAll(){
               updateLoadingProgress(loadingToast,fetched);
             }
             hideLoadingProgress(loadingToast,allLeads.length);
+            // Trava defensiva final no teto, caso algum lote tenha sobreposto a fronteira
+            if(allLeads.length>ADMIN_LEADS_CAP){
+              allLeads.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+              allLeads=allLeads.slice(0,ADMIN_LEADS_CAP);
+            }
             setLastSyncTime(new Date().toISOString());
             saveCache();
             rebuildMaps();
@@ -2247,7 +2261,7 @@ async function loadAll(){
             if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads(true);
             if(document.getElementById('page-dashboard')?.classList.contains('on')) renderDashboard().catch(()=>{});
             if(document.getElementById('page-mesclar')?.classList.contains('on')) renderMesclar();
-            console.log('Carga paralela completa: '+allLeads.length+' leads');
+            console.log(`Carga completa: ${allLeads.length} leads (teto: ${ADMIN_LEADS_CAP.toLocaleString('pt-BR')}, total na base: ${total.toLocaleString('pt-BR')})`);
           } catch(e){
             console.warn('Parallel load error:',e.message);
             hideLoadingProgress(loadingToast,allLeads.length);
@@ -2454,6 +2468,10 @@ function isAdminOrCoord(){return CUProfile?.role==='admin'||CUProfile?.role==='c
 // desvio que a sincronização incremental não detecta sozinha (ela não percebe
 // quando um lead foi APAGADO enquanto a pessoa estava offline, por exemplo).
 const SYNC_FULL_RESYNC_HOURS=20;
+// Limite máximo de leads carregados para o admin (controle de custo/espaço no Supabase).
+// Sempre os mais recentes por created_at — leads mais antigos continuam acessíveis
+// via "Buscar na Base Completa", que consulta o banco direto, sem depender desse cache.
+const ADMIN_LEADS_CAP=12000;
 function _lastSyncKey(){ return 'crm_last_full_sync_'+(CU?.id||'anon'); }
 function getLastSyncTime(){ try{ return localStorage.getItem(_lastSyncKey()); }catch(e){ return null; } }
 function setLastSyncTime(iso){ try{ localStorage.setItem(_lastSyncKey(), iso||new Date().toISOString()); }catch(e){} }
@@ -3728,7 +3746,7 @@ function renderFunil(){
         return`<div class="funil-card" draggable="${_massMode?'false':'true'}"
           data-lead-id="${l.id}" id="funil-card-${l.id}"
           ondragstart="onDragStart(event,'${l.id}')" ondragend="onDragEnd(event)"
-          onclick="${_massMode?'toggleMassCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\''+( isAdmin?'leads':'meus-leads')+'\')'}"
+          onclick="${_massMode?'toggleMassCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'funil\')'}"
           style="background:${cardBg};border:${cardBorder};border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s;cursor:pointer;position:relative"
           onmouseover="if(!${isAprov}&&!${isCanc})this.style.borderColor='var(--gold-dim)'"
           onmouseout="if(!${isAprov}&&!${isCanc}){this.style.borderColor=document.querySelector('.mass-chk[data-id=\'${l.id}\']')?.checked?'var(--gold)':'var(--border)'}">
@@ -5186,7 +5204,7 @@ function renderVendasPage(){
 /* Busca o nome real do lead quando ele não está carregado em allLeads (em vez de exibir o CPF). */
 async function buscarNomeLeadOnDemand(leadId, vendaId){
   try{
-    const{data,error}=await sb.from('crm_leads').select('id,nome,cpf,telefone').eq('id',leadId).maybeSingle();
+    const{data,error}=await sb.from('crm_leads').select('id,nome,telefone').eq('id',leadId).maybeSingle();
     const nome = (!error && data?.nome) ? data.nome : null;
     _leadNomeCache[leadId] = nome || (data?.telefone ? data.telefone : 'Lead não encontrado');
     const cell=document.getElementById('vp-nome-'+vendaId);
@@ -6419,7 +6437,7 @@ function renderMeuFunil(){
         data-lead-id="${l.id}"
         ondragstart="onDragStart(event,'${l.id}')"
         ondragend="onDragEnd(event)"
-        onclick="openDetail('${l.id}','meus-leads')"
+        onclick="openDetail('${l.id}','meu-funil')"
         style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s"
         onmouseover="this.style.borderColor='var(--gold-dim)'"
         onmouseout="this.style.borderColor='var(--border)'">
@@ -7330,7 +7348,7 @@ async function openFunilVendedor(userId){
           ${ls.map(l=>{
             const isSel=_massSelectedIds.has(l.id);
             const prazo=prazoRotacaoInfo(l);
-            return`<div data-lead-id="${l.id}" id="fve-card-${l.id}" onclick="${_massMode?'toggleMassCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'leads\')'}"
+            return`<div data-lead-id="${l.id}" id="fve-card-${l.id}" onclick="${_massMode?'toggleMassCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'funis-equipe\')'}"
             style="background:var(--surface);border:1px solid ${isSel?'var(--gold)':'var(--border)'};border-radius:8px;padding:9px;margin-bottom:7px;cursor:pointer;transition:all .13s"
             onmouseover="this.style.borderColor='var(--gold-dim)'"
             onmouseout="this.style.borderColor=document.querySelector('.mass-chk[data-id=\'${l.id}\']')?.checked?'var(--gold)':'var(--border)'">
