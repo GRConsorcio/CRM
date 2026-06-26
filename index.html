@@ -2134,9 +2134,30 @@ async function loadAll(){
     // ADMIN — busca paralela de todos os leads
     // ════════════════════════════════════════════
     if(isAdm){
-      // Fase 1: primeiro lote de 1000 para liberar a UI imediatamente
-      const{data:first1k}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,999);
-      allLeads=first1k||[];
+      // ── Tenta sincronização incremental primeiro (só o que mudou desde o último acesso) ──
+      let usouIncremental=false;
+      const lastSync=getLastSyncTime();
+      const cacheValido = allLeads.length>0 && !!lastSync && (Date.now()-new Date(lastSync).getTime()) < SYNC_FULL_RESYNC_HOURS*3600000;
+      if(cacheValido){
+        try{
+          const cutoff=lastSync;
+          const delta=await fetchAllPages(
+            sb.from('crm_leads').select('*').or(`created_at.gt.${cutoff},updated_at.gt.${cutoff}`).order('updated_at',{ascending:false}),
+            1000
+          );
+          const idsNovos=new Set(delta.map(l=>l.id));
+          allLeads=[...allLeads.filter(l=>!idsNovos.has(l.id)),...delta];
+          setLastSyncTime(new Date().toISOString());
+          rebuildMaps();
+          invalidateDDDCache();
+          saveCache();
+          usouIncremental=true;
+          console.log(`✅ Sincronização incremental: ${delta.length} lead(s) novo(s)/alterado(s) — ${allLeads.length} no total em cache`);
+        }catch(e){
+          console.warn('Sincronização incremental falhou, fazendo carga completa:',e.message);
+        }
+      }
+
       populateSelects();
       renderNav();
       goToDashboard();tryRestoreLastPage();
@@ -2145,6 +2166,19 @@ async function loadAll(){
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+
+      if(usouIncremental){
+        loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
+        return;
+      }
+
+      // ── CARGA COMPLETA — primeira vez, cache vazio/expirado, ou fallback se o incremental falhou ──
+      // Fase 1: primeiro lote de 1000 para liberar a UI imediatamente
+      const{data:first1k}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,999);
+      allLeads=first1k||[];
+      populateSelects();
+      renderNav();
+      renderDashboard().catch(()=>{});
 
       if(first1k&&first1k.length===1000){
         // Fase 2: descobre total e dispara requisições paralelas
@@ -2156,6 +2190,8 @@ async function loadAll(){
             const total=count||0;
             if(total<=1000){
               hideLoadingProgress(loadingToast,allLeads.length);
+              setLastSyncTime(new Date().toISOString());
+              saveCache();
               return;
             }
             // BUGFIX: o Supabase trunca cada requisição num limite fixo de
@@ -2203,6 +2239,7 @@ async function loadAll(){
               updateLoadingProgress(loadingToast,fetched);
             }
             hideLoadingProgress(loadingToast,allLeads.length);
+            setLastSyncTime(new Date().toISOString());
             saveCache();
             rebuildMaps();
             invalidateDDDCache();
@@ -2216,6 +2253,10 @@ async function loadAll(){
             hideLoadingProgress(loadingToast,allLeads.length);
           }
         })();
+      } else {
+        // Base com menos de 1000 leads: a primeira página já trouxe tudo
+        setLastSyncTime(new Date().toISOString());
+        saveCache();
       }
       loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
       return;
@@ -2226,6 +2267,28 @@ async function loadAll(){
     // embaralhado deterministicamente pelo user ID
     // ════════════════════════════════════════════
     if(isCoord){
+      // ── OTIMIZAÇÃO: pula o reload se já sincronizou recentemente ──
+      // Diferente do admin, o pool do coordenador (leads SEM vendedor, embaralhado e
+      // cortado em 20%) não é seguro de sincronizar por "delta" (created_at/updated_at):
+      // um lead que SAIU do pool porque acabou de ser atribuído a alguém não aparece
+      // numa busca incremental por filtro de tempo, então ele "sobraria" no cache local
+      // como se ainda estivesse disponível — pior que o gasto extra de banda. Por isso
+      // aqui só evitamos recarregar quando o sync foi muito recente; passado isso,
+      // sempre refaz a busca completa do pool (que já é bem menor que a base toda).
+      const lastSyncCoord=getLastSyncTime();
+      const cacheValidoCoord = allLeads.length>0 && !!lastSyncCoord && (Date.now()-new Date(lastSyncCoord).getTime()) < SYNC_FULL_RESYNC_HOURS*3600000;
+      if(cacheValidoCoord){
+        populateSelects();
+        renderNav();
+        goToDashboard();tryRestoreLastPage();
+        renderDashboard().catch(()=>{});
+        setupRealtime();
+        setTimeout(checkTaskAlerts,2000);
+        if(_taskAlertInterval) clearInterval(_taskAlertInterval);
+        _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+        loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
+        return;
+      }
       // Busca apenas leads sem vendedor do Supabase
       const loadingToast=showLoadingProgress(0);
       updateLoadingProgress(loadingToast,0);
@@ -2245,6 +2308,7 @@ async function loadAll(){
       // Pega 20% do pool
       const vinte_pct=Math.ceil(shuffled.length*0.20);
       allLeads=shuffled.slice(0,vinte_pct);
+      setLastSyncTime(new Date().toISOString());
       hideLoadingProgress(loadingToast,allLeads.length);
       toast(`Base carregada: ${allLeads.length.toLocaleString('pt-BR')} leads disponíveis (20% do pool)`,'ok');
       populateSelects();
@@ -2381,7 +2445,29 @@ function hideLoadingProgress(el,total){
 }
 
 function isAdminOrCoord(){return CUProfile?.role==='admin'||CUProfile?.role==='coordenador'||CUProfile?.role==='supervisor';}
+// ── Sincronização incremental ──
+// Em vez de recarregar os 52k+ leads inteiros em TODA sessão de admin/coordenador
+// (maior fonte de "Saída"/egress do Supabase hoje), guardamos quando foi o último
+// sync completo e, se foi recente, buscamos só o que mudou (created_at/updated_at
+// mais novo que isso) em vez da base toda. Depois de SYNC_FULL_RESYNC_HOURS sem
+// um sync completo, forçamos carga completa de novo — isso "auto-cura" qualquer
+// desvio que a sincronização incremental não detecta sozinha (ela não percebe
+// quando um lead foi APAGADO enquanto a pessoa estava offline, por exemplo).
+const SYNC_FULL_RESYNC_HOURS=20;
+function _lastSyncKey(){ return 'crm_last_full_sync_'+(CU?.id||'anon'); }
+function getLastSyncTime(){ try{ return localStorage.getItem(_lastSyncKey()); }catch(e){ return null; } }
+function setLastSyncTime(iso){ try{ localStorage.setItem(_lastSyncKey(), iso||new Date().toISOString()); }catch(e){} }
 function isSupervisor(){return CUProfile?.role==='supervisor';}
+// Helpers de escopo do supervisor — equipes que ele coordena e os user_ids dos membros
+// dessas equipes. Centralizados aqui pra não repetir esse cálculo em 5 lugares diferentes
+// (dashboard, vendas, realtime etc. já faziam essa mesma conta cada um do seu jeito).
+function getMinhasEquipeIds(){
+  return [...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
+}
+function getMeusMembroIds(){
+  const eqs=getMinhasEquipeIds();
+  return [...new Set(allMembroEquipes.filter(m=>eqs.includes(m.equipe_id)).map(m=>m.user_id))];
+}
 function isCoordenador(){return CUProfile?.role==='coordenador';}
 
 function isAdmin(){return CUProfile?.role==='admin';}
@@ -4044,10 +4130,20 @@ async function saveLead(){
   if(!editLeadId){
     // Busca por telefone (mais confiável) ou nome exato
     const telDigits = telefone.replace(/\D/g,'');
-    const duplicado = allLeads.find(l =>
+    let duplicado = allLeads.find(l =>
       (telDigits.length >= 8 && (l.telefone||'').replace(/\D/g,'') === telDigits) ||
       (l.nome.toLowerCase() === nome.toLowerCase() && (l.telefone||'').replace(/\D/g,'') === telDigits)
     );
+    // Admin/coordenador agora usam cache local incremental/parcial (ver sincronização
+    // incremental) — então "não achei no cache local" não significa mais "não existe na
+    // base". Antes de criar um lead novo pra esses perfis, confirma direto no banco pelo
+    // telefone (busca rápida e específica, bem mais barata que recarregar a base toda).
+    if(!duplicado && telDigits.length>=8 && (isAdmin()||isCoordenador())){
+      try{
+        const{data:remoto}=await sb.from('crm_leads').select('id,nome,telefone,status,responsavel_id').ilike('telefone',`%${telDigits}%`).limit(5);
+        duplicado = (remoto||[]).find(l=>(l.telefone||'').replace(/\D/g,'')===telDigits) || null;
+      }catch(e){ console.warn('Checagem remota de duplicata falhou:',e.message); }
+    }
     if(duplicado){
       // Mostra modal de confirmação para puxar/atribuir
       const respNome = allUsers.find(u=>u.user_id===duplicado.responsavel_id)?.name || 'sem vendedor';
@@ -4058,6 +4154,7 @@ async function saveLead(){
         await sb.from('crm_leads').update(patchPayload).eq('id', duplicado.id);
         const i = allLeads.findIndex(l=>l.id===duplicado.id);
         if(i>-1) Object.assign(allLeads[i], patchPayload);
+        else allLeads.unshift({...duplicado, ...patchPayload}); // veio da checagem remota — ainda não estava no cache local
         await sb.from('crm_historico').insert({
           lead_id: duplicado.id, user_id: CU.id,
           tipo: '🔄 Reatribuição',
@@ -5123,8 +5220,12 @@ async function revertVenda(vendaId, leadId){
   if(li>-1){ allLeads[li].status='Proposta'; if(hasStageEnteredAtCol()) allLeads[li].stage_entered_at=nowRev; }
   // Log in history
   await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'📝 Anotação',descricao:'Venda revertida para lead normal (status: Proposta)',created_at:new Date().toISOString()});
-  const{data}=await sb.from('crm_historico').select('*').order('created_at',{ascending:false});
-  allHist=data||[];
+  // BUGFIX: antes buscava a tabela crm_historico INTEIRA (sem filtro nem limite) — em uma
+  // base com muitos leads isso baixa potencialmente centenas de MB do Supabase a cada reversão
+  // de venda, contribuindo bastante para o excesso de "Saída"/egress. Agora busca só o
+  // histórico do lead afetado, igual o resto do app já faz em casos parecidos.
+  const{data}=await sb.from('crm_historico').select('*').eq('lead_id',leadId).order('created_at',{ascending:false});
+  if(data){ allHist=allHist.filter(h=>h.lead_id!==leadId); allHist.push(...data); }
   saveCacheLazy();
   toast('Venda revertida! Lead voltou para Proposta.','ok');
 
@@ -5752,30 +5853,94 @@ function setupRealtime(){
   // Se já está conectado, não reconecta
   if(realtimeChannel) return;
 
-  realtimeChannel = sb.channel('crm-realtime')
-    .on('postgres_changes',{event:'*',schema:'public',table:'crm_leads'},async(payload)=>{
+  // BUGFIX/OTIMIZAÇÃO: antes o canal escutava TODAS as mudanças de crm_leads/historico/
+  // tarefas/vendas SEM FILTRO — ou seja, toda edição feita por qualquer vendedor era
+  // retransmitida pelo Supabase pro navegador de TODOS os usuários conectados (vendedor
+  // só recebendo dado de leads que nem são dele). Isso conta como "Saída"/egress mesmo
+  // que o cliente descarte o dado depois de receber. Agora cada papel só assina o que
+  // pode ver — usando o filtro nativo do Realtime (que reduz na origem, não no cliente).
+  // IMPORTANTE: precisa que CU/CUProfile/allMembroEquipes já estejam carregados (são,
+  // pois setupRealtime() só é chamado depois de loadAll() terminar de buscar isso tudo).
+  const isFullScope = isAdmin()||isCoordenador(); // únicos dois papéis que veem tudo
+  const meuId = CU.id;
+  const meuMemberIds = isSupervisor() ? getMeusMembroIds() : [meuId];
+  const meuEquipeIds = isSupervisor() ? getMinhasEquipeIds() : [];
+
+  let ch = sb.channel('crm-realtime');
+
+  // ── crm_leads ──
+  if(isFullScope){
+    ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_leads'},async(payload)=>{
       await syncLead(payload); // syncLead handles INSERT render internally
       if(payload.eventType!=='INSERT') reRenderCurrent(); // UPDATE/DELETE: re-render
-    })
-    .on('postgres_changes',{event:'*',schema:'public',table:'crm_historico'},async(payload)=>{
-      await syncHist(payload);
-      if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
-    })
-    .on('postgres_changes',{event:'*',schema:'public',table:'crm_tarefas'},async(payload)=>{
+    });
+  } else {
+    if(meuMemberIds.length){
+      ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_leads',filter:`responsavel_id=in.(${meuMemberIds.join(',')})`},async(payload)=>{
+        await syncLead(payload);
+        if(payload.eventType!=='INSERT') reRenderCurrent();
+      });
+    }
+    if(meuEquipeIds.length){
+      // Supervisor também precisa ver leads jogados pra equipe (equipe_id) ainda sem
+      // responsavel_id — o filtro do Realtime não suporta OR entre colunas, por isso
+      // é uma segunda assinatura separada na mesma tabela.
+      ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_leads',filter:`equipe_id=in.(${meuEquipeIds.join(',')})`},async(payload)=>{
+        await syncLead(payload);
+        if(payload.eventType!=='INSERT') reRenderCurrent();
+      });
+    }
+  }
+
+  // ── crm_tarefas ── (tem responsavel_id direto, filtro simples)
+  if(isFullScope){
+    ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_tarefas'},async(payload)=>{
       await syncTask(payload);
       if(document.getElementById('page-tarefas').classList.contains('on')) renderTarefas();
       if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
-    })
-    .on('postgres_changes',{event:'*',schema:'public',table:'crm_vendas'},async(payload)=>{
+    });
+  } else if(meuMemberIds.length){
+    ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_tarefas',filter:`responsavel_id=in.(${meuMemberIds.join(',')})`},async(payload)=>{
+      await syncTask(payload);
+      if(document.getElementById('page-tarefas').classList.contains('on')) renderTarefas();
+      if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
+    });
+  }
+
+  // ── crm_vendas ── (tem vendedor_id direto, filtro simples)
+  if(isFullScope){
+    ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_vendas'},async(payload)=>{
       await syncVenda(payload);
-    })
-    .on('postgres_changes',{event:'*',schema:'public',table:'crm_users'},async(payload)=>{
-      const{data}=await sb.from('crm_users').select('*').eq('ativo',true);
-      allUsers=data||[];
-      populateSelects();
-      if(document.getElementById('page-equipe').classList.contains('on')) renderEquipe();
-    })
-    .subscribe((status)=>{
+    });
+  } else if(meuMemberIds.length){
+    ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_vendas',filter:`vendedor_id=in.(${meuMemberIds.join(',')})`},async(payload)=>{
+      await syncVenda(payload);
+    });
+  }
+
+  // ── crm_historico ── não tem coluna de "dono do lead" pra filtrar com segurança
+  // (só tem lead_id, e a lista de leads visíveis é grande/dinâmica demais pra um filtro
+  // de Realtime). Mantemos ao vivo só pra quem já vê tudo mesmo (admin/coordenador).
+  // Vendedor/supervisor continuam recebendo o histórico atualizado ao reabrir o lead
+  // (o app já faz isso em vários pontos) — só perdem o "populamento instantâneo" se
+  // OUTRA pessoa comentar enquanto eles estão com aquele lead aberto, o que é raro.
+  if(isFullScope){
+    ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_historico'},async(payload)=>{
+      await syncHist(payload);
+      if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
+    });
+  }
+
+  // ── crm_users ── tabela pequena (só usuários ativos), baixo volume de mudanças —
+  // mantém sem filtro pra todo mundo, não vale a pena complicar por isso.
+  ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_users'},async(payload)=>{
+    const{data}=await sb.from('crm_users').select('*').eq('ativo',true);
+    allUsers=data||[];
+    populateSelects();
+    if(document.getElementById('page-equipe').classList.contains('on')) renderEquipe();
+  });
+
+  realtimeChannel = ch.subscribe((status)=>{
       if(status==='SUBSCRIBED'){
         console.log('✅ Realtime conectado');
         setRealtimeIndicator(true);
