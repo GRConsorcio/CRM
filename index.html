@@ -2087,11 +2087,42 @@ async function fetchAllPages(queryBuilder, pageSize=1000, onProgress, startOffse
 // na tela de detalhe do lead, que sempre busca a linha completa (select('*')) na
 // hora de abrir. Selecionar só essas colunas nas cargas grandes reduz bastante o
 // volume de dados trafegado por sessão sem tirar nenhuma função das listagens.
-const LEAD_LIST_COLS='id,nome,telefone,email,status,interesse,origem,responsavel_id,equipe_id,tipo_lead,created_at,updated_at,distribuido_em,atribuido_em,proposta_quente,observacoes,stage_entered_at';
+//
+// BUGFIX: atribuido_em / proposta_quente / stage_entered_at vêm de migrações
+// OPCIONAIS — em bases onde o SQL de migração ainda não rodou, essas colunas não
+// existem. Um select('*') nunca quebra por isso, mas um select com lista explícita
+// de colunas dá erro 400 se alguma coluna citada não existir — foi o que zerou a
+// tela do supervisor/coordenador num banco sem stage_entered_at. Por isso agora
+// essas 3 colunas são detectadas dinamicamente (1 query barata, 1x por sessão)
+// antes de montar a lista — só entram no select se realmente existirem.
+const LEAD_LIST_COLS_BASE='id,nome,telefone,email,status,interesse,origem,responsavel_id,equipe_id,tipo_lead,created_at,updated_at,distribuido_em,observacoes';
+let _hasAtribuidoEmCol=null, _hasPropostaQuenteCol=null, _hasStageEnteredAtCol=null; // null = ainda não detectado
+async function detectOptionalLeadCols(){
+  if(_hasStageEnteredAtCol!==null) return; // já detectado nesta sessão
+  try{
+    const{error}=await sb.from('crm_leads').select('atribuido_em,proposta_quente,stage_entered_at').limit(1);
+    if(!error){ _hasAtribuidoEmCol=true; _hasPropostaQuenteCol=true; _hasStageEnteredAtCol=true; return; }
+  }catch(e){}
+  // Caminho raro: pelo menos uma das 3 não existe — testa uma por uma pra saber qual
+  const testCol=async(col)=>{ try{ const{error}=await sb.from('crm_leads').select(col).limit(1); return !error; }catch(e){ return false; } };
+  _hasAtribuidoEmCol=await testCol('atribuido_em');
+  _hasPropostaQuenteCol=await testCol('proposta_quente');
+  _hasStageEnteredAtCol=await testCol('stage_entered_at');
+}
+function getLeadListCols(){
+  let cols=LEAD_LIST_COLS_BASE;
+  if(_hasAtribuidoEmCol) cols+=',atribuido_em';
+  if(_hasPropostaQuenteCol) cols+=',proposta_quente';
+  if(_hasStageEnteredAtCol) cols+=',stage_entered_at';
+  return cols;
+}
 // Cache curto (60s) usado pela busca na base geral — busca repetida não bate de novo no Supabase
 const SRCH_BASE_CACHE_MS=60000;
 
 async function loadAll(){
+  await detectOptionalLeadCols();
+  _hasAtribuidoEm=_hasAtribuidoEmCol===true;
+  _hasPropostaQuente=_hasPropostaQuenteCol===true;
   const isAdm=isAdmin();
   const isCoord=isCoordenador();
   const isSup=isSupervisor();
@@ -2155,7 +2186,7 @@ async function loadAll(){
         try{
           const cutoff=lastSync;
           const delta=await fetchAllPages(
-            sb.from('crm_leads').select(LEAD_LIST_COLS).or(`created_at.gt.${cutoff},updated_at.gt.${cutoff}`).order('updated_at',{ascending:false}),
+            sb.from('crm_leads').select(getLeadListCols()).or(`created_at.gt.${cutoff},updated_at.gt.${cutoff}`).order('updated_at',{ascending:false}),
             1000
           );
           const idsNovos=new Set(delta.map(l=>l.id));
@@ -2193,7 +2224,7 @@ async function loadAll(){
 
       // ── CARGA COMPLETA — primeira vez, cache vazio/expirado, ou fallback se o incremental falhou ──
       // Fase 1: primeiro lote de 1000 para liberar a UI imediatamente
-      const{data:first1k}=await sb.from('crm_leads').select(LEAD_LIST_COLS).order('created_at',{ascending:false}).range(0,999);
+      const{data:first1k}=await sb.from('crm_leads').select(getLeadListCols()).order('created_at',{ascending:false}).range(0,999);
       allLeads=first1k||[];
       populateSelects();
       renderNav();
@@ -2229,7 +2260,7 @@ async function loadAll(){
               let out=[];
               let cursor=from;
               while(cursor<=to){
-                const{data,error}=await sb.from('crm_leads').select(LEAD_LIST_COLS).order('created_at',{ascending:false}).range(cursor,to);
+                const{data,error}=await sb.from('crm_leads').select(getLeadListCols()).order('created_at',{ascending:false}).range(cursor,to);
                 if(error){ console.warn('fetchRangeFull error:',error.message); break; }
                 if(!data||data.length===0) break;
                 out=out.concat(data);
@@ -2320,7 +2351,7 @@ async function loadAll(){
       if(idsVendidos.length){
         try{
           allLeads=await fetchAllPages(
-            sb.from('crm_leads').select(LEAD_LIST_COLS).in('id',idsVendidos).order('created_at',{ascending:false}),
+            sb.from('crm_leads').select(getLeadListCols()).in('id',idsVendidos).order('created_at',{ascending:false}),
             1000
           );
         }catch(e){
@@ -2373,7 +2404,7 @@ async function loadAll(){
         try{
           const leadsFrescos=await Promise.race([
             fetchAllPages(
-              sb.from('crm_leads').select(LEAD_LIST_COLS).or(orParts.join(','))
+              sb.from('crm_leads').select(getLeadListCols()).or(orParts.join(','))
                 .order('created_at',{ascending:false})
             ),
             new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_supervisor')),15000))
@@ -2386,7 +2417,7 @@ async function loadAll(){
       } else {
         try{
           const{data}=await Promise.race([
-            sb.from('crm_leads').select(LEAD_LIST_COLS).eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
+            sb.from('crm_leads').select(getLeadListCols()).eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
             new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_supervisor_solo')),15000))
           ]);
           allLeads=data||allLeads;
@@ -2398,7 +2429,7 @@ async function loadAll(){
     } else {
       // VENDEDOR — só os próprios leads
       const{data}=await Promise.race([
-        sb.from('crm_leads').select(LEAD_LIST_COLS).eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
+        sb.from('crm_leads').select(getLeadListCols()).eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
         new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_vendedor')),10000))
       ]).catch(e=>{ console.warn('leads vendedor timeout:',e.message); return {data:[]}; });
       allLeads=data||[];
@@ -2409,7 +2440,7 @@ async function loadAll(){
       if(!window._vendedorLeadRefreshInterval){
         window._vendedorLeadRefreshInterval=setInterval(async()=>{
           try{
-            const{data:fresh}=await sb.from('crm_leads').select(LEAD_LIST_COLS).eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+            const{data:fresh}=await sb.from('crm_leads').select(getLeadListCols()).eq('responsavel_id',CU.id).order('created_at',{ascending:false});
             if(fresh){
               allLeads=fresh;
               rebuildMaps();
@@ -3085,7 +3116,7 @@ async function buscarNaBaseCompleta(){
   try {
     // Busca no Supabase com ilike em nome, telefone e interesse
     const digits=q.replace(/\D/g,'');
-    let query=sb.from('crm_leads').select(LEAD_LIST_COLS).limit(50);
+    let query=sb.from('crm_leads').select(getLeadListCols()).limit(50);
     if(digits.length>=4){
       // Busca por telefone (números) OU nome OU interesse
       query=query.or(`nome.ilike.%${q}%,telefone.ilike.%${digits}%,interesse.ilike.%${q}%,email.ilike.%${q}%`);
@@ -3715,7 +3746,7 @@ function hasUpdatedAtCol(){
 // qualquer edição). Isso permite diferenciar "acabou de mudar de coluna" (vai pro topo)
 // de "foi editado/comentado sem trocar de coluna" (vai pro final).
 function hasStageEnteredAtCol(){
-  return allLeads.length>0 && 'stage_entered_at' in allLeads[0];
+  return _hasStageEnteredAtCol===true;
 }
 // Monta o fragmento de payload {stage_entered_at: agora} pra usar em QUALQUER lugar que
 // troque o status/estágio de um lead. Sem isso, o lead movido não vai pro topo da nova coluna.
@@ -5578,10 +5609,8 @@ async function refreshInBackground(){
       ]);
       if(lu.data) allUsers=lu.data;
       if(lh.data) allHist=lh.data;
-  if(allLeads.length>0){
-    _hasAtribuidoEm='atribuido_em' in allLeads[0];
-    _hasPropostaQuente='proposta_quente' in allLeads[0];
-  }
+  _hasAtribuidoEm=_hasAtribuidoEmCol===true;
+  _hasPropostaQuente=_hasPropostaQuenteCol===true;
       if(lt.data) allTasks=lt.data;
       if(lv.data) allVendas=lv.data;
       saveCache();
@@ -7423,7 +7452,7 @@ async function openFunilVendedor(userId){
   wrap.innerHTML=`<div class="empty"><div class="ei">⏳</div>Carregando funil de ${user?.name||'vendedor'}...</div>`;
   let leads=[];
   try{
-    const{data,error}=await sb.from('crm_leads').select(LEAD_LIST_COLS).eq('responsavel_id',userId).order('created_at',{ascending:false});
+    const{data,error}=await sb.from('crm_leads').select(getLeadListCols()).eq('responsavel_id',userId).order('created_at',{ascending:false});
     if(error) throw error;
     leads=data||[];
     // Aproveita pra atualizar o cache local com esses leads (não duplica)
