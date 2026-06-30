@@ -2081,6 +2081,16 @@ async function fetchAllPages(queryBuilder, pageSize=1000, onProgress, startOffse
   return allData;
 }
 
+// OTIMIZAÇÃO DE EGRESS: as cargas em lote de leads (admin/coordenador/supervisor/
+// vendedor, listas, funil, busca) só usam este subconjunto de colunas nas telas —
+// o restante (endereço, renda, profissão, anotações longas, etc) só é necessário
+// na tela de detalhe do lead, que sempre busca a linha completa (select('*')) na
+// hora de abrir. Selecionar só essas colunas nas cargas grandes reduz bastante o
+// volume de dados trafegado por sessão sem tirar nenhuma função das listagens.
+const LEAD_LIST_COLS='id,nome,telefone,email,status,interesse,origem,responsavel_id,equipe_id,tipo_lead,created_at,updated_at,distribuido_em,atribuido_em,proposta_quente,observacoes,stage_entered_at';
+// Cache curto (60s) usado pela busca na base geral — busca repetida não bate de novo no Supabase
+const SRCH_BASE_CACHE_MS=60000;
+
 async function loadAll(){
   const isAdm=isAdmin();
   const isCoord=isCoordenador();
@@ -2106,13 +2116,16 @@ async function loadAll(){
     if(mb) allMembroEquipes=mb;
   }catch(e){ console.warn('equipe_membros timeout:',e.message); /* mantém o que já tinha em memória/cache em vez de zerar */ }
 
-  // Load non-leads data in parallel
+  // OTIMIZAÇÃO: tarefas agora carregam só as do próprio usuário, pra todo mundo
+  // (antes admin/coordenador/supervisor recebiam a tabela crm_tarefas inteira).
+  // Cada um só precisa ver as próprias tarefas — isso reduz egress e elimina a
+  // necessidade do Realtime ficar escutando a tabela inteira (ver setupRealtime).
   const [lu,lh,lt,lv,ld]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
     safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false}).limit(2000)),
-    safe(sb.from('crm_tarefas').select('*').order('prazo',{ascending:true})),
+    safe(sb.from('crm_tarefas').select('*').or(`responsavel_id.eq.${CU.id},user_id.eq.${CU.id}`).order('prazo',{ascending:true})),
     safe(sb.from('crm_vendas').select('*').order('created_at',{ascending:false})),
-    safe(sb.from('crm_documentos').select('*').order('created_at',{ascending:false})),
+    safe(sb.from('crm_documentos').select('*').order('created_at',{ascending:false}).limit(1000)),
   ]);
 
   allUsers=lu.data||[];
@@ -2142,7 +2155,7 @@ async function loadAll(){
         try{
           const cutoff=lastSync;
           const delta=await fetchAllPages(
-            sb.from('crm_leads').select('*').or(`created_at.gt.${cutoff},updated_at.gt.${cutoff}`).order('updated_at',{ascending:false}),
+            sb.from('crm_leads').select(LEAD_LIST_COLS).or(`created_at.gt.${cutoff},updated_at.gt.${cutoff}`).order('updated_at',{ascending:false}),
             1000
           );
           const idsNovos=new Set(delta.map(l=>l.id));
@@ -2180,7 +2193,7 @@ async function loadAll(){
 
       // ── CARGA COMPLETA — primeira vez, cache vazio/expirado, ou fallback se o incremental falhou ──
       // Fase 1: primeiro lote de 1000 para liberar a UI imediatamente
-      const{data:first1k}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(0,999);
+      const{data:first1k}=await sb.from('crm_leads').select(LEAD_LIST_COLS).order('created_at',{ascending:false}).range(0,999);
       allLeads=first1k||[];
       populateSelects();
       renderNav();
@@ -2216,7 +2229,7 @@ async function loadAll(){
               let out=[];
               let cursor=from;
               while(cursor<=to){
-                const{data,error}=await sb.from('crm_leads').select('*').order('created_at',{ascending:false}).range(cursor,to);
+                const{data,error}=await sb.from('crm_leads').select(LEAD_LIST_COLS).order('created_at',{ascending:false}).range(cursor,to);
                 if(error){ console.warn('fetchRangeFull error:',error.message); break; }
                 if(!data||data.length===0) break;
                 out=out.concat(data);
@@ -2277,18 +2290,17 @@ async function loadAll(){
     }
 
     // ════════════════════════════════════════════
-    // COORDENADOR — 20% do pool sem vendedor
-    // embaralhado deterministicamente pelo user ID
+    // COORDENADOR — somente leads já vendidos
     // ════════════════════════════════════════════
+    // MUDANÇA: o coordenador deixou de ter acesso à base geral (antes carregava 20%
+    // do pool de leads sem vendedor — a maior fonte de egress/Realtime do app, pois
+    // esse pool é grande e mudava a cada redistribuição). Agora ele só carrega os
+    // leads que JÁ viraram venda (presentes em crm_vendas), o suficiente pra "Vendas"
+    // e "Clientes Vendidos". Quando precisar de um lead fora desse conjunto, usa a
+    // busca direta no Supabase (nav "Buscar na Base" / buscarNaBaseCompleta), que
+    // consulta o banco sob demanda sem nunca carregar a base inteira em memória.
     if(isCoord){
       // ── OTIMIZAÇÃO: pula o reload se já sincronizou recentemente ──
-      // Diferente do admin, o pool do coordenador (leads SEM vendedor, embaralhado e
-      // cortado em 20%) não é seguro de sincronizar por "delta" (created_at/updated_at):
-      // um lead que SAIU do pool porque acabou de ser atribuído a alguém não aparece
-      // numa busca incremental por filtro de tempo, então ele "sobraria" no cache local
-      // como se ainda estivesse disponível — pior que o gasto extra de banda. Por isso
-      // aqui só evitamos recarregar quando o sync foi muito recente; passado isso,
-      // sempre refaz a busca completa do pool (que já é bem menor que a base toda).
       const lastSyncCoord=getLastSyncTime();
       const cacheValidoCoord = allLeads.length>0 && !!lastSyncCoord && (Date.now()-new Date(lastSyncCoord).getTime()) < SYNC_FULL_RESYNC_HOURS*3600000;
       if(cacheValidoCoord){
@@ -2303,28 +2315,23 @@ async function loadAll(){
         loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
         return;
       }
-      // Busca apenas leads sem vendedor do Supabase
-      const loadingToast=showLoadingProgress(0);
-      updateLoadingProgress(loadingToast,0);
-      const semVendPool=await fetchAllPages(
-        sb.from('crm_leads').select('*').is('responsavel_id',null).order('created_at',{ascending:false}),
-        1000
-      );
-      // Embaralhamento determinístico pelo ID do coordenador
-      // (mesmo seed = mesmos leads sempre, até redistribuição)
-      const seed=CU.id.split('').reduce((acc,c)=>acc+c.charCodeAt(0),0);
-      function seededRandom(s){ let x=Math.sin(s)*10000; return x-Math.floor(x); }
-      const shuffled=[...semVendPool].sort((a,b)=>{
-        const ha=seededRandom(seed+a.id.charCodeAt(0)+a.id.charCodeAt(1));
-        const hb=seededRandom(seed+b.id.charCodeAt(0)+b.id.charCodeAt(1));
-        return ha-hb;
-      });
-      // Pega 20% do pool
-      const vinte_pct=Math.ceil(shuffled.length*0.20);
-      allLeads=shuffled.slice(0,vinte_pct);
+      // IDs dos leads que já têm venda registrada (allVendas já foi carregado acima)
+      const idsVendidos=[...new Set((allVendas||[]).map(v=>v.lead_id).filter(Boolean))];
+      if(idsVendidos.length){
+        try{
+          allLeads=await fetchAllPages(
+            sb.from('crm_leads').select(LEAD_LIST_COLS).in('id',idsVendidos).order('created_at',{ascending:false}),
+            1000
+          );
+        }catch(e){
+          console.warn('[loadAll] leads vendidos (coordenador) falhou, mantendo cache local:',e.message);
+          toast('Não foi possível atualizar a base agora — mostrando dados em cache.','err');
+        }
+      } else {
+        allLeads=[];
+      }
       setLastSyncTime(new Date().toISOString());
-      hideLoadingProgress(loadingToast,allLeads.length);
-      toast(`Base carregada: ${allLeads.length.toLocaleString('pt-BR')} leads disponíveis (20% do pool)`,'ok');
+      toast(`Base carregada: ${allLeads.length.toLocaleString('pt-BR')} lead(s) vendido(s)`,'ok');
       populateSelects();
       renderNav();
       goToDashboard();tryRestoreLastPage();
@@ -2366,7 +2373,7 @@ async function loadAll(){
         try{
           const leadsFrescos=await Promise.race([
             fetchAllPages(
-              sb.from('crm_leads').select('*').or(orParts.join(','))
+              sb.from('crm_leads').select(LEAD_LIST_COLS).or(orParts.join(','))
                 .order('created_at',{ascending:false})
             ),
             new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_supervisor')),15000))
@@ -2379,7 +2386,7 @@ async function loadAll(){
       } else {
         try{
           const{data}=await Promise.race([
-            sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
+            sb.from('crm_leads').select(LEAD_LIST_COLS).eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
             new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_supervisor_solo')),15000))
           ]);
           allLeads=data||allLeads;
@@ -2391,7 +2398,7 @@ async function loadAll(){
     } else {
       // VENDEDOR — só os próprios leads
       const{data}=await Promise.race([
-        sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
+        sb.from('crm_leads').select(LEAD_LIST_COLS).eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
         new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_vendedor')),10000))
       ]).catch(e=>{ console.warn('leads vendedor timeout:',e.message); return {data:[]}; });
       allLeads=data||[];
@@ -2402,7 +2409,7 @@ async function loadAll(){
       if(!window._vendedorLeadRefreshInterval){
         window._vendedorLeadRefreshInterval=setInterval(async()=>{
           try{
-            const{data:fresh}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
+            const{data:fresh}=await sb.from('crm_leads').select(LEAD_LIST_COLS).eq('responsavel_id',CU.id).order('created_at',{ascending:false});
             if(fresh){
               allLeads=fresh;
               rebuildMaps();
@@ -2492,7 +2499,12 @@ function isAdminOrCoord(){return CUProfile?.role==='admin'||CUProfile?.role==='c
 // um sync completo, forçamos carga completa de novo — isso "auto-cura" qualquer
 // desvio que a sincronização incremental não detecta sozinha (ela não percebe
 // quando um lead foi APAGADO enquanto a pessoa estava offline, por exemplo).
-const SYNC_FULL_RESYNC_HOURS=20;
+// OTIMIZAÇÃO: janela aumentada de 20h para 48h — reduz a frequência das cargas
+// completas (que são a maior fonte de Egress), aceitando que o cache local fique
+// até 2 dias sem uma resincronização total (o sync incremental do admin continua
+// rodando dentro dessa janela, então leads novos/alterados recentes ainda aparecem
+// rápido — isso só afasta o "refaz tudo do zero").
+const SYNC_FULL_RESYNC_HOURS=48;
 // Limite máximo de leads carregados para o admin (controle de custo/espaço no Supabase).
 // Sempre os mais recentes por created_at — leads mais antigos continuam acessíveis
 // via "Buscar na Base Completa", que consulta o banco direto, sem depender desse cache.
@@ -2606,14 +2618,22 @@ function renderNav(){
   const IC_vendas='<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 8.5h4M8 7v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
   const IC_clientes='<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11 7.5l1.5 1.5L15 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-  if(isAdm||isCoord){
-    // Admin e Coordenador: acesso total a leads + gestão completa
+  if(isAdm){
+    // Admin: acesso total a leads + gestão completa
     html+=`<div class="nav-sect">Leads</div>
       <div class="nav-item" onclick="nav('leads',this)" title="Todos os Leads"><span class="nav-icon">${IC.leads}</span><span class="nav-label">Todos os Leads</span></div>
       <div class="nav-item" onclick="nav('funil',this)" title="Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil de Vendas</span></div>
       <div class="nav-item" onclick="nav('distribuicao',this)" title="Distribuição"><span class="nav-icon">${IC.dist}</span><span class="nav-label">Distribuição</span></div>
-      ${isAdm?`<div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>`:''}
-      ${isAdm?`<div class="nav-item" onclick="nav('mesclar',this)" title="Mesclar Base"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4h4l2 4-2 4H2" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M14 4h-4l-2 4 2 4h4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span><span class="nav-label">Mesclar Base</span></div>`:''}
+      <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>
+      <div class="nav-item" onclick="nav('mesclar',this)" title="Mesclar Base"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4h4l2 4-2 4H2" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M14 4h-4l-2 4 2 4h4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span><span class="nav-label">Mesclar Base</span></div>
+      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funis da Equipe</span></div>`;
+  } else if(isCoord){
+    // MUDANÇA: coordenador não tem mais acesso à base geral de leads (Todos os Leads,
+    // Funil, Distribuição) — ele só carrega leads já vendidos. Quando precisar achar
+    // um lead fora desse conjunto, usa "Buscar na Base", que consulta o Supabase
+    // diretamente sob demanda, sem nunca trazer a base inteira pra memória.
+    html+=`<div class="nav-sect">Leads</div>
+      <div class="nav-item" onclick="nav('busca-base',this);renderBuscaBase()" title="Buscar na Base"><span class="nav-icon">🔍</span><span class="nav-label">Buscar na Base</span></div>
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funis da Equipe</span></div>`;
   } else if(isSup){
     // Supervisor: acesso apenas à sua equipe
@@ -2768,7 +2788,7 @@ async function renderDashboard(){
   const fechados=myLeads.filter(l=>l.status==='Fechado').length;
   const semVend=isAdminOrCoord()?allLeads.filter(l=>!l.responsavel_id).length:0;
   const hoje=new Date().toISOString().slice(0,10);
-  const myTasks=isAdminOrCoord()?allTasks:allTasks.filter(t=>t.responsavel_id===CU.id||t.user_id===CU.id);
+  const myTasks=allTasks; // allTasks já vem filtrado só com as tarefas do próprio usuário
   const vencidas=myTasks.filter(t=>!t.concluida&&t.prazo&&t.prazo<hoje).length;
 
   // Vendas stats com escopo correto
@@ -3040,6 +3060,7 @@ function goLeadsPage(p){
 }
 
 /* ═══ BUSCA NA BASE COMPLETA (Supabase) ═══ */
+const _srchCompletaCache=new Map();
 async function buscarNaBaseCompleta(){
   const q=(document.getElementById('l-srch')?.value||'').trim();
   if(!q){notify('Digite algo para buscar','err');return;}
@@ -3049,13 +3070,22 @@ async function buscarNaBaseCompleta(){
   if(!modal) return;
   modal.classList.add('on');
   const body=document.getElementById('busca-base-body');
+
+  // Cache curto (60s) — mesma busca repetida não bate no Supabase de novo
+  const cacheKey=q.toLowerCase();
+  const cached=_srchCompletaCache.get(cacheKey);
+  if(cached&&(Date.now()-cached.ts)<SRCH_BASE_CACHE_MS){
+    _renderBuscaCompletaResult(q,cached.data,body);
+    return;
+  }
+
   body.innerHTML=`<div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:10px;color:var(--muted2);font-size:13px">Buscando "<strong style="color:var(--gold2)">${q}</strong>" na base completa…</div></div>`;
   document.getElementById('busca-base-title').textContent=`🔍 Buscando na base completa…`;
 
   try {
     // Busca no Supabase com ilike em nome, telefone e interesse
     const digits=q.replace(/\D/g,'');
-    let query=sb.from('crm_leads').select('*').limit(50);
+    let query=sb.from('crm_leads').select(LEAD_LIST_COLS).limit(50);
     if(digits.length>=4){
       // Busca por telefone (números) OU nome OU interesse
       query=query.or(`nome.ilike.%${q}%,telefone.ilike.%${digits}%,interesse.ilike.%${q}%,email.ilike.%${q}%`);
@@ -3064,7 +3094,19 @@ async function buscarNaBaseCompleta(){
     }
     const {data,error}=await query;
     if(error) throw error;
+    _srchCompletaCache.set(cacheKey,{data,ts:Date.now()});
+    if(_srchCompletaCache.size>30){
+      const oldestKey=[..._srchCompletaCache.entries()].sort((a,b)=>a[1].ts-b[1].ts)[0][0];
+      _srchCompletaCache.delete(oldestKey);
+    }
+    _renderBuscaCompletaResult(q,data,body);
+  } catch(e){
+    body.innerHTML=`<div class="empty"><div class="ei">❌</div><div style="color:var(--red);margin-top:8px">Erro ao buscar: ${e.message||'Falha de conexão'}</div></div>`;
+    console.error('buscarNaBaseCompleta error:',e);
+  }
+}
 
+function _renderBuscaCompletaResult(q,data,body){
     // Filtra os que JÁ estão no allLeads (cache local)
     const localIds=new Set(allLeads.map(l=>l.id));
     const remote=data.filter(l=>!localIds.has(l.id));
@@ -3122,10 +3164,6 @@ async function buscarNaBaseCompleta(){
     }
 
     body.innerHTML=html;
-  } catch(e){
-    body.innerHTML=`<div class="empty"><div class="ei">❌</div><div style="color:var(--red);margin-top:8px">Erro ao buscar: ${e.message||'Falha de conexão'}</div></div>`;
-    console.error('buscarNaBaseCompleta error:',e);
-  }
 }
 
 async function importarLeadParaCarteira(leadId){
@@ -3978,7 +4016,7 @@ async function distParaEquipe(){
 function renderTarefas(){
   const fs=document.getElementById('t-f-status')?.value;
   const hoje=new Date().toISOString().slice(0,10);
-  let f=isAdminOrCoord()?allTasks:allTasks.filter(t=>t.responsavel_id===CU.id||t.user_id===CU.id);
+  let f=allTasks; // allTasks já vem filtrado só com as tarefas do próprio usuário
   if(fs==='pendente') f=f.filter(t=>!t.concluida);
   if(fs==='concluida') f=f.filter(t=>t.concluida);
   const pend=f.filter(t=>!t.concluida).length;
@@ -5535,7 +5573,7 @@ async function refreshInBackground(){
       const [lu,lh,lt,lv]=await Promise.all([
         sb.from('crm_users').select('*').eq('ativo',true),
         sb.from('crm_historico').select('*').order('created_at',{ascending:false}).limit(2000),
-        sb.from('crm_tarefas').select('*').order('prazo',{ascending:true}),
+        sb.from('crm_tarefas').select('*').or(`responsavel_id.eq.${CU.id},user_id.eq.${CU.id}`).order('prazo',{ascending:true}),
         sb.from('crm_vendas').select('*').order('created_at',{ascending:false}),
       ]);
       if(lu.data) allUsers=lu.data;
@@ -5923,7 +5961,14 @@ function setupRealtime(){
   // pode ver — usando o filtro nativo do Realtime (que reduz na origem, não no cliente).
   // IMPORTANTE: precisa que CU/CUProfile/allMembroEquipes já estejam carregados (são,
   // pois setupRealtime() só é chamado depois de loadAll() terminar de buscar isso tudo).
-  const isFullScope = isAdmin()||isCoordenador(); // únicos dois papéis que veem tudo
+  // MUDANÇA: coordenador deixou de carregar a base geral de leads (agora só carrega
+  // os já vendidos), então não faz mais sentido ele ficar inscrito SEM FILTRO em toda
+  // a tabela crm_leads — isso só gerava mensagens de Realtime sobre leads que ele nem
+  // tem mais em memória. Full scope de crm_leads agora é só do admin. Coordenador
+  // continua sabendo quando um lead novo é vendido através do crm_vendas (abaixo),
+  // que busca esse lead específico sob demanda quando necessário.
+  const isFullScope = isAdmin(); // único papel que vê a tabela de leads inteira ao vivo
+  const isFullScopeVendas = isAdmin()||isCoordenador(); // coordenador precisa ver vendas de todos
   const meuId = CU.id;
   const meuMemberIds = isSupervisor() ? getMeusMembroIds() : [meuId];
   const meuEquipeIds = isSupervisor() ? getMinhasEquipeIds() : [];
@@ -5936,6 +5981,10 @@ function setupRealtime(){
       await syncLead(payload); // syncLead handles INSERT render internally
       if(payload.eventType!=='INSERT') reRenderCurrent(); // UPDATE/DELETE: re-render
     });
+  } else if(isCoordenador()){
+    // Coordenador não assina mudanças genéricas de crm_leads (reduziria pra "todo
+    // lead que qualquer vendedor mexe" de novo). Ele só recebe leads novos quando
+    // uma venda é registrada — tratado em crm_vendas, logo abaixo.
   } else {
     if(meuMemberIds.length){
       ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_leads',filter:`responsavel_id=in.(${meuMemberIds.join(',')})`},async(payload)=>{
@@ -5954,7 +6003,11 @@ function setupRealtime(){
     }
   }
 
-  // ── crm_tarefas ── (tem responsavel_id direto, filtro simples)
+  // ── crm_tarefas ── DESLIGADO. Tarefas agora são carregadas só do próprio usuário
+  // (responsavel_id/user_id = CU.id), então não há mais "time inteiro" pra escutar
+  // ao vivo. O app já confere alertas de tarefa via polling (checkTaskAlerts, a
+  // cada 60s) e recarrega a lista normalmente ao navegar pra página de Tarefas.
+  /*
   if(isFullScope){
     ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_tarefas'},async(payload)=>{
       await syncTask(payload);
@@ -5968,9 +6021,10 @@ function setupRealtime(){
       if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
     });
   }
+  */
 
   // ── crm_vendas ── (tem vendedor_id direto, filtro simples)
-  if(isFullScope){
+  if(isFullScopeVendas){
     ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_vendas'},async(payload)=>{
       await syncVenda(payload);
     });
@@ -5980,18 +6034,17 @@ function setupRealtime(){
     });
   }
 
-  // ── crm_historico ── não tem coluna de "dono do lead" pra filtrar com segurança
-  // (só tem lead_id, e a lista de leads visíveis é grande/dinâmica demais pra um filtro
-  // de Realtime). Mantemos ao vivo só pra quem já vê tudo mesmo (admin/coordenador).
-  // Vendedor/supervisor continuam recebendo o histórico atualizado ao reabrir o lead
-  // (o app já faz isso em vários pontos) — só perdem o "populamento instantâneo" se
-  // OUTRA pessoa comentar enquanto eles estão com aquele lead aberto, o que é raro.
-  if(isFullScope){
+  // ── crm_historico ── DESLIGADO para todos os papéis (admin incluso), a pedido.
+  // Isso só remove o "avisa na hora" na tela de quem está com o lead aberto quando
+  // OUTRA pessoa comenta nele — o INSERT do histórico continua indo pro banco
+  // normalmente, e o app já recarrega o histórico sempre que o lead é reaberto.
+  // Nada é perdido, só deixa de ser instantâneo nesse caso raro.
+  /* if(isAdmin()){
     ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_historico'},async(payload)=>{
       await syncHist(payload);
       if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
     });
-  }
+  } */
 
   // ── crm_users ── tabela pequena (só usuários ativos), baixo volume de mudanças —
   // mantém sem filtro pra todo mundo, não vale a pena complicar por isso.
@@ -6123,6 +6176,16 @@ async function syncVenda(payload){
   if(eventType==='INSERT'&&!allVendas.find(v=>v.id===n.id)) allVendas.unshift(n);
   else if(eventType==='UPDATE'){const i=allVendas.findIndex(v=>v.id===n.id);if(i>-1)Object.assign(allVendas[i],n);}
   else if(eventType==='DELETE') allVendas=allVendas.filter(v=>v.id!==o.id);
+  // MUDANÇA: coordenador não tem mais a base geral de leads carregada — só os já
+  // vendidos. Quando uma venda nova chega via Realtime, busca esse lead específico
+  // (1 lead, não a base toda) e adiciona ao allLeads local, senão a venda ficaria
+  // sem nome/telefone nas telas de Vendas/Clientes Vendidos dele.
+  if(eventType==='INSERT'&&isCoordenador()&&n.lead_id&&!allLeads.find(l=>l.id===n.lead_id)){
+    try{
+      const{data}=await sb.from('crm_leads').select('*').eq('id',n.lead_id).maybeSingle();
+      if(data) allLeads.push(data);
+    }catch(e){ console.warn('[syncVenda] erro ao buscar lead vendido:',e.message); }
+  }
   // Re-render dashboard so Vendas/Cancelados KPIs update in real-time for everyone
   if(document.getElementById('page-dashboard').classList.contains('on')) renderDashboard().catch(()=>{});
   // Re-render open lead detail so the status badge updates live
@@ -7360,7 +7423,7 @@ async function openFunilVendedor(userId){
   wrap.innerHTML=`<div class="empty"><div class="ei">⏳</div>Carregando funil de ${user?.name||'vendedor'}...</div>`;
   let leads=[];
   try{
-    const{data,error}=await sb.from('crm_leads').select('*').eq('responsavel_id',userId).order('created_at',{ascending:false});
+    const{data,error}=await sb.from('crm_leads').select(LEAD_LIST_COLS).eq('responsavel_id',userId).order('created_at',{ascending:false});
     if(error) throw error;
     leads=data||[];
     // Aproveita pra atualizar o cache local com esses leads (não duplica)
@@ -8419,9 +8482,22 @@ function renderBuscaBase(){
   _srchBaseTimer=setTimeout(()=>_executarBuscaBase(q),400);
 }
 
+// OTIMIZAÇÃO: cache curto da busca na base — a mesma busca (texto + filtro de status)
+// repetida em até 60s usa o resultado já buscado em vez de bater no Supabase de novo.
+// Comum quando o usuário clica fora e volta, troca de aba e retorna, ou digita algo
+// e apaga voltando pro mesmo termo.
+const _srchBaseCache=new Map(); // chave: "q|status" -> {data, ts}
+
 async function _executarBuscaBase(q){
   const tbody=document.getElementById('srch-base-tbody');
   const statusF=document.getElementById('srch-base-status')?.value||'';
+  const cacheKey=q.toLowerCase()+'|'+statusF;
+  const cached=_srchBaseCache.get(cacheKey);
+  if(cached&&(Date.now()-cached.ts)<SRCH_BASE_CACHE_MS){
+    _srchBaseResults=cached.data;
+    _renderBuscaBasePage();
+    return;
+  }
   tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:8px;color:var(--muted2);font-size:13px">Buscando...</div></div></td></tr>';
 
   try{
@@ -8436,6 +8512,12 @@ async function _executarBuscaBase(q){
     const{data,error}=await query;
     if(error) throw error;
     _srchBaseResults=data||[];
+    _srchBaseCache.set(cacheKey,{data:_srchBaseResults,ts:Date.now()});
+    // Mantém o cache enxuto — no máx. as 30 buscas mais recentes
+    if(_srchBaseCache.size>30){
+      const oldestKey=[..._srchBaseCache.entries()].sort((a,b)=>a[1].ts-b[1].ts)[0][0];
+      _srchBaseCache.delete(oldestKey);
+    }
     _renderBuscaBasePage();
   }catch(e){
     tbody.innerHTML=`<tr><td colspan="7"><div class="empty"><div class="ei">⚠️</div>Erro ao buscar: ${e.message}</div></td></tr>`;
