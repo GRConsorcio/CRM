@@ -1476,6 +1476,9 @@ let _appReadyWithFallback=false;
 let _hasAtribuidoEm=false;
 let _hasPropostaQuente=false;
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
+// Mapa leve lead_id->responsavel_id pro supervisor (cobre leads Fechado, que não
+// ficam mais carregados em allLeads pra esse perfil) — usado em getVisibleVendas().
+let _supervisorLeadOwnerMap=new Map();
 let _leadNomeCache={}; // cache de nomes buscados on-demand p/ vendas cujo lead não está em allLeads
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let pendingFiles=[];
@@ -2445,6 +2448,25 @@ async function loadAll(){
           console.warn('[loadAll] leads supervisor (solo) falhou, mantendo cache local em vez de zerar:',e.message);
           toast('Não foi possível atualizar a base agora — mostrando dados em cache.','err');
         }
+      }
+      // BUGFIX: getVisibleVendas() escopa vendas do supervisor pela coluna vendedor_id
+      // da própria venda — mas vendas mais antigas/legadas podem não ter esse campo
+      // preenchido de forma confiável, fazendo a tela de Vendas mostrar 0 mesmo
+      // havendo vendas reais da equipe. Como leads Fechado não ficam mais carregados
+      // em allLeads (mudança acima), não dá mais pra resolver isso cruzando com a
+      // base local de leads. Em vez disso, busca um mapeamento leve (só 2 colunas,
+      // TODOS os status, inclusive Fechado) lead_id → responsavel_id pra cobrir
+      // exatamente esse caso sem precisar carregar os leads inteiros de novo.
+      try{
+        if(coordEquipes.length>0){
+          const myMemberIds2=[...new Set(allMembroEquipes.filter(m=>coordEquipes.includes(m.equipe_id)).map(m=>m.user_id))];
+          const orParts2=['equipe_id.in.('+coordEquipes.join(',')+')'];
+          if(myMemberIds2.length) orParts2.push('responsavel_id.in.('+myMemberIds2.join(',')+')');
+          const{data:ownerRows}=await sb.from('crm_leads').select('id,responsavel_id').or(orParts2.join(','));
+          _supervisorLeadOwnerMap=new Map((ownerRows||[]).map(r=>[r.id,r.responsavel_id]));
+        }
+      }catch(e){
+        console.warn('[loadAll] mapa lead->responsável (supervisor) falhou:',e.message);
       }
     } else {
       // VENDEDOR — só os próprios leads
@@ -5317,14 +5339,21 @@ function getVisibleVendas(){
     return allVendas;
   } else if(isSupervisor()){
     // Supervisor: vendas de qualquer membro da sua equipe.
-    // BUGFIX: antes cruzava com allLeads (achando o lead_id da venda na base local)
+    // BUGFIX 1: antes cruzava com allLeads (achando o lead_id da venda na base local)
     // — mas leads Fechados não ficam mais em allLeads pro supervisor (saíram do
     // carregamento principal pra reduzir volume), então essa venda nunca era
-    // encontrada e a tela de Vendas/Clientes Vendidos ficava vazia. Agora escopa
-    // direto pela coluna vendedor_id da própria venda, sem depender de allLeads.
+    // encontrada e a tela de Vendas/Clientes Vendidos ficava vazia.
+    // BUGFIX 2: usar só v.vendedor_id também falhava pra vendas mais antigas/legadas
+    // sem esse campo preenchido. Agora usa o mapa leve lead_id->responsavel_id
+    // (_supervisorLeadOwnerMap, busca todos os status incluindo Fechado) como fonte
+    // principal, com v.vendedor_id como reforço pros casos em que o lead nem está
+    // nesse mapa (ex: lead já excluído, mas a venda continua existindo).
     const myEquipeIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
     const myMemberIds=[...new Set(allMembroEquipes.filter(m=>myEquipeIds.includes(m.equipe_id)).map(m=>m.user_id))];
-    return allVendas.filter(v=>myMemberIds.includes(v.vendedor_id));
+    return allVendas.filter(v=>{
+      const ownerViaMap=_supervisorLeadOwnerMap.get(v.lead_id);
+      return myMemberIds.includes(ownerViaMap)||myMemberIds.includes(v.vendedor_id);
+    });
   } else {
     // Vendedor: apenas suas próprias vendas
     const myLeadIds=allLeads.filter(l=>l.responsavel_id===CU.id).map(l=>l.id);
@@ -8008,7 +8037,13 @@ function renderEquipes(){
     const membros=allMembroEquipes.filter(m=>m.equipe_id===eq.id);
     const mIds=new Set(membros.map(m=>m.user_id));
     const leads=allLeads.filter(l=>l.equipe_id===eq.id||(!l.equipe_id&&l.responsavel_id&&mIds.has(l.responsavel_id))).length;
-    const fechados=allLeads.filter(l=>l.status==='Fechado'&&(l.equipe_id===eq.id||(!l.equipe_id&&l.responsavel_id&&mIds.has(l.responsavel_id)))).length;
+    // BUGFIX: fechados agora vem de vendas aprovadas (igual ao detalhe da equipe) —
+    // l.status==='Fechado' não é mais confiável aqui porque leads Fechado não ficam
+    // carregados em allLeads pro supervisor.
+    const fechados=allVendas.filter(v=>{
+      const ownerViaMap=_supervisorLeadOwnerMap.get(v.lead_id);
+      return (mIds.has(ownerViaMap)||mIds.has(v.vendedor_id))&&v.status_venda==='Aprovado';
+    }).length;
     return`<div class="equipe-card" onclick="openEquipeDetail('${eq.id}')">
       <div class="equipe-card-bar" style="background:${eq.cor||'var(--gold)'}"></div>
       <div class="equipe-card-body">
@@ -8048,12 +8083,16 @@ async function openEquipeDetail(id){
     l.equipe_id===id ||
     (!l.equipe_id && l.responsavel_id && membroIds.has(l.responsavel_id))
   );
-  // BUGFIX: fechados agora vem de vendas aprovadas (vendedor_id), não de l.status==='Fechado'.
+  // BUGFIX: fechados agora vem de vendas aprovadas (vendedor_id OU, como reforço pra
+  // vendas legadas sem esse campo, via _supervisorLeadOwnerMap), não de l.status==='Fechado'.
   // Leads Fechado não ficam mais carregados em allLeads pro supervisor (saíram do
   // carregamento principal pra reduzir volume), então contar pelo status de lead
   // ficaria sempre 0 pra esse perfil. Vendas aprovadas é a fonte de verdade de
   // "fechou" de qualquer forma, e funciona igual pra todos os perfis.
-  const fechados=allVendas.filter(v=>membroIds.has(v.vendedor_id)&&v.status_venda==='Aprovado').length;
+  const fechados=allVendas.filter(v=>{
+    const ownerViaMap=_supervisorLeadOwnerMap.get(v.lead_id);
+    return (membroIds.has(ownerViaMap)||membroIds.has(v.vendedor_id))&&v.status_venda==='Aprovado';
+  }).length;
 
   document.getElementById('equipe-detail-wrap').innerHTML=`
     <div class="panel">
@@ -8095,7 +8134,7 @@ async function openEquipeDetail(id){
           ?'<div class="empty"><div class="ei">👥</div>Nenhum membro ainda</div>'
           :membrosUsers.map(u=>{
             const uLeads=allLeads.filter(l=>l.responsavel_id===u.user_id).length;
-            const uFechs=allVendas.filter(v=>v.vendedor_id===u.user_id&&v.status_venda==='Aprovado').length;
+            const uFechs=allVendas.filter(v=>(_supervisorLeadOwnerMap.get(v.lead_id)===u.user_id||v.vendedor_id===u.user_id)&&v.status_venda==='Aprovado').length;
             const mb=membros.find(m=>m.user_id===u.user_id);
             const isCoord=mb?.cargo==='coordenador';
             const coordBadge=isCoord?'<span style="font-size:9px;font-weight:700;background:rgba(201,168,76,0.15);color:#e0c068;border:1px solid #7a6328;border-radius:4px;padding:1px 6px">COORD</span>':'';
