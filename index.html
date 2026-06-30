@@ -2355,13 +2355,38 @@ async function loadAll(){
         const myMemberIds=[...new Set(allMembroEquipes.filter(m=>coordEquipes.includes(m.equipe_id)).map(m=>m.user_id))];
         const orParts=['equipe_id.in.('+coordEquipes.join(',')+')'];
         if(myMemberIds.length) orParts.push('responsavel_id.in.('+myMemberIds.join(',')+')');
-        allLeads=await fetchAllPages(
-          sb.from('crm_leads').select('*').or(orParts.join(','))
-            .order('created_at',{ascending:false})
-        );
+        // BUGFIX: esta era a ÚNICA busca de leads do app sem proteção contra falha de
+        // rede/timeout (admin usa safe()/Promise.race, vendedor usa Promise.race com
+        // .catch() — ambos preservam o que já está em memória se a query falhar).
+        // Sem essa proteção, qualquer erro aqui (timeout, instabilidade momentânea do
+        // Supabase logo após um "Transferir em massa", etc) subia pro catch geral da
+        // função, que executava allLeads=[] — zerando TODA a base do supervisor até
+        // a próxima recarga manual da página. Agora, se a busca falhar, mantemos os
+        // leads que já estavam carregados em vez de apagar tudo.
+        try{
+          const leadsFrescos=await Promise.race([
+            fetchAllPages(
+              sb.from('crm_leads').select('*').or(orParts.join(','))
+                .order('created_at',{ascending:false})
+            ),
+            new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_supervisor')),15000))
+          ]);
+          allLeads=leadsFrescos||allLeads;
+        }catch(e){
+          console.warn('[loadAll] leads supervisor falhou, mantendo cache local em vez de zerar:',e.message);
+          toast('Não foi possível atualizar a base agora — mostrando dados em cache.','err');
+        }
       } else {
-        const{data}=await sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false});
-        allLeads=data||[];
+        try{
+          const{data}=await Promise.race([
+            sb.from('crm_leads').select('*').eq('responsavel_id',CU.id).order('created_at',{ascending:false}),
+            new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_supervisor_solo')),15000))
+          ]);
+          allLeads=data||allLeads;
+        }catch(e){
+          console.warn('[loadAll] leads supervisor (solo) falhou, mantendo cache local em vez de zerar:',e.message);
+          toast('Não foi possível atualizar a base agora — mostrando dados em cache.','err');
+        }
       }
     } else {
       // VENDEDOR — só os próprios leads
@@ -5132,7 +5157,7 @@ function getVisibleVendas(){
   }
 }
 
-function renderVendasPage(){
+async function renderVendasPage(){
   const q=(document.getElementById('vp-srch')?.value||'').toLowerCase();
   let vendas=getVisibleVendas();
 
@@ -5140,10 +5165,29 @@ function renderVendasPage(){
   if(_vendasFilter!=='todos') vendas=vendas.filter(v=>v.status_venda===_vendasFilter);
 
   // Filter by search
+  // BUGFIX: para coordenador (e outros papéis com escopo parcial de allLeads), muitas
+  // vendas apontam pra leads que NÃO estão carregados em memória — então lead?.nome
+  // vinha undefined e a venda era descartada do filtro ANTES de ser renderizada. Como
+  // o nome só era buscado on-demand DEPOIS de renderizada, essas vendas nunca apareciam
+  // numa busca por nome: ficavam presas num "nunca renderiza -> nunca busca -> nunca
+  // aparece". Agora, antes de filtrar, buscamos em UM LOTE (1 query, .in()) os nomes que
+  // faltam e ainda não estão em cache, e só então aplicamos o filtro de busca.
   if(q){
+    const faltando=[...new Set(
+      vendas.filter(v=>!allLeads.find(l=>l.id===v.lead_id) && !_leadNomeCache[v.lead_id])
+            .map(v=>v.lead_id)
+    )];
+    if(faltando.length){
+      try{
+        const{data}=await sb.from('crm_leads').select('id,nome,telefone').in('id',faltando);
+        (data||[]).forEach(l=>{ _leadNomeCache[l.id]=l.nome||l.telefone||'Lead não encontrado'; });
+        faltando.forEach(id=>{ if(!_leadNomeCache[id]) _leadNomeCache[id]='Lead não encontrado'; });
+      }catch(e){ console.warn('[renderVendasPage] erro ao pré-buscar nomes:',e.message); }
+    }
     vendas=vendas.filter(v=>{
       const lead=allLeads.find(l=>l.id===v.lead_id);
-      return (lead?.nome||'').toLowerCase().includes(q)||(v.cpf||'').includes(q)||(v.grupo||'').toLowerCase().includes(q);
+      const nome=lead?.nome||_leadNomeCache[v.lead_id]||'';
+      return nome.toLowerCase().includes(q)||(v.cpf||'').includes(q)||(v.grupo||'').toLowerCase().includes(q);
     });
   }
 
@@ -6023,6 +6067,7 @@ async function syncLead(payload){
         else if(document.getElementById('page-meus-leads').classList.contains('on')) renderMeusLeads();
         else if(document.getElementById('page-funil').classList.contains('on')) renderFunil();
         else if(document.getElementById('page-distribuicao').classList.contains('on')) renderDistribuicao();
+        else if(document.getElementById('page-coord-leads')?.classList.contains('on')) renderCoordLeads();
       }
     }
     populateSelects();
@@ -6090,6 +6135,13 @@ function reRenderCurrent(){
   else if(document.getElementById('page-meus-leads').classList.contains('on')) renderMeusLeads();
   else if(document.getElementById('page-funil').classList.contains('on')) renderFunil();
   else if(document.getElementById('page-distribuicao').classList.contains('on')) renderDistribuicao();
+  // BUGFIX: "Leads da Equipe" (coordenador/supervisor) e o Funil do Vendedor não eram
+  // re-renderizados quando chegava um evento em tempo real (ex: o próprio "Transferir
+  // em massa" volta como UPDATE pelo canal Realtime). O dado em memória (allLeads) já
+  // estava correto, mas a tabela na tela ficava "presa" mostrando o estado de antes do
+  // evento até uma navegação manual — dando a impressão de que os leads tinham sumido.
+  else if(document.getElementById('page-coord-leads')?.classList.contains('on')) renderCoordLeads();
+  else if(_massVendedorId&&document.getElementById('page-funil-vendedor')?.classList.contains('on')) openFunilVendedor(_massVendedorId);
 }
 
 
