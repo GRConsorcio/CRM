@@ -456,6 +456,20 @@ document.addEventListener('DOMContentLoaded', function(){
         </span>
       </div>
     </div>
+    <!-- Atualizar base manualmente — admin e coordenador, já que ambos usam cache
+         de até 48h (sincronização incremental) e podem precisar conferir o total
+         real sem esperar a janela inteira -->
+    <div class="panel" id="dash-resync-tools" style="margin-top:12px;display:none;">
+      <div class="panel-head"><div class="panel-title">🔄 Sincronização da Base</div></div>
+      <div class="panel-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px;">
+        <button class="btn-primary" style="font-size:11px;padding:7px 14px;" id="btn-resync-completo" onclick="forcarResyncCompleto()">
+          🔄 Atualizar Base Completa
+        </button>
+        <span style="font-size:11px;color:var(--muted);" id="dash-last-sync-label">
+          Última sincronização completa: —
+        </span>
+      </div>
+    </div>
   </div>
 
   <!-- LEADS (admin/coord) -->
@@ -2404,7 +2418,13 @@ async function loadAll(){
         try{
           const leadsFrescos=await Promise.race([
             fetchAllPages(
-              sb.from('crm_leads').select(getLeadListCols()).or(orParts.join(','))
+              // MUDANÇA: leads já Fechados saem do carregamento principal do supervisor.
+              // Eles continuam acessíveis normalmente em Vendas/Clientes Vendidos (que já
+              // buscam o nome do lead sob demanda se não estiver na base local), e no
+              // Funil aparecem só no dia em que foram fechados (busca separada e leve,
+              // ver getFechadosHoje). Isso reduz bastante o volume carregado pra equipes
+              // com muito histórico acumulado.
+              sb.from('crm_leads').select(getLeadListCols()).or(orParts.join(',')).neq('status','Fechado')
                 .order('created_at',{ascending:false})
             ),
             new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_supervisor')),15000))
@@ -2543,6 +2563,25 @@ const ADMIN_LEADS_CAP=12000;
 function _lastSyncKey(){ return 'crm_last_full_sync_'+(CU?.id||'anon'); }
 function getLastSyncTime(){ try{ return localStorage.getItem(_lastSyncKey()); }catch(e){ return null; } }
 function setLastSyncTime(iso){ try{ localStorage.setItem(_lastSyncKey(), iso||new Date().toISOString()); }catch(e){} }
+function clearLastSyncTime(){ try{ localStorage.removeItem(_lastSyncKey()); }catch(e){} }
+
+// Botão "Atualizar Base Completa" (admin/coordenador) — remove o registro de última
+// sincronização, o que faz cacheValido/cacheValidoCoord darem false na próxima
+// chamada de loadAll(), forçando uma carga completa em vez de só incremental.
+async function forcarResyncCompleto(){
+  const btn=document.getElementById('btn-resync-completo');
+  if(btn){ btn.disabled=true; btn.dataset.orig=btn.textContent; btn.textContent='⏳ Atualizando...'; }
+  toast('Atualizando base completa — isso pode levar alguns segundos...','ok');
+  try{
+    clearLastSyncTime();
+    await loadAll();
+    toast(`Base atualizada! ${allLeads.length.toLocaleString('pt-BR')} lead(s) carregados.`,'ok');
+  }catch(e){
+    toast('Erro ao atualizar base: '+e.message,'err');
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent=btn.dataset.orig||'🔄 Atualizar Base Completa'; }
+  }
+}
 function isSupervisor(){return CUProfile?.role==='supervisor';}
 // Helpers de escopo do supervisor — equipes que ele coordena e os user_ids dos membros
 // dessas equipes. Centralizados aqui pra não repetir esse cálculo em 5 lugares diferentes
@@ -2816,16 +2855,20 @@ async function renderDashboard(){
   }
 
   const total=myLeads.length;
-  const fechados=myLeads.filter(l=>l.status==='Fechado').length;
+  // Vendas stats com escopo correto (movido pra cima — supervisor precisa disso
+  // pro cálculo de "fechados" abaixo, já que leads Fechado não ficam mais em
+  // allLeads pra esse perfil)
+  const myVendas=getVisibleVendas();
+  const vendasAprovadas=myVendas.filter(v=>v.status_venda==='Aprovado').length;
+  const vendasCanceladas=myVendas.filter(v=>v.status_venda==='Cancelado').length;
+  // BUGFIX: pro supervisor, "fechados" não pode mais vir de myLeads (leads Fechado
+  // saíram do carregamento principal dele) — usa a contagem de vendas aprovadas,
+  // que é escopada corretamente e não depende da base de leads estar completa.
+  const fechados=isSupervisor()?vendasAprovadas:myLeads.filter(l=>l.status==='Fechado').length;
   const semVend=isAdminOrCoord()?allLeads.filter(l=>!l.responsavel_id).length:0;
   const hoje=new Date().toISOString().slice(0,10);
   const myTasks=allTasks; // allTasks já vem filtrado só com as tarefas do próprio usuário
   const vencidas=myTasks.filter(t=>!t.concluida&&t.prazo&&t.prazo<hoje).length;
-
-  // Vendas stats com escopo correto
-  const myVendas=getVisibleVendas();
-  const vendasAprovadas=myVendas.filter(v=>v.status_venda==='Aprovado').length;
-  const vendasCanceladas=myVendas.filter(v=>v.status_venda==='Cancelado').length;
 
   let kpis=`
     <div class="kpi"><div class="kpi-label">Total de Leads</div><div class="kpi-val">${total.toLocaleString('pt-BR')}</div></div>
@@ -2839,6 +2882,15 @@ async function renderDashboard(){
   document.getElementById('dash-cols').style.display=(isAdmin()||isCoordenador()||isSupervisor())?'':'none';
   const adminTools=document.getElementById('dash-admin-tools');
   if(adminTools) adminTools.style.display=isAdmin()?'':'none';
+  const resyncTools=document.getElementById('dash-resync-tools');
+  if(resyncTools){
+    resyncTools.style.display=(isAdmin()||isCoordenador())?'':'none';
+    const lastSyncLabel=document.getElementById('dash-last-sync-label');
+    if(lastSyncLabel){
+      const lastSync=getLastSyncTime();
+      lastSyncLabel.textContent='Última sincronização completa: '+(lastSync?fmtDt(lastSync):'nunca (sempre carregou tudo)');
+    }
+  }
   document.getElementById('dash-kpis').innerHTML=kpis;
 
   // Ranking de fechamentos — BUGFIX: antes usava allLeads + allUsers sem nenhum escopo,
@@ -2850,7 +2902,13 @@ async function renderDashboard(){
       ? allUsers.filter(u=>_myMemberIds.includes(u.user_id))
       : allUsers.filter(u=>u.user_id===CU.id);
   const byVend={};
-  myLeads.filter(l=>l.status==='Fechado'&&l.responsavel_id).forEach(l=>{byVend[l.responsavel_id]=(byVend[l.responsavel_id]||0)+1;});
+  if(isSupervisor()){
+    // BUGFIX: mesma razão do KPI de fechados acima — usa vendas aprovadas, não
+    // status de lead, já que leads Fechado não estão mais em myLeads pro supervisor.
+    myVendas.filter(v=>v.status_venda==='Aprovado'&&v.vendedor_id).forEach(v=>{byVend[v.vendedor_id]=(byVend[v.vendedor_id]||0)+1;});
+  } else {
+    myLeads.filter(l=>l.status==='Fechado'&&l.responsavel_id).forEach(l=>{byVend[l.responsavel_id]=(byVend[l.responsavel_id]||0)+1;});
+  }
   const ranked=rankUsers.map(u=>({name:u.name,count:byVend[u.user_id]||0})).sort((a,b)=>b.count-a.count).filter(u=>u.count>0);
   const medals=['🥇','🥈','🥉'];
   document.getElementById('dash-rank').innerHTML=ranked.length===0
@@ -2901,9 +2959,11 @@ async function renderDashboard(){
     let myEqs=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
     if(!myEqs.length) myEqs=allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id);
     const memberIds=[...new Set(allMembroEquipes.filter(m=>myEqs.includes(m.equipe_id)).map(m=>m.user_id))];
+    // BUGFIX: uFechs vinha de uLeads (status='Fechado'), mas leads Fechado não ficam
+    // mais carregados pro supervisor — agora conta vendas aprovadas por vendedor.
     actPanel.innerHTML=allUsers.filter(u=>memberIds.includes(u.user_id)).map(u=>{
       const uLeads=allLeads.filter(l=>l.responsavel_id===u.user_id);
-      const uFechs=uLeads.filter(l=>l.status==='Fechado').length;
+      const uFechs=myVendas.filter(v=>v.vendedor_id===u.user_id&&v.status_venda==='Aprovado').length;
       return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #191919">
         <div style="width:30px;height:30px;border-radius:8px;background:var(--gold);color:#0a0a0a;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900">${u.name[0]}</div>
         <div style="flex:1"><div style="font-size:12.5px;font-weight:700">${u.name}</div><div style="font-size:10.5px;color:var(--muted2)">${uLeads.length} leads · ${uFechs} fechados</div></div>
@@ -3814,11 +3874,55 @@ function prazoRotacaoInfo(lead){
 }
 
 const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Em Negociação':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
-function renderFunil(){
+// REGRA: um lead fechado só aparece na coluna "Fechado" do Funil NO DIA em que foi
+// vendido — no dia seguinte ele já não aparece mais aqui, só em Vendas/Clientes
+// Vendidos. Por isso a coluna "Fechado" não usa allLeads (que pode nem ter leads
+// fechados antigos carregados, especialmente pro supervisor) — busca só os fechados
+// de hoje, direto do Supabase, com cache curto pra não bater toda hora.
+let _fechadosHojeCache=null; // {leads:[...], ts:Number}
+const FECHADOS_HOJE_CACHE_MS=20000;
+async function getFechadosHoje(forceRefresh){
+  if(!forceRefresh&&_fechadosHojeCache&&(Date.now()-_fechadosHojeCache.ts)<FECHADOS_HOJE_CACHE_MS){
+    return _fechadosHojeCache.leads;
+  }
+  const inicioHoje=new Date(); inicioHoje.setHours(0,0,0,0);
+  const inicioISO=inicioHoje.toISOString();
+  try{
+    let q=sb.from('crm_leads').select(getLeadListCols()).eq('status','Fechado').gte('updated_at',inicioISO);
+    if(isSupervisor()){
+      const eqs=getMinhasEquipeIds(), mbs=getMeusMembroIds();
+      const orParts=[];
+      if(eqs.length) orParts.push(`equipe_id.in.(${eqs.join(',')})`);
+      if(mbs.length) orParts.push(`responsavel_id.in.(${mbs.join(',')})`);
+      if(orParts.length) q=q.or(orParts.join(','));
+    } else if(!isAdminOrCoord()){
+      q=q.eq('responsavel_id',CU.id);
+    }
+    const{data,error}=await q;
+    if(error) throw error;
+    _fechadosHojeCache={leads:data||[],ts:Date.now()};
+    return _fechadosHojeCache.leads;
+  }catch(e){
+    console.warn('[getFechadosHoje] erro:',e.message);
+    return _fechadosHojeCache?.leads||[];
+  }
+}
+
+async function renderFunil(){
   const isAdmin=isAdminOrCoord();
+  const fechadosHoje=await getFechadosHoje();
+  // Funde os fechados de hoje com qualquer um que já esteja em allLeads (evita
+  // duplicar caso a base local também tenha esse lead carregado)
+  const fechadosHojeIds=new Set(fechadosHoje.map(l=>l.id));
+  const fechadosLocais=allLeads.filter(l=>fechadosHojeIds.has(l.id));
+  const fechadosLocaisIds=new Set(fechadosLocais.map(l=>l.id));
+  const fechadosCombo=[...fechadosLocais,...fechadosHoje.filter(l=>!fechadosLocaisIds.has(l.id))];
+
   document.getElementById('funil-grid').innerHTML=STAGES.map(s=>{
     // Vendedor só vê os próprios leads; admin vê todos
-    const ls=ordenarFilaFunil(allLeads.filter(l=>l.status===s&&(isAdmin||l.responsavel_id===CU.id)));
+    const ls = s==='Fechado'
+      ? ordenarFilaFunil(fechadosCombo.filter(l=>isAdmin||l.responsavel_id===CU.id))
+      : ordenarFilaFunil(allLeads.filter(l=>l.status===s&&(isAdmin||l.responsavel_id===CU.id)));
     return`<div class="funil-col-wrap" data-stage="${s}"
       style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:120px;min-width:220px;flex:1;transition:all .15s"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
@@ -3904,7 +4008,8 @@ async function moveStage(id,status){
   await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'🔄 Status',descricao:`Status: "${statusAnterior}" → "${status}"`,created_at:new Date().toISOString()});
   const{data:hMv}=await sb.from('crm_historico').select('*').eq('lead_id',id).order('created_at',{ascending:false});
   if(hMv){allHist=allHist.filter(h=>h.lead_id!==id);allHist.push(...hMv);}
-  renderFunil();
+  _fechadosHojeCache=null; // status mudou — garante que o funil reflita corretamente na próxima renderização
+  await renderFunil();
   toast('Status atualizado!','ok');
 }
 
@@ -5211,14 +5316,15 @@ function getVisibleVendas(){
     // Admin e Coordenador: veem TODAS as vendas de todos os vendedores
     return allVendas;
   } else if(isSupervisor()){
-    // Supervisor: apenas vendas de leads atribuídos à(s) sua(s) equipe(s)
+    // Supervisor: vendas de qualquer membro da sua equipe.
+    // BUGFIX: antes cruzava com allLeads (achando o lead_id da venda na base local)
+    // — mas leads Fechados não ficam mais em allLeads pro supervisor (saíram do
+    // carregamento principal pra reduzir volume), então essa venda nunca era
+    // encontrada e a tela de Vendas/Clientes Vendidos ficava vazia. Agora escopa
+    // direto pela coluna vendedor_id da própria venda, sem depender de allLeads.
     const myEquipeIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
     const myMemberIds=[...new Set(allMembroEquipes.filter(m=>myEquipeIds.includes(m.equipe_id)).map(m=>m.user_id))];
-    // Lead está na equipe diretamente OU está atribuído a um membro da equipe
-    const scopedLeadIds=allLeads
-      .filter(l=>myEquipeIds.includes(l.equipe_id)||myMemberIds.includes(l.responsavel_id))
-      .map(l=>l.id);
-    return allVendas.filter(v=>scopedLeadIds.includes(v.lead_id));
+    return allVendas.filter(v=>myMemberIds.includes(v.vendedor_id));
   } else {
     // Vendedor: apenas suas próprias vendas
     const myLeadIds=allLeads.filter(l=>l.responsavel_id===CU.id).map(l=>l.id);
@@ -7942,7 +8048,12 @@ async function openEquipeDetail(id){
     l.equipe_id===id ||
     (!l.equipe_id && l.responsavel_id && membroIds.has(l.responsavel_id))
   );
-  const fechados=leads.filter(l=>l.status==='Fechado').length;
+  // BUGFIX: fechados agora vem de vendas aprovadas (vendedor_id), não de l.status==='Fechado'.
+  // Leads Fechado não ficam mais carregados em allLeads pro supervisor (saíram do
+  // carregamento principal pra reduzir volume), então contar pelo status de lead
+  // ficaria sempre 0 pra esse perfil. Vendas aprovadas é a fonte de verdade de
+  // "fechou" de qualquer forma, e funciona igual pra todos os perfis.
+  const fechados=allVendas.filter(v=>membroIds.has(v.vendedor_id)&&v.status_venda==='Aprovado').length;
 
   document.getElementById('equipe-detail-wrap').innerHTML=`
     <div class="panel">
@@ -7984,7 +8095,7 @@ async function openEquipeDetail(id){
           ?'<div class="empty"><div class="ei">👥</div>Nenhum membro ainda</div>'
           :membrosUsers.map(u=>{
             const uLeads=allLeads.filter(l=>l.responsavel_id===u.user_id).length;
-            const uFechs=allLeads.filter(l=>l.responsavel_id===u.user_id&&l.status==='Fechado').length;
+            const uFechs=allVendas.filter(v=>v.vendedor_id===u.user_id&&v.status_venda==='Aprovado').length;
             const mb=membros.find(m=>m.user_id===u.user_id);
             const isCoord=mb?.cargo==='coordenador';
             const coordBadge=isCoord?'<span style="font-size:9px;font-weight:700;background:rgba(201,168,76,0.15);color:#e0c068;border:1px solid #7a6328;border-radius:4px;padding:1px 6px">COORD</span>':'';
