@@ -533,6 +533,15 @@ document.addEventListener('DOMContentLoaded', function(){
       </select>
       <button class="btn-sm" style="border-color:var(--purple);color:#c084fc" onclick="leadsMassChangeTipo()">🏷️ Aplicar tipo</button>
       <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+      <select id="leads-mass-origem" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
+        <option value="">Mudar origem para...</option>
+        <option value="Indicação">Indicação</option>
+        <option value="Site">Site</option>
+        <option value="Anúncio GR">Anúncio GR</option>
+        <option value="Outro">Outro</option>
+      </select>
+      <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2)" onclick="leadsMassChangeOrigem()">📍 Aplicar origem</button>
+      <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
       <select id="leads-mass-status" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
         <option value="">Mudar status para...</option>
         <option value="Novo">🆕 Novo</option>
@@ -688,6 +697,17 @@ document.addEventListener('DOMContentLoaded', function(){
         <button id="vp-btn-Pendente" class="tab" onclick="setVendasFilter('Pendente')">⏳ Pendentes</button>
         <button id="vp-btn-Cancelado" class="tab" onclick="setVendasFilter('Cancelado')">❌ Canceladas</button>
       </div>
+      <select id="vp-f-tipo" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+        <option value="">Novo + Remalho</option>
+        <option value="Novo">🆕 Só Novos</option>
+        <option value="Remalho">♻️ Só Remalho</option>
+      </select>
+      <select id="vp-f-vendedor" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
+        <option value="">Todos os vendedores</option>
+      </select>
+      <select id="vp-f-equipe" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
+        <option value="">Todas as equipes</option>
+      </select>
       <input class="inp" id="vp-srch" placeholder="🔍 Buscar cliente ou lead..." oninput="renderVendasPage()" style="flex:1;min-width:150px">
     </div>
     <div class="panel">
@@ -1071,7 +1091,7 @@ document.addEventListener('DOMContentLoaded', function(){
       </div>
       <div class="fld" id="ld-origem-wrap"><label>Origem</label>
         <select class="inp" id="ld-origem">
-          <option>Instagram</option><option>Facebook</option><option>WhatsApp</option><option>Indicação</option><option>Site</option><option>Outro</option>
+          <option>Indicação</option><option>Site</option><option>Anúncio GR</option><option>Outro</option>
         </select>
       </div>
     </div>
@@ -1480,6 +1500,7 @@ let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
 // ficam mais carregados em allLeads pra esse perfil) — usado em getVisibleVendas().
 let _supervisorLeadOwnerMap=new Map();
 let _leadNomeCache={}; // cache de nomes buscados on-demand p/ vendas cujo lead não está em allLeads
+let _leadTipoCache={}; // idem, mas pro tipo_lead (Novo/Remalho) — usado no filtro da aba de Vendas
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let pendingFiles=[];
 let fromPage='leads';
@@ -2640,6 +2661,23 @@ function populateSelects(){
   const respFilter='<option value="">Todos os vendedores</option>'+vendOpts;
   const lf=document.getElementById('l-f-resp');
   if(lf){ const curResp=lf.value; lf.innerHTML=respFilter; if(curResp) lf.value=curResp; }
+  // Filtro de vendedor na aba de Vendas — mesma lista, preserva seleção
+  const vpResp=document.getElementById('vp-f-vendedor');
+  if(vpResp){ const curV=vpResp.value; vpResp.innerHTML=respFilter; if(curV) vpResp.value=curV; }
+  // Filtro de equipe na aba de Vendas — escopo por perfil, preserva seleção
+  const vpEq=document.getElementById('vp-f-equipe');
+  if(vpEq){
+    let visEquipes;
+    if(isAdmin()||isCoordenador()){
+      visEquipes=allEquipes;
+    } else {
+      const myEqIds=[...new Set(allMembroEquipes.filter(m=>m.user_id===CU.id).map(m=>m.equipe_id))];
+      visEquipes=allEquipes.filter(e=>myEqIds.includes(e.id));
+    }
+    const curEq=vpEq.value;
+    vpEq.innerHTML='<option value="">Todas as equipes</option>'+visEquipes.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+    if(curEq) vpEq.value=curEq;
+  }
   // DDD filter — admin only
   if(isAdmin()) populateDDDFilter();
 }
@@ -4237,7 +4275,7 @@ function openModal(type){
     ['ld-nome','ld-tel','ld-email','ld-int','ld-obs'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('ld-status').value='Novo';
     document.getElementById('ld-resp').value='';
-    document.getElementById('ld-origem').value='Instagram';
+    document.getElementById('ld-origem').value='Anúncio GR';
     // tipo lead — só admin vê
     const tipoWrap=document.getElementById('ld-tipo-wrap');
     if(tipoWrap) tipoWrap.style.display=isAdmin()?'block':'none';
@@ -5101,7 +5139,12 @@ function fmtBrlInput(el){
 function fmtCPF(c){if(!c)return'';const d=c.replace(/\D/g,'');return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');}
 function sBadge(s,tipo,leadId,proposta_quente){
   const m={Novo:"b-novo","Em Negociação":"b-contato",Proposta:"b-proposta",Fechado:"b-fechado",Perdido:"b-perdido"};
-  let html=`<span class="badge ${m[s]||"b-novo"}">${s}</span>`;
+  // Lead Novo (status) + Remalho (tipo) ao mesmo tempo mostrava os dois badges
+  // juntos ("Novo" + "♻️ Remalho"), o que é redundante/confuso — o tipo Remalho
+  // já deixa claro que não é um lead novo de verdade. Nesse caso específico,
+  // omite o badge de status "Novo" e deixa só o "♻️ Remalho" abaixo.
+  const ocultaStatusNovo = (s==='Novo' && tipo==='Remalho');
+  let html = ocultaStatusNovo ? '' : `<span class="badge ${m[s]||"b-novo"}">${s}</span>`;
   // Badge proposta quente — visível a todos, togglável por sup/coord/adm
   const canToggleQuente=isAdminOrCoord()||isSupervisor();
   if(proposta_quente){
@@ -5134,7 +5177,7 @@ function sBadge(s,tipo,leadId,proposta_quente){
       html+=` <span class="badge" style="cursor:pointer;opacity:0.22;background:transparent;border:1px solid var(--border);color:var(--muted2);font-size:9px" title="Marcar como Remalho" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Remalho',this)">♻️</span>`;
     }
   }
-  return html;
+  return html.trim();
 }
 async function quickTipoToggle(leadId,novoTipo,el){
   const emoji=novoTipo==='Remalho'?'♻️':'🆕';
@@ -5367,6 +5410,42 @@ async function renderVendasPage(){
 
   // Filter by status tab
   if(_vendasFilter!=='todos') vendas=vendas.filter(v=>v.status_venda===_vendasFilter);
+
+  // Filter by tipo de lead (Novo / Remalho) — olha o lead de origem da venda.
+  // IMPORTANTE: pra supervisor (e outros com escopo parcial), leads já Fechados
+  // não ficam em allLeads (ver bugfix logo abaixo, no filtro de busca) — então
+  // esse filtro precisa do mesmo pré-fetch em lote, senão fica combinando com
+  // "undefined" e excluindo quase todas as vendas do supervisor silenciosamente.
+  const fTipo=document.getElementById('vp-f-tipo')?.value||'';
+  if(fTipo){
+    const faltandoTipo=[...new Set(
+      vendas.filter(v=>!allLeads.find(l=>l.id===v.lead_id) && _leadTipoCache[v.lead_id]===undefined)
+            .map(v=>v.lead_id)
+    )];
+    if(faltandoTipo.length){
+      try{
+        const{data}=await sb.from('crm_leads').select('id,tipo_lead').in('id',faltandoTipo);
+        (data||[]).forEach(l=>{ _leadTipoCache[l.id]=l.tipo_lead||'Novo'; });
+        faltandoTipo.forEach(id=>{ if(_leadTipoCache[id]===undefined) _leadTipoCache[id]='Novo'; });
+      }catch(e){ console.warn('[renderVendasPage] erro ao pré-buscar tipo_lead:',e.message); }
+    }
+    vendas=vendas.filter(v=>{
+      const lead=allLeads.find(l=>l.id===v.lead_id);
+      const tipo=lead?.tipo_lead||_leadTipoCache[v.lead_id]||'Novo';
+      return tipo===fTipo;
+    });
+  }
+
+  // Filter by vendedor
+  const fVendedor=document.getElementById('vp-f-vendedor')?.value||'';
+  if(fVendedor) vendas=vendas.filter(v=>v.vendedor_id===fVendedor);
+
+  // Filter by equipe — vendedor da venda precisa ser membro da equipe selecionada
+  const fEquipe=document.getElementById('vp-f-equipe')?.value||'';
+  if(fEquipe){
+    const membrosDaEquipe=new Set(allMembroEquipes.filter(m=>m.equipe_id===fEquipe).map(m=>m.user_id));
+    vendas=vendas.filter(v=>membrosDaEquipe.has(v.vendedor_id));
+  }
 
   // Filter by search
   // BUGFIX: para coordenador (e outros papéis com escopo parcial de allLeads), muitas
@@ -5791,6 +5870,8 @@ async function runAutoReturnRules(){
     })().catch(e=>console.warn('Reset atribuido_em error:',e.message));
   }
 
+  const virarRemalho14d=[]; // Novo: qualquer lead com vendedor há 14+ dias vira Remalho automaticamente
+
   for(const l of allLeads){
     if(!l.responsavel_id) continue;
     const venda=allVendas.find(v=>v.lead_id===l.id);
@@ -5805,7 +5886,33 @@ async function runAutoReturnRules(){
     } else if(['Novo','Sem Contato'].includes(l.status)&&diasDesdeAtribuicao>=7){
       retornar7.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
     }
+    // Regra dos 14 dias: independe do status acima — é uma rede de segurança extra.
+    // NÃO devolve o lead pro pool nem mexe no vendedor/status, só marca tipo_lead
+    // como Remalho (se ainda não estiver), pra sinalizar "esse lead já é velho
+    // mesmo estando com vendedor". Leads Fechado com venda Aprovada já saem no
+    // "continue" acima, então não entram aqui.
+    if(l.tipo_lead!=='Remalho'&&diasDesdeAtribuicao>=14&&l.status!=='Fechado'){
+      virarRemalho14d.push(l.id);
+    }
   }
+
+  if(virarRemalho14d.length){
+    (async()=>{
+      const BATCH=100;
+      for(let i=0;i<virarRemalho14d.length;i+=BATCH){
+        const batch=virarRemalho14d.slice(i,i+BATCH);
+        const{error}=await sb.from('crm_leads').update({tipo_lead:'Remalho'}).in('id',batch);
+        if(error){ console.warn('Auto-remalho 14d batch error:',error.message); continue; }
+        batch.forEach(id=>{
+          const idx=allLeads.findIndex(l=>l.id===id);
+          if(idx>-1) allLeads[idx].tipo_lead='Remalho';
+        });
+      }
+      console.log(`Auto-remalho: ${virarRemalho14d.length} lead(s) com vendedor há 14+ dias marcado(s) como Remalho.`);
+      reRenderCurrent();
+    })().catch(e=>console.warn('Auto-remalho 14d error:',e.message));
+  }
+
 
   const todos=[...retornar10,...retornar7,...retornar3];
   if(!todos.length) return;
@@ -7499,6 +7606,26 @@ async function leadsMassChangeTipo(){
   document.getElementById('leads-mass-tipo').value='';
   renderLeads();
   toast(`${ids.length} lead${ids.length!==1?'s':''} marcado${ids.length!==1?'s':''} como ${emoji} ${tipo}!`,'ok');
+}
+
+async function leadsMassChangeOrigem(){
+  const ids=[..._selectedLeadIds];
+  const origem=document.getElementById('leads-mass-origem')?.value;
+  if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
+  if(!origem){toast('Selecione a origem desejada','err');return;}
+  if(!confirm(`Mudar a origem de ${ids.length} lead${ids.length!==1?'s':''} para "${origem}"?`)) return;
+  toast(`Atualizando origem de ${ids.length} leads, aguarde...`,'ok');
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
+    const{error}=await sb.from('crm_leads').update({origem}).in('id',batch);
+    if(error){toast('Erro: '+error.message,'err');return;}
+    batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].origem=origem;});
+  }
+  saveCache();
+  _selectedLeadIds.clear();
+  document.getElementById('leads-mass-origem').value='';
+  renderLeads();
+  toast(`Origem de ${ids.length} lead${ids.length!==1?'s':''} alterada para "${origem}"!`,'ok');
 }
 
 async function leadsMassChangeStatus(){
