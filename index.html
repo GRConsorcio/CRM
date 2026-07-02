@@ -1186,7 +1186,12 @@ document.addEventListener('DOMContentLoaded', function(){
       🕐 Criada em: <span id="tarefa-criada-val" style="color:var(--gold2)"></span>
     </div>
     <div class="fld"><label>Descrição *</label><input class="inp" id="ta-desc" placeholder="Ex: Ligar para o cliente amanhã"></div>
-    <div class="fld"><label>Lead relacionado</label><select class="inp" id="ta-lead"></select></div>
+    <div class="fld">
+      <label>Lead relacionado</label>
+      <input class="inp" id="ta-lead-srch" placeholder="🔍 Digite pra buscar por nome ou telefone..." oninput="filtrarTaLead()" autocomplete="off" style="margin-bottom:6px">
+      <select class="inp" id="ta-lead"></select>
+      <div id="ta-lead-hint" style="font-size:10.5px;color:var(--muted2);margin-top:4px"></div>
+    </div>
     <div class="fld-row">
       <div class="fld"><label>Data da tarefa</label><input class="inp" id="ta-prazo" type="date"></div>
       <div class="fld"><label>Horário da tarefa</label><input class="inp" id="ta-hora" type="time" placeholder="14:30"></div>
@@ -2641,6 +2646,44 @@ function isCoordenador(){return CUProfile?.role==='coordenador';}
 function isAdmin(){return CUProfile?.role==='admin';}
 function isVendedor(){return CUProfile?.role==='vendedor';}
 
+// ═══ Select "Lead relacionado" da Tarefa — busca + garantia de não perder vínculo ═══
+// keepId: garante que esse id apareça como opção mesmo que não bata com a busca
+// (usado por editTask pra não perder o lead já vinculado à tarefa).
+function renderTaLeadOptions(query, keepId){
+  const sel_=document.getElementById('ta-lead');
+  if(!sel_) return;
+  const q=(query||'').trim().toLowerCase();
+  let base;
+  if(q){
+    base=allLeads.filter(l=>
+      (l.nome||'').toLowerCase().includes(q) ||
+      (l.telefone||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))
+    ).slice(0,150);
+  } else {
+    base=allLeads.slice(0,200); // sem busca digitada: atalho rápido com os mais recentes
+  }
+  // garante que o lead atualmente vinculado (edição) sempre apareça, mesmo
+  // que esteja fora do top 200 e não bata com a busca digitada
+  if(keepId && !base.some(l=>l.id===keepId)){
+    const kl=allLeads.find(l=>l.id===keepId);
+    if(kl) base=[kl,...base];
+  }
+  const opts='<option value="">Nenhum</option>'+base.map(l=>`<option value="${l.id}">${l.nome}</option>`).join('');
+  const cur=sel_.value;
+  sel_.innerHTML=opts;
+  if(keepId!==undefined) sel_.value=keepId||'';
+  else if(base.some(l=>l.id===cur)) sel_.value=cur;
+  const hint=document.getElementById('ta-lead-hint');
+  if(hint){
+    if(q) hint.textContent=`${base.length} resultado(s) para "${query}"${base.length>=150?' (mostrando os 150 primeiros — refine a busca se não achou)':''}`;
+    else hint.textContent=`Mostrando os 200 leads mais recentes. Digite acima pra buscar em toda a base carregada (${allLeads.length.toLocaleString('pt-BR')} lead${allLeads.length!==1?'s':''}).`;
+  }
+}
+function filtrarTaLead(){
+  const q=document.getElementById('ta-lead-srch')?.value||'';
+  renderTaLeadOptions(q);
+}
+
 function populateSelects(){
   const vends=allUsers.filter(u=>u.role==='vendedor');
   const vendOpts=vends.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
@@ -2648,9 +2691,19 @@ function populateSelects(){
   sel('ld-resp',`<option value="">Sem vendedor</option>`+vendOpts);
   sel('dm-vend',vendOpts);
   sel('ta-resp',`<option value="${CU.id}">Eu mesmo</option>`+allOpts);
-  // ta-lead: limitar a 200 mais recentes para não travar com 46k leads
-  const leadsOpts='<option value="">Nenhum</option>'+allLeads.slice(0,200).map(l=>`<option value="${l.id}">${l.nome}</option>`).join('');
-  sel('ta-lead',leadsOpts);
+  // ta-lead: por padrão mostra só os 200 mais recentes (base pode ter dezenas
+  // de milhares de leads, não dá pra colocar tudo num <select> de uma vez).
+  // BUGFIX: isso sozinho causava dois problemas sérios —
+  //  1) impossível achar/selecionar um lead mais antigo (fora do top 200) na
+  //     hora de criar uma tarefa;
+  //  2) ao EDITAR/reagendar uma tarefa de um lead fora do top 200, o
+  //     `select.value = lead_id` falhava silenciosamente (nenhuma opção
+  //     correspondia), então ao salvar a tarefa o campo lead_id ia como NULL
+  //     — desvinculando a tarefa do lead sem o usuário perceber ou pedir isso.
+  // A função renderTaLeadOptions() agora sempre garante que o lead atualmente
+  // vinculado apareça como opção, e o campo de busca (ta-lead-srch) permite
+  // achar qualquer lead da base carregada, não só os 200 mais recentes.
+  renderTaLeadOptions();
   sel('dm-lead',allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id).slice(0,500).map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
   // filter selects
   // IMPORTANTE: preserva o valor selecionado antes de recriar as opções.
@@ -4297,9 +4350,10 @@ function openModal(type){
     document.getElementById('tarefa-criada-em').style.display='none';
     document.getElementById('tarefa-edit-id').textContent='';
     document.getElementById('ta-save-btn').textContent='Salvar';
-    // pre-select lead if in detail
-    const ls=document.getElementById('ta-lead');
-    if(ls&&detailLeadId) ls.value=detailLeadId;
+    const taSrch=document.getElementById('ta-lead-srch');if(taSrch)taSrch.value='';
+    // pre-select lead if in detail — keepId garante que apareça mesmo se for
+    // um lead antigo fora do top 200 mais recentes
+    renderTaLeadOptions('', detailLeadId||undefined);
   }
   if(type==='venda'){
     vendaLeadId=detailLeadId;
@@ -4656,7 +4710,14 @@ function editTask(id){
   document.getElementById('ta-prazo').value=t.prazo||'';
   const taHora=document.getElementById('ta-hora');if(taHora)taHora.value=t.hora||'';
   const taResp=document.getElementById('ta-resp');if(taResp)taResp.value=t.responsavel_id||CU.id;
-  const taLead=document.getElementById('ta-lead');if(taLead)taLead.value=t.lead_id||'';
+  // BUGFIX: antes fazia taLead.value=t.lead_id direto no <select> só com os
+  // 200 mais recentes — se o lead da tarefa fosse mais antigo, a opção não
+  // existia, o select ficava sem nada selecionado (value vira '' de verdade,
+  // não é só visual) e ao clicar Salvar a tarefa perdia o vínculo com o lead
+  // (lead_id ia como null pro banco). Agora keepId garante que o lead atual
+  // sempre é injetado como opção antes de selecionar.
+  const taSrch=document.getElementById('ta-lead-srch');if(taSrch)taSrch.value='';
+  renderTaLeadOptions('', t.lead_id||'');
   document.getElementById('tarefa-edit-id').textContent=id;
   document.getElementById('ta-save-btn').textContent='Atualizar';
   // Show created_at
