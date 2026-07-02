@@ -5969,19 +5969,37 @@ async function runAutoReturnRules(){
     }
   });
 
-  // Registra histórico em paralelo (sem bloquear)
-  Promise.all(todos.map(async item=>{
+  // ── Registra histórico — AGORA bloqueante, com retry e sem engolir erro ──
+  // Antes: Promise.all(...).catch(()=>{}) sem await, então a função seguia e
+  // dava toast de sucesso mesmo se o insert no crm_historico falhasse. Isso
+  // deixava leads reclassificados (status/tipo_lead mudam) SEM nenhum evento
+  // na Linha do Tempo, sem qualquer aviso pro admin (ex: Biel Vieira).
+  async function inserirHistoricoComRetry(item, tentativas=2){
     const vendedorNome=allUsers.find(u=>u.user_id===item.vendedor_id)?.name||'vendedor';
     const limite=item.status==='Perdido'?3:['Em Negociação','Proposta'].includes(item.status)?10:7;
     const motivo=`Retorno automático: lead "${item.status}" há ${item.dias} dias (limite: ${limite}d)`;
-    const{error:he}=await sb.from('crm_historico').insert({
+    const payload={
       lead_id:item.id,user_id:CU.id,
       tipo:'🔄 Retorno Automático',
       descricao:`${motivo} (era de ${vendedorNome})`,
       created_at:new Date().toISOString()
-    });
-    if(he) console.warn('Hist insert error:',he.message);
-  })).catch(()=>{});
+    };
+    for(let tentativa=1;tentativa<=tentativas;tentativa++){
+      const{data,error:he}=await sb.from('crm_historico').insert(payload).select().single();
+      if(!he) return {ok:true,row:data};
+      console.warn(`Hist insert error (lead ${item.id}, tentativa ${tentativa}):`,he.message);
+      if(tentativa<tentativas) await new Promise(r=>setTimeout(r,600));
+    }
+    return {ok:false,item};
+  }
+
+  const resultadosHist = await Promise.all(todos.map(item=>inserirHistoricoComRetry(item)));
+  const falhas = resultadosHist.filter(r=>!r.ok);
+  const sucessos = resultadosHist.filter(r=>r.ok);
+
+  // Atualiza cache local de histórico com os que gravaram certo, pra Linha do
+  // Tempo já refletir sem precisar recarregar a página.
+  sucessos.forEach(r=>{ if(r.row) allHist.unshift(r.row); });
 
   saveCache();
   const msg=[];
@@ -5989,6 +6007,18 @@ async function runAutoReturnRules(){
   if(retornar7.length)  msg.push(`${retornar7.length} lead(s) retornado(s) após 7 dias`);
   if(retornar3.length)  msg.push(`${retornar3.length} perdido(s) reciclado(s) após 3 dias`);
   toast(msg.join(' · '),'ok');
+
+  // Se algum histórico não foi gravado mesmo após retry, avisa explicitamente
+  // — o lead foi reclassificado mas ficou sem rastro, precisa de atenção manual.
+  if(falhas.length){
+    const nomes=falhas.map(f=>{
+      const l=allLeads.find(x=>x.id===f.item.id);
+      return l?l.nome:f.item.id;
+    }).join(', ');
+    console.error(`⚠️ ${falhas.length} lead(s) reclassificado(s) SEM histórico gravado:`, nomes);
+    toast(`⚠️ ${falhas.length} lead(s) reclassificado(s) sem histórico salvo — verifique: ${nomes}`,'err');
+  }
+
   reRenderCurrent();
 }
 
