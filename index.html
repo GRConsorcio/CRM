@@ -6124,7 +6124,22 @@ async function runAutoReturnRules(){
   });
   const falhasUpdate=resultadosUpdate.filter(r=>!r.ok);
   if(falhasUpdate.length){
-    console.error(`Auto-return: ${falhasUpdate.length} lead(s) falharam ao atualizar:`,falhasUpdate.map(f=>f.item.id));
+    // BUGFIX: antes só logava os IDs, sem o motivo real do erro — impossível
+    // diagnosticar por que falhou. Agora agrupa por mensagem de erro (várias
+    // dezenas/centenas de leads costumam falhar todos pelo MESMO motivo, então
+    // agrupar deixa muito mais fácil de ler que uma lista crua de IDs) e deixa
+    // os dados brutos acessíveis via window._ultimasFalhasAutoReturn pra quem
+    // quiser inspecionar item a item no console.
+    const porMotivo={};
+    falhasUpdate.forEach(f=>{
+      const msg=f.error?.message||f.error?.code||'erro desconhecido (sem message/code)';
+      (porMotivo[msg]=porMotivo[msg]||[]).push(f.item.id);
+    });
+    console.error(`Auto-return: ${falhasUpdate.length} lead(s) falharam ao atualizar. Motivos:`);
+    Object.entries(porMotivo).forEach(([msg,ids])=>{
+      console.error(`  → "${msg}" — ${ids.length} lead(s):`,ids);
+    });
+    window._ultimasFalhasAutoReturn=falhasUpdate; // inspecionar: window._ultimasFalhasAutoReturn
   }
   // Só segue pra limpeza de tarefas/histórico com quem realmente foi atualizado
   const todosOk=resultadosUpdate.filter(r=>r.ok).map(r=>r.item);
@@ -6396,7 +6411,17 @@ async function confirmarAvaliarPerdidos(){
     const resultadosRecicl = await runInChunks(paraReciclar, l=>reciclarLeadParaPool(l));
     const falhasUpd = paraReciclar.filter((l,idx)=>!resultadosRecicl[idx].ok);
     const reciclados = paraReciclar.filter(l=>!falhasUpd.includes(l));
-    if(falhasUpd.length) console.error('Avaliar Perdidos: falha ao atualizar', falhasUpd.map(l=>l.id));
+    if(falhasUpd.length){
+      const porMotivo={};
+      paraReciclar.forEach((l,idx)=>{
+        if(resultadosRecicl[idx].ok) return;
+        const msg=resultadosRecicl[idx].error?.message||resultadosRecicl[idx].error?.code||'erro desconhecido';
+        (porMotivo[msg]=porMotivo[msg]||[]).push(l.id);
+      });
+      console.error(`Avaliar Perdidos: ${falhasUpd.length} lead(s) falharam ao atualizar. Motivos:`);
+      Object.entries(porMotivo).forEach(([msg,ids])=>console.error(`  → "${msg}" — ${ids.length} lead(s):`,ids));
+      window._ultimasFalhasAvaliarPerdidos=falhasUpd;
+    }
     if(!reciclados.length){
       toast('Erro ao atualizar leads — veja o console','err');
       return;
