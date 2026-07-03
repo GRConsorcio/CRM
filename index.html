@@ -775,6 +775,10 @@ document.addEventListener('DOMContentLoaded', function(){
               <option value="Remalho">♻️ Remalho — já abordados</option>
             </select>
           </div>
+          <div class="fld" id="csv-origem-wrap" style="display:none;margin-top:10px">
+            <label>Origem (aplica a todos os leads importados)</label>
+            <input class="inp" id="csv-origem" placeholder="Deixe em branco pra manter a origem de cada linha do CSV">
+          </div>
           <button class="btn-primary" id="csv-import-btn" style="width:100%;display:none;margin-top:8px" onclick="importCSV()">
             ⬆️ Importar leads
           </button>
@@ -801,6 +805,10 @@ document.addEventListener('DOMContentLoaded', function(){
               <option value="Novo">🆕 Novo — nunca abordados</option>
               <option value="Remalho">♻️ Remalho — já abordados</option>
             </select>
+          </div>
+          <div class="fld" style="margin-top:8px">
+            <label>Origem (aplica a todos os leads importados)</label>
+            <input class="inp" id="bulk-origem" placeholder="Ex: Instagram, Indicação, Feirão... (deixe em branco = 'Lista')">
           </div>
           <button class="btn-primary" style="width:100%;margin-top:8px" onclick="importBulk()">
             ⬆️ Importar lista
@@ -1732,7 +1740,7 @@ async function initApp(user){
         populateSelects();
         renderDashboard().catch(()=>{});
         if(isVendedor()) carregarMinhasSolicitacoes();
-        if(isAdmin()){ pollSolicitacoesAdmin(); setTimeout(verificarLeadsBloqueados,2000); }
+        if(isAdmin()){ pollSolicitacoesAdmin(); setTimeout(verificarLeadsBloqueados,2000); scheduleAutoReturnRules(); }
       }).catch(e=>console.warn('[bg-refresh] erro:',e.message));
       return;
     }
@@ -1768,7 +1776,7 @@ async function initApp(user){
         renderNav();
         renderDashboard().catch(()=>{});
         if(isVendedor()) carregarMinhasSolicitacoes();
-        if(isAdmin()){ pollSolicitacoesAdmin(); setTimeout(verificarLeadsBloqueados,2000); }
+        if(isAdmin()){ pollSolicitacoesAdmin(); setTimeout(verificarLeadsBloqueados,2000); scheduleAutoReturnRules(); }
         toast('✅ Dados carregados!','ok');
       }).catch(e=>{
         clearTimeout(bgTimeout);
@@ -1825,6 +1833,7 @@ async function initApp(user){
       pollSolicitacoesAdmin(); setInterval(pollSolicitacoesAdmin,60000);
       setTimeout(verificarLeadsBloqueados,2000);
       setInterval(verificarLeadsBloqueados,120000);
+      scheduleAutoReturnRules();
     }
     goToDashboard();tryRestoreLastPage();
     hideLoading();
@@ -2139,24 +2148,30 @@ async function fetchAllPages(queryBuilder, pageSize=1000, onProgress, startOffse
 // essas 3 colunas são detectadas dinamicamente (1 query barata, 1x por sessão)
 // antes de montar a lista — só entram no select se realmente existirem.
 const LEAD_LIST_COLS_BASE='id,nome,telefone,email,status,interesse,origem,responsavel_id,equipe_id,tipo_lead,created_at,updated_at,distribuido_em,observacoes';
-let _hasAtribuidoEmCol=null, _hasPropostaQuenteCol=null, _hasStageEnteredAtCol=null; // null = ainda não detectado
+let _hasAtribuidoEmCol=null, _hasPropostaQuenteCol=null, _hasStageEnteredAtCol=null, _hasRetornosCol=null; // null = ainda não detectado
+// retornos_count (integer, default 0) é OPCIONAL — precisa ser criada no Supabase:
+//   alter table crm_leads add column retornos_count integer not null default 0;
+// Sem essa coluna, o app continua funcionando normalmente, mas a regra "só marca
+// Remalho a partir do 2º retorno pra base" fica sem efeito (ver reciclarLeadParaPool).
 async function detectOptionalLeadCols(){
   if(_hasStageEnteredAtCol!==null) return; // já detectado nesta sessão
   try{
-    const{error}=await sb.from('crm_leads').select('atribuido_em,proposta_quente,stage_entered_at').limit(1);
-    if(!error){ _hasAtribuidoEmCol=true; _hasPropostaQuenteCol=true; _hasStageEnteredAtCol=true; return; }
+    const{error}=await sb.from('crm_leads').select('atribuido_em,proposta_quente,stage_entered_at,retornos_count').limit(1);
+    if(!error){ _hasAtribuidoEmCol=true; _hasPropostaQuenteCol=true; _hasStageEnteredAtCol=true; _hasRetornosCol=true; return; }
   }catch(e){}
-  // Caminho raro: pelo menos uma das 3 não existe — testa uma por uma pra saber qual
+  // Caminho raro: pelo menos uma das 4 não existe — testa uma por uma pra saber qual
   const testCol=async(col)=>{ try{ const{error}=await sb.from('crm_leads').select(col).limit(1); return !error; }catch(e){ return false; } };
   _hasAtribuidoEmCol=await testCol('atribuido_em');
   _hasPropostaQuenteCol=await testCol('proposta_quente');
   _hasStageEnteredAtCol=await testCol('stage_entered_at');
+  _hasRetornosCol=await testCol('retornos_count');
 }
 function getLeadListCols(){
   let cols=LEAD_LIST_COLS_BASE;
   if(_hasAtribuidoEmCol) cols+=',atribuido_em';
   if(_hasPropostaQuenteCol) cols+=',proposta_quente';
   if(_hasStageEnteredAtCol) cols+=',stage_entered_at';
+  if(_hasRetornosCol) cols+=',retornos_count';
   return cols;
 }
 // Cache curto (60s) usado pela busca na base geral — busca repetida não bate de novo no Supabase
@@ -4523,6 +4538,18 @@ async function saveLead(){
     if(leadAntesStage&&statusVal&&statusVal!==leadAntesStage.status){
       Object.assign(payload,stageEnteredPayload(payload.updated_at));
     }
+    // BUGFIX: quando o vendedor (responsavel_id) é trocado por aqui — edição manual
+    // do admin/coordenador/supervisor, fora do buildAssignPayload/Puxador — o
+    // cronômetro de rotatividade (atribuido_em/distribuido_em) ficava intacto.
+    // Resultado: o novo vendedor herdava a data de atribuição do vendedor anterior,
+    // e a regra de 3/7/10 dias podia reciclar o lead quase na hora, mesmo tendo
+    // acabado de cair pra ele. Agora, sempre que o vendedor muda nessa edição, o
+    // cronômetro é resetado — igual já acontece em buildAssignPayload/puxarLeadsRemalho.
+    if(leadAntesStage&&'responsavel_id' in payload&&payload.responsavel_id!==leadAntesStage.responsavel_id){
+      const nowIso=new Date().toISOString();
+      payload.distribuido_em = payload.responsavel_id ? nowIso : null;
+      if(_hasAtribuidoEm) payload.atribuido_em = payload.responsavel_id ? nowIso : null;
+    }
   }
   // Remove campos undefined do payload
   Object.keys(payload).forEach(k=>{if(payload[k]===undefined)delete payload[k];});
@@ -5902,12 +5929,76 @@ async function refreshInBackground(){
   } catch(e){ console.warn('Background refresh error:',e.message); }
 }
 
+/* ═══ RETORNO DE LEAD PARA O POOL ═══
+   Função central usada por TODOS os fluxos que devolvem um lead pra base:
+   auto-retorno por tempo (runAutoReturnRules), "Avaliar Perdidos" (manual) e
+   "Enviar p/ Equipe". Antes cada um desses três lugares tinha sua própria
+   lógica, e divergiam entre si (um marcava Remalho sempre, outro nunca
+   marcava, um limpava atribuido_em e outro não) — isso foi a causa de pelo
+   menos 2 inconsistências já corrigidas. Centralizar aqui evita que essas
+   três lógicas voltem a divergir no futuro.
+
+   Regra de negócio (a pedido do GR): o lead só ganha tipo_lead='Remalho'
+   quando esse retorno NÃO é o primeiro — ou seja, a partir do 2º retorno pra
+   base em diante. No primeiro retorno o tipo_lead não é mexido. Isso depende
+   da coluna opcional retornos_count (ver detectOptionalLeadCols); se ela não
+   existir no banco ainda, o lead volta pro pool normalmente mas sem contagem
+   e sem a marcação automática de Remalho — precisa rodar a migração:
+     alter table crm_leads add column retornos_count integer not null default 0;
+
+   equipeDestino: null = pool geral (sem equipe). Passe um id de equipe pra
+   "Enviar p/ Equipe" (o lead fica visível só pra aquela equipe, mas mesmo
+   assim volta como status Novo e passa pela mesma contagem de retornos). */
+async function reciclarLeadParaPool(lead, opts={}){
+  const equipeDestino = opts.equipeDestino ?? null;
+  const retornosAtual = (lead.retornos_count||0) + 1;
+  const payload = {
+    responsavel_id:null,
+    equipe_id:equipeDestino,
+    distribuido_em:null,
+    status:'Novo',
+  };
+  // atribuido_em é coluna OPCIONAL (migração pode não ter rodado ainda em toda
+  // base) — só entra no payload se realmente existir, senão o update quebra
+  // com "column does not exist". Mesmo padrão usado em buildAssignPayload.
+  if(_hasAtribuidoEm) payload.atribuido_em = null;
+  if(_hasRetornosCol){
+    payload.retornos_count = retornosAtual;
+    if(retornosAtual>1) payload.tipo_lead='Remalho';
+  }
+  const{error}=await sb.from('crm_leads').update(payload).eq('id',lead.id);
+  if(error) return {ok:false,error};
+  Object.assign(lead,payload);
+  return {ok:true,retornosAtual};
+}
+
+/* ═══ AGENDAMENTO DO RETORNO AUTOMÁTICO ═══
+   runAutoReturnRules() existia no código há tempos mas NUNCA era chamada —
+   dependia de uma função refreshInBackground() que também nunca era chamada
+   em lugar nenhum. Na prática a reciclagem por tempo (Perdido 3d, Novo/Sem
+   Contato 7d, Em Negociação/Proposta 10d, auto-Remalho 14d) estava
+   desligada, e o único jeito de reciclar era manual, via "Avaliar Perdidos".
+   Isso agora roda: 1x uns segundos depois do app abrir (só admin), e depois
+   de novo a cada 5 minutos enquanto a aba ficar aberta. Guard evita duplicar
+   o setInterval se initApp rodar mais de uma vez na mesma sessão (acontece
+   no fluxo de recuperação de tela preta do watchdog). */
+let _autoReturnInterval=null;
+function scheduleAutoReturnRules(){
+  if(!isAdmin()) return;
+  if(_autoReturnInterval) return; // já agendado nesta sessão
+  setTimeout(()=>{ runAutoReturnRules().catch(e=>console.warn('[auto-return] erro na 1ª execução:',e.message)); }, 8000);
+  _autoReturnInterval=setInterval(()=>{
+    runAutoReturnRules().catch(e=>console.warn('[auto-return] erro periódico:',e.message));
+  }, 5*60*1000);
+}
+
 async function runAutoReturnRules(){
   if(!isAdmin()) return;
   const now=new Date();
   const retornar10=[];  // Em Negociação / Proposta → 10 dias
   const retornar7=[];   // Novo / Sem Contato → 7 dias
   const retornar3=[];   // Perdido → 3 dias
+  const bloqueados3=[]; // Perdidos que bateram os 3 dias mas têm palavra-chave de bloqueio — NÃO retornam
 
   // Leads com vendedor mas sem atribuido_em (base antiga ou leads que chegaram antes da
   // coluna existir) — reseta atribuido_em para AGORA para que a contagem comece hoje.
@@ -5919,12 +6010,14 @@ async function runAutoReturnRules(){
     // Atualiza em batches silenciosamente
     (async()=>{
       const BATCH=100;
+      const payloadSemData=_hasAtribuidoEm?{atribuido_em:nowIso,distribuido_em:nowIso}:{distribuido_em:nowIso};
       for(let i=0;i<semDataIds.length;i+=BATCH){
         const batch=semDataIds.slice(i,i+BATCH);
-        await sb.from('crm_leads').update({atribuido_em:nowIso,distribuido_em:nowIso}).in('id',batch);
+        const{error:errSemData}=await sb.from('crm_leads').update(payloadSemData).in('id',batch);
+        if(errSemData){ console.warn('Reset atribuido_em batch error:',errSemData.message); continue; }
         batch.forEach(id=>{
           const idx=allLeads.findIndex(l=>l.id===id);
-          if(idx>-1){allLeads[idx].atribuido_em=nowIso;allLeads[idx].distribuido_em=nowIso;}
+          if(idx>-1){ Object.assign(allLeads[idx],payloadSemData); }
         });
       }
       console.log(`Auto-return: ${semDataIds.length} leads sem data de atribuição tiveram atribuido_em zerado para hoje.`);
@@ -5941,7 +6034,14 @@ async function runAutoReturnRules(){
     if(!refDate) continue; // ainda sem data (será zerado acima na próxima execução)
     const diasDesdeAtribuicao=(now-new Date(refDate))/(1000*60*60*24);
     if(l.status==='Perdido'&&diasDesdeAtribuicao>=3){
-      retornar3.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
+      // Mesma lista de bloqueio usada em "Avaliar Perdidos" (PALAVRAS_BLOQUEIO_RECICL).
+      // Antes o retorno automático ignorava essa lista — um lead marcado ex:
+      // "Cliente Fiat" era reciclado do mesmo jeito que qualquer outro Perdido.
+      if(temPalavraBloqueiaNaObs(l)){
+        bloqueados3.push({id:l.id,label:getLabelBloqueioPorLead(l)});
+      } else {
+        retornar3.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
+      }
     } else if(['Em Negociação','Proposta'].includes(l.status)&&diasDesdeAtribuicao>=10){
       retornar10.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
     } else if(['Novo','Sem Contato'].includes(l.status)&&diasDesdeAtribuicao>=7){
@@ -5974,32 +6074,49 @@ async function runAutoReturnRules(){
     })().catch(e=>console.warn('Auto-remalho 14d error:',e.message));
   }
 
+  // Bloqueados por palavra-chave: registra histórico (não bloqueante) e segue.
+  if(bloqueados3.length){
+    bloqueados3.forEach(b=>{
+      sb.from('crm_historico').insert({
+        lead_id:b.id, user_id:CU.id, tipo:'🔒 Interno (Adm)',
+        descricao:`[BLOQUEADO DE RECICLAGEM] Palavra-chave detectada: "${b.label}" — lead mantido como Perdido (retorno automático)`,
+        created_at:new Date().toISOString()
+      }).then(({error})=>{ if(error) console.warn('Hist bloqueio (auto) error:',error.message); });
+    });
+    console.log(`Auto-return: ${bloqueados3.length} lead(s) Perdido(s) NÃO reciclado(s) por estarem na lista de bloqueio.`);
+  }
 
   const todos=[...retornar10,...retornar7,...retornar3];
   if(!todos.length) return;
 
-  // Helper: processa em batches de 100
-  async function updateInBatches(ids, payload){
-    const BATCH=100;
-    for(let i=0;i<ids.length;i+=BATCH){
-      const batch=ids.slice(i,i+BATCH);
-      const{error}=await sb.from('crm_leads').update(payload).in('id',batch);
-      if(error) console.warn('Auto-return batch error:',error.message,payload);
-    }
+  // ── Update INDIVIDUAL (não em lote) ──
+  // O tipo_lead final de cada lead depende do retornos_count DELE (ver
+  // reciclarLeadParaPool) — não dá mais pra mandar um único payload igual
+  // pra todos os ids de uma vez como antes. Concorrência limitada pra não
+  // estourar o Supabase quando há muitos leads pra reciclar de uma vez.
+  const CONC=15;
+  const resultadosUpdate=[];
+  for(let i=0;i<todos.length;i+=CONC){
+    const slice=todos.slice(i,i+CONC);
+    const parcial=await Promise.all(slice.map(async item=>{
+      const lead=allLeads.find(l=>l.id===item.id);
+      if(!lead) return {ok:false,item,error:{message:'lead não encontrado em memória'}};
+      const r=await reciclarLeadParaPool(lead);
+      return {...r,item};
+    }));
+    resultadosUpdate.push(...parcial);
   }
-
-  const ids10=retornar10.map(x=>x.id);
-  const ids7=retornar7.map(x=>x.id);
-  const ids3=retornar3.map(x=>x.id);
-  const idsTodos=todos.map(x=>x.id);
-
-  // status sempre resetado para 'Novo' — lead não volta com status antigo para o próximo vendedor
-  const upBase={responsavel_id:null,equipe_id:null,distribuido_em:null,atribuido_em:null,status:'Novo'};
-  const up3={...upBase,tipo_lead:'Remalho'};
-
-  if(ids10.length) await updateInBatches(ids10, upBase);
-  if(ids7.length)  await updateInBatches(ids7,  upBase);
-  if(ids3.length)  await updateInBatches(ids3,  up3);
+  const falhasUpdate=resultadosUpdate.filter(r=>!r.ok);
+  if(falhasUpdate.length){
+    console.error(`Auto-return: ${falhasUpdate.length} lead(s) falharam ao atualizar:`,falhasUpdate.map(f=>f.item.id));
+  }
+  // Só segue pra limpeza de tarefas/histórico com quem realmente foi atualizado
+  const todosOk=resultadosUpdate.filter(r=>r.ok).map(r=>r.item);
+  const idsTodos=todosOk.map(x=>x.id);
+  if(!idsTodos.length){
+    if(falhasUpdate.length) toast(`⚠️ Falha ao reciclar ${falhasUpdate.length} lead(s) — veja o console`,'err');
+    return;
+  }
 
   // ── Limpa tarefas pendentes do ciclo anterior ──
   // Sem isso, um "agendamento" criado quando o lead ainda era de outro vendedor
@@ -6017,18 +6134,8 @@ async function runAutoReturnRules(){
     allTasks=allTasks.filter(t=>!(idsTodos.includes(t.lead_id)&&!t.concluida));
   }catch(e){ console.warn('Auto-return: limpeza de tarefas exception:',e.message); }
 
-  // Atualiza memória local
-  todos.forEach(item=>{
-    const i=allLeads.findIndex(l=>l.id===item.id);
-    if(i>-1){
-      allLeads[i].responsavel_id=null;
-      allLeads[i].equipe_id=null;
-      allLeads[i].distribuido_em=null;
-      allLeads[i].atribuido_em=null;
-      allLeads[i].status='Novo';
-      if(item.status==='Perdido') allLeads[i].tipo_lead='Remalho';
-    }
-  });
+  // Memória local já foi atualizada dentro de reciclarLeadParaPool (Object.assign
+  // no próprio objeto de allLeads), não precisa repetir aqui.
 
   // ── Registra histórico — AGORA bloqueante, com retry e sem engolir erro ──
   // Antes: Promise.all(...).catch(()=>{}) sem await, então a função seguia e
@@ -6054,7 +6161,7 @@ async function runAutoReturnRules(){
     return {ok:false,item};
   }
 
-  const resultadosHist = await Promise.all(todos.map(item=>inserirHistoricoComRetry(item)));
+  const resultadosHist = await Promise.all(todosOk.map(item=>inserirHistoricoComRetry(item)));
   const falhas = resultadosHist.filter(r=>!r.ok);
   const sucessos = resultadosHist.filter(r=>r.ok);
 
@@ -6063,11 +6170,19 @@ async function runAutoReturnRules(){
   sucessos.forEach(r=>{ if(r.row) allHist.unshift(r.row); });
 
   saveCache();
+  // Contagem reflete só quem realmente foi atualizado com sucesso no banco
+  // (idsTodos já é só sucesso — ver bloco de update individual acima).
+  const okIds=new Set(idsTodos);
+  const n10=retornar10.filter(x=>okIds.has(x.id)).length;
+  const n7=retornar7.filter(x=>okIds.has(x.id)).length;
+  const n3=retornar3.filter(x=>okIds.has(x.id)).length;
   const msg=[];
-  if(retornar10.length) msg.push(`${retornar10.length} lead(s) retornado(s) após 10 dias`);
-  if(retornar7.length)  msg.push(`${retornar7.length} lead(s) retornado(s) após 7 dias`);
-  if(retornar3.length)  msg.push(`${retornar3.length} perdido(s) reciclado(s) após 3 dias`);
-  toast(msg.join(' · '),'ok');
+  if(n10) msg.push(`${n10} lead(s) retornado(s) após 10 dias`);
+  if(n7)  msg.push(`${n7} lead(s) retornado(s) após 7 dias`);
+  if(n3)  msg.push(`${n3} perdido(s) reciclado(s) após 3 dias`);
+  if(bloqueados3.length) msg.push(`${bloqueados3.length} bloqueado(s) por palavra-chave`);
+  if(falhasUpdate.length) msg.push(`${falhasUpdate.length} falharam ao atualizar`);
+  toast(msg.join(' · ')||'Nenhuma alteração','ok');
 
   // Se algum histórico não foi gravado mesmo após retry, avisa explicitamente
   // — o lead foi reclassificado mas ficou sem rastro, precisa de atenção manual.
@@ -6248,56 +6363,58 @@ async function confirmarAvaliarPerdidos(){
       closeModal('avaliar-perdidos');
       return;
     }
-    const ids = paraReciclar.map(l => l.id);
-    // 1. Atualiza os leads: status Novo, sem vendedor, sem equipe
-    const { error } = await sb.from('crm_leads').update({
-      status: 'Novo',
-      responsavel_id: null,
-      equipe_id: null,
-      distribuido_em: null
-    }).in('id', ids);
-    if(error){ toast('Erro ao atualizar leads: ' + error.message, 'err'); return; }
+    // Guarda vendedor/equipe ANTES de reciclar (reciclarLeadParaPool zera esses
+    // campos no próprio objeto em memória, então precisa capturar antes).
+    const infoAnterior = new Map(paraReciclar.map(l=>[l.id,{
+      nomeVend: allUsers.find(u=>u.user_id===l.responsavel_id)?.name || 'Sem vendedor',
+      nomeEquipe: allEquipes.find(e=>e.id===l.equipe_id)?.nome || 'Sem equipe',
+    }]));
+    // 1. Reciclagem via função central (mesma usada no retorno automático) —
+    // garante que a regra "só marca Remalho a partir do 2º retorno" e a
+    // contagem de retornos_count fiquem iguais nos dois fluxos.
+    const CONC=15;
+    const falhasUpd=[];
+    for(let i=0;i<paraReciclar.length;i+=CONC){
+      const slice=paraReciclar.slice(i,i+CONC);
+      const parcial=await Promise.all(slice.map(l=>reciclarLeadParaPool(l)));
+      parcial.forEach((r,idx)=>{ if(!r.ok) falhasUpd.push(slice[idx]); });
+    }
+    const reciclados = paraReciclar.filter(l=>!falhasUpd.includes(l));
+    if(falhasUpd.length) console.error('Avaliar Perdidos: falha ao atualizar', falhasUpd.map(l=>l.id));
+    if(!reciclados.length){
+      toast('Erro ao atualizar leads — veja o console','err');
+      return;
+    }
+    const idsOk = reciclados.map(l=>l.id);
     // 1.5 Limpa tarefas pendentes do ciclo anterior (mesmo motivo do retorno
     // automático: evita "agendamento" antigo reaparecer quando o lead é
     // reciclado/puxado de novo). Tarefas já concluídas são preservadas.
     try{
-      const{error:teErr}=await sb.from('crm_tarefas').delete().in('lead_id',ids).eq('concluida',false);
+      const{error:teErr}=await sb.from('crm_tarefas').delete().in('lead_id',idsOk).eq('concluida',false);
       if(teErr) console.warn('Avaliar Perdidos: limpeza de tarefas error:',teErr.message);
-      allTasks=allTasks.filter(t=>!(ids.includes(t.lead_id)&&!t.concluida));
+      allTasks=allTasks.filter(t=>!(idsOk.includes(t.lead_id)&&!t.concluida));
     }catch(e){ console.warn('Avaliar Perdidos: limpeza de tarefas exception:',e.message); }
-    // 2. Atualiza cache local
-    ids.forEach(id => {
-      const i = allLeads.findIndex(l => l.id === id);
-      if(i > -1){
-        allLeads[i].status = 'Novo';
-        allLeads[i].responsavel_id = null;
-        allLeads[i].equipe_id = null;
-        allLeads[i].distribuido_em = null;
-      }
-    });
-    // 3. Registra no histórico (visível só para adm — tipo especial) o status anterior e o vendedor
-    for(const l of paraReciclar){
-      const vendAnterior = allUsers.find(u => u.user_id === l.responsavel_id);
-      const nomeVend = vendAnterior?.name || 'Sem vendedor';
-      const equipeAnterior = allEquipes.find(e => e.id === l.equipe_id);
-      const nomeEquipe = equipeAnterior?.nome || 'Sem equipe';
+    // 2. Registra no histórico (visível só para adm — tipo especial) o status anterior e o vendedor
+    for(const l of reciclados){
+      const info = infoAnterior.get(l.id) || {nomeVend:'Sem vendedor', nomeEquipe:'Sem equipe'};
       try{
         await sb.from('crm_historico').insert({
           lead_id: l.id,
           user_id: CU.id,
           tipo: '🔒 Interno (Adm)',
-          descricao: `[RECICLADO] Status anterior: Perdido | Vendedor: ${nomeVend} | Equipe: ${nomeEquipe} | Motivo: sem comentário explicativo`,
+          descricao: `[RECICLADO] Status anterior: Perdido | Vendedor: ${info.nomeVend} | Equipe: ${info.nomeEquipe} | Motivo: sem comentário explicativo`,
           created_at: new Date().toISOString()
         });
       } catch(e){ console.warn('Hist insert error:', e); }
     }
-    // 4. Atualiza historico em cache
+    // 3. Atualiza historico em cache
     const { data: newHist } = await sb.from('crm_historico').select('*').order('created_at', { ascending: false }).limit(2000);
     if(newHist) allHist = newHist;
     saveCache();
     closeModal('avaliar-perdidos');
     reRenderCurrent();
-    toast(`✅ ${paraReciclar.length} lead(s) reciclado(s) para a base como Novo!`, 'ok');
+    const msgFalha = falhasUpd.length ? ` (${falhasUpd.length} falharam)` : '';
+    toast(`✅ ${reciclados.length} lead(s) reciclado(s) para a base como Novo!${msgFalha}`, 'ok');
   } catch(e){
     toast('Erro: ' + e.message, 'err');
   } finally {
@@ -6688,6 +6805,7 @@ function parseCSV(text){
   btn.style.display='block';
   document.getElementById('csv-resp-wrap').style.display='block';
   if(isAdmin()) document.getElementById('csv-tipo-wrap').style.display='block';
+  document.getElementById('csv-origem-wrap').style.display='block';
 
   preview.innerHTML=`
     <div style="font-size:11.5px;color:var(--green);margin-bottom:8px">✅ ${csvParsedLeads.length} lead${csvParsedLeads.length!==1?'s':''} encontrado${csvParsedLeads.length!==1?'s':''}${erros.length?` (${erros.length} linha${erros.length!==1?'s':''} ignorada${erros.length!==1?'s':''})`:''}</div>
@@ -6704,8 +6822,12 @@ async function importCSV(){
   const tipoLead=isAdmin()?(document.getElementById('csv-tipo')?.value||'Novo'):'Novo';
   // Vendedor importa sempre para si mesmo
   const finalRespId = isVendedor() ? CU.id : (respId||null);
+  // Origem: se preenchido, sobrescreve a origem de TODAS as linhas (mesmo as que
+  // vieram com coluna "origem" no CSV). Se deixado em branco, mantém o que já
+  // estava por linha (coluna do CSV, ou 'CSV' como default — ver parseCSV).
+  const origemForcada=document.getElementById('csv-origem')?.value?.trim()||null;
   btn.textContent='Importando...';btn.disabled=true;
-  const leadsComResp=csvParsedLeads.map(l=>({...l,responsavel_id:finalRespId,tipo_lead:tipoLead}));
+  const leadsComResp=csvParsedLeads.map(l=>({...l,responsavel_id:finalRespId,tipo_lead:tipoLead,...(origemForcada?{origem:origemForcada}:{})}));
   await importLeads(leadsComResp,'CSV');
   csvParsedLeads=[];
   btn.style.display='none';
@@ -6714,6 +6836,8 @@ async function importCSV(){
   document.getElementById('csv-file').value='';
   document.getElementById('csv-resp-wrap').style.display='none';
   document.getElementById('csv-tipo-wrap').style.display='none';
+  document.getElementById('csv-origem-wrap').style.display='none';
+  document.getElementById('csv-origem').value='';
 }
 
 async function importBulk(){
@@ -6721,6 +6845,7 @@ async function importBulk(){
   const respId=document.getElementById('bulk-resp')?.value||null;
   const tipoLead=isAdmin()?(document.getElementById('bulk-tipo')?.value||'Novo'):'Novo';
   const finalBulkRespId = isVendedor() ? CU.id : (respId||null);
+  const origemEscolhida=document.getElementById('bulk-origem')?.value?.trim()||'Lista';
   if(!text){toast('Cole a lista de contatos','err');return;}
 
   const lines=text.split('\n').filter(l=>l.trim());
@@ -6787,15 +6912,16 @@ async function importBulk(){
       telefone:telRaw||null,
       email:emailRaw||null,
       interesse,
-      origem:'Lista',
+      origem:origemEscolhida,
       responsavel_id:finalBulkRespId||null,
       tipo_lead:tipoLead,
     };
   }).filter(Boolean);
 
   if(!leads.length){toast('Nenhum lead válido encontrado','err');return;}
-  await importLeads(leads,'Lista');
+  await importLeads(leads,origemEscolhida);
   document.getElementById('bulk-text').value='';
+  document.getElementById('bulk-origem').value='';
 }
 
 async function importLeads(leads,fonte){
@@ -7891,15 +8017,23 @@ function openEnviarEquipe(leadId){
 async function confirmarEnviarEquipe(){
   const equipeId=document.getElementById('enviar-equipe-sel').value;
   if(!equipeId||!_enviarLeadId){toast('Selecione uma equipe','err');return;}
-  const{error}=await sb.from('crm_leads').update({
-    equipe_id:equipeId,
-    responsavel_id:null, // desvincula do vendedor anterior
-    distribuido_em:new Date().toISOString(),
-    atribuido_em:null // reseta timer — será setado quando atribuir a vendedor
-  }).eq('id',_enviarLeadId);
-  if(error){toast('Erro: '+error.message,'err');return;}
-  const i=allLeads.findIndex(l=>l.id===_enviarLeadId);
-  if(i>-1){allLeads[i].equipe_id=equipeId;allLeads[i].responsavel_id=null;}
+  const lead=allLeads.find(l=>l.id===_enviarLeadId);
+  if(!lead){toast('Lead não encontrado','err');return;}
+  const statusAnterior=lead.status;
+  const vendAnteriorNome=allUsers.find(u=>u.user_id===lead.responsavel_id)?.name||'Sem vendedor';
+  // Usa a função central: além de desvincular vendedor e resetar as datas,
+  // agora também volta status pra 'Novo' (antes ficava com o status antigo —
+  // ex: Perdido — mesmo depois de enviado pra equipe) e aplica a mesma regra
+  // de contagem de retornos / Remalho dos outros fluxos de reciclagem.
+  const r=await reciclarLeadParaPool(lead,{equipeDestino:equipeId});
+  if(!r.ok){toast('Erro: '+(r.error?.message||'falha ao atualizar'),'err');return;}
+  try{
+    await sb.from('crm_historico').insert({
+      lead_id:_enviarLeadId, user_id:CU.id, tipo:'📤 Enviado p/ Equipe',
+      descricao:`Lead enviado para equipe (status anterior: ${statusAnterior}, era de: ${vendAnteriorNome})`,
+      created_at:new Date().toISOString()
+    });
+  }catch(e){ console.warn('Hist enviar equipe error:',e.message); }
   saveCache();
   closeModal('enviar-equipe');
   toast('Lead enviado para a equipe!','ok');
