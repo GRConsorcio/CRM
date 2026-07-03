@@ -3472,7 +3472,13 @@ function renderMeusLeads(){
 // Monta o payload de atribuição de lead.
 // Sempre reseta status para 'Novo' ao atribuir — garante que o lead não apareça
 // com status antigo (Perdido, Sem Contato, etc.) na base do novo vendedor.
-// Passe resetStatus=false apenas em transferências entre vendedores onde o status deve ser mantido.
+// ATUALIZAÇÃO: até pouco tempo, as transferências em massa entre vendedores/
+// equipes chamavam isso com resetStatus=false de propósito, pra manter o
+// status antigo do lead — só que isso fazia o lead "sumir" na aba antiga do
+// funil do novo vendedor em vez de cair em Novo. A pedido do GR, isso foi
+// revertido: toda transferência agora força status='Novo', sem exceção.
+// O parâmetro resetStatus ainda existe caso surja algum caso de uso futuro
+// que precise preservar o status, mas hoje NENHUM lugar do código passa false.
 function buildAssignPayload(vendedorId, timestamp, resetStatus=true){
   const payload = {
     responsavel_id: vendedorId,
@@ -7300,7 +7306,7 @@ async function coordMassTransfer(){
   const respId=document.getElementById('coord-mass-resp')?.value;
   if(!ids.length){toast('Selecione leads','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
-  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',ids);
+  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',ids);
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();
   _coordSelectedIds.clear();
@@ -7476,7 +7482,7 @@ async function cfMassTransfer(){
   const respId=document.getElementById('cf-mass-resp')?.value;
   if(!ids.length){toast('Selecione leads','err');return;}
   if(!respId){toast('Selecione um vendedor','err');return;}
-  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',ids);
+  await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',ids);
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();
   _cfSelectedIds.clear();
@@ -7621,7 +7627,7 @@ async function massTransfer(){
   const respId=document.getElementById('mass-transfer-resp')?.value;
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!respId){toast('Selecione um vendedor para transferir','err');return;}
-  const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',ids);
+  const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',ids);
   if(error){toast('Erro: '+error.message,'err');return;}
   ids.forEach(id=>{const i=allLeads.findIndex(l=>l.id===id);if(i>-1)allLeads[i].responsavel_id=respId;});
   saveCache();populateSelects();
@@ -7817,7 +7823,7 @@ async function leadsMassTransfer(){
   // Transfer in batches of 100
   for(let i=0;i<ids.length;i+=100){
     const batch=ids.slice(i,i+100);
-    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',batch);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',batch);
     if(error){toast('Erro: '+error.message,'err');return;}
     batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].responsavel_id=respId;});
   }
@@ -8859,9 +8865,9 @@ async function mesclarTransfer(){
     toast(`Transferindo ${ids.length} leads para equipe ${eq?.nome||''}...`,'ok');
     for(let i=0;i<ids.length;i+=100){
       const batch=ids.slice(i,i+100);
-      const{error}=await sb.from('crm_leads').update({equipe_id:equipeId,responsavel_id:null,distribuido_em:new Date().toISOString()}).in('id',batch);
+      const{error}=await sb.from('crm_leads').update({equipe_id:equipeId,responsavel_id:null,distribuido_em:new Date().toISOString(),status:'Novo'}).in('id',batch);
       if(error){toast('Erro: '+error.message,'err');return;}
-      batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1){allLeads[idx].equipe_id=equipeId;allLeads[idx].responsavel_id=null;}});
+      batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1){allLeads[idx].equipe_id=equipeId;allLeads[idx].responsavel_id=null;allLeads[idx].status='Novo';}});
     }
     _mesclarList=_mesclarList.filter(l=>!_mesclarSelected.has(l.id));
     _mesclarSelected.clear();
@@ -8877,7 +8883,7 @@ async function mesclarTransfer(){
   toast(`Transferindo ${ids.length} leads para ${vend?.name||'vendedor'}...`,'ok');
   for(let i=0;i<ids.length;i+=100){
     const batch=ids.slice(i,i+100);
-    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString(),false)).in('id',batch);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(respId,new Date().toISOString())).in('id',batch);
     if(error){toast('Erro: '+error.message,'err');return;}
     batch.forEach(id=>{const idx=allLeads.findIndex(l=>l.id===id);if(idx>-1)allLeads[idx].responsavel_id=respId;});
   }
@@ -9280,11 +9286,12 @@ async function responderSolicita(solId,novoStatus){
       // BUGFIX: este payload era montado manualmente e incluía 'updated_at',
       // coluna que NÃO existe em crm_leads — toda aprovação falhava com
       // "Could not find the 'updated_at' column of 'crm_leads'". As outras
-      // ~15 telas que atribuem lead a vendedor usam buildAssignPayload(),
-      // que nunca teve esse campo; agora esta também usa, resetStatus=false
-      // pra manter o status atual do lead (igual o comportamento anterior).
+      // ~15 telas que atribuem lead a vendedor usam buildAssignPayload(), e
+      // agora esta também usa — SEM passar resetStatus=false, então o lead
+      // aprovado por solicitação também cai em status 'Novo' pro vendedor
+      // que recebeu, igual toda transferência (decisão do GR).
       const payload={
-        ...buildAssignPayload(sol.vendedor_id,now,false),
+        ...buildAssignPayload(sol.vendedor_id,now),
         ...(equipeId?{equipe_id:equipeId}:{})
       };
 
