@@ -579,20 +579,6 @@ document.addEventListener('DOMContentLoaded', function(){
 
   <!-- MEUS LEADS (vendedor) -->
   <div class="page" id="page-meus-leads">
-    <div style="background:linear-gradient(135deg,rgba(201,168,76,0.08),rgba(201,168,76,0.03));border:1px solid rgba(201,168,76,0.25);border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <div style="flex:1;min-width:200px">
-        <div style="font-size:13px;font-weight:900;color:var(--gold2);margin-bottom:2px">🎣 Puxador de Remalho</div>
-        <div style="font-size:11px;color:var(--muted2)">Puxa 5 leads remalho sem vendedor direto para você</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div id="puxador-count-wrap" style="font-size:11px;color:var(--muted2);display:none">
-          <span id="puxador-disponiveis"></span> disponíveis
-        </div>
-        <button id="btn-puxador" onclick="puxarLeadsRemalho()" style="background:var(--gold);border:none;color:#0a0a0a;border-radius:9px;padding:10px 20px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;transition:all .15s;white-space:nowrap">
-          🎣 Puxar 5 Remalhos
-        </button>
-      </div>
-    </div>
     <div class="filter-bar">
       <input class="inp" id="ml-srch" placeholder="🔍 Buscar..." oninput="renderMeusLeads()">
       <select id="ml-f-status" onchange="renderMeusLeads()">
@@ -865,6 +851,37 @@ document.addEventListener('DOMContentLoaded', function(){
         <tbody id="srch-base-tbody"></tbody></table>
       </div>
       <div id="srch-base-pg" class="pg-bar" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- LEADS POR VENDEDOR/DIA (admin + supervisor) -->
+  <div class="page" id="page-leads-por-dia">
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <div class="panel-title">📅 Leads por Vendedor/Dia</div>
+        <div style="font-size:11.5px;color:var(--muted2)">Escolha um vendedor e uma data pra ver quantos leads ele tinha naquele dia</div>
+      </div>
+      <div class="panel-body">
+        <div class="filter-bar" style="margin-bottom:0;flex-wrap:wrap">
+          <select id="lpd-vend" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none;min-width:220px">
+            <option value="">Selecione um vendedor...</option>
+          </select>
+          <input type="date" id="lpd-data" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none">
+          <button class="btn-sm" onclick="buscarLeadsPorDia()">🔍 Buscar</button>
+        </div>
+        <div id="lpd-aviso" style="font-size:11px;color:var(--muted2);margin-top:10px;line-height:1.6"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title" id="lpd-title">Resultados</div>
+      </div>
+      <div class="tbl-wrap">
+        <table><thead><tr>
+          <th>Nome</th><th>Telefone</th><th>Status</th><th>Tipo</th><th>Atribuído em</th><th></th>
+        </tr></thead>
+        <tbody id="lpd-tbody"></tbody></table>
+      </div>
     </div>
   </div>
 
@@ -2824,7 +2841,8 @@ function renderNav(){
       <div class="nav-item" onclick="nav('distribuicao',this)" title="Distribuição"><span class="nav-icon">${IC.dist}</span><span class="nav-label">Distribuição</span></div>
       <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>
       <div class="nav-item" onclick="nav('mesclar',this)" title="Mesclar Base"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4h4l2 4-2 4H2" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M14 4h-4l-2 4 2 4h4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span><span class="nav-label">Mesclar Base</span></div>
-      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funis da Equipe</span></div>`;
+      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funis da Equipe</span></div>
+      <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads por Vendedor/Dia"><span class="nav-icon">📅</span><span class="nav-label">Leads por Dia</span></div>`;
   } else if(isCoord){
     // MUDANÇA: coordenador não tem mais acesso à base geral de leads (Todos os Leads,
     // Funil, Distribuição) — ele só carrega leads já vendidos. Quando precisar achar
@@ -2839,7 +2857,8 @@ function renderNav(){
       <div class="nav-item" onclick="nav('coord-leads',this)" title="Leads da Equipe"><span class="nav-icon">${IC.leads}</span><span class="nav-label">Leads da Equipe</span></div>
       <div class="nav-item" onclick="nav('coord-funil',this)" title="Funil da Equipe"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil da Equipe</span></div>
       <div class="nav-item" onclick="nav('coord-dist',this)" title="Distribuição"><span class="nav-icon">${IC.dist}</span><span class="nav-label">Distribuição</span></div>
-      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funil por Vendedor"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funil por Vendedor</span></div>`;
+      <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funil por Vendedor"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funil por Vendedor</span></div>
+      <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads por Vendedor/Dia"><span class="nav-icon">📅</span><span class="nav-label">Leads por Dia</span></div>`;
   } else {
     // Vendedor: apenas seus leads
     html+=`<div class="nav-sect">Meus Leads</div>
@@ -2897,7 +2916,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia'};
 /* ═══ PERSISTÊNCIA DE PÁGINA ATUAL (item solicitado: não voltar sempre pro dashboard) ═══
    Salva a última página visitada por usuário (localStorage, sobrevive a refresh/F5 e a
    logins futuros no mesmo navegador). Páginas de "detalhe" (que dependem de um ID
@@ -2946,7 +2965,7 @@ function nav(page,el){
   if(page==='dashboard') renderDashboard().catch(e=>console.warn('renderDashboard error:',e));
   if(page==='leads') { leadsCurrentPage=1; renderLeads(); }
   else if(_leadsMassMode) closeLeadsMass(); // sai da aba leads → fecha modo massa
-  if(page==='meus-leads'){ renderMeusLeads(); if(CUProfile?.role==='vendedor') atualizarContadorPuxador(); }
+  if(page==='meus-leads'){ renderMeusLeads(); }
   if(page==='funil') renderFunil();
   if(page==='distribuicao') renderDistribuicao();
   if(page==='tarefas') renderTarefas();
@@ -2962,6 +2981,7 @@ function nav(page,el){
   if(page==='meu-funil') renderMeuFunil();
   if(page==='busca-base') renderBuscaBase();
   if(page==='solicitacoes') renderSolicitacoes();
+  if(page==='leads-por-dia') renderLeadsPorDia();
   if(page==='funil-vendedor') {/* rendered by openFunilVendedor */}
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
@@ -3492,136 +3512,15 @@ function buildAssignPayload(vendedorId, timestamp, resetStatus=true){
   return payload;
 }
 
-/* ═══ PUXADOR DE REMALHO (vendedor) ═══ */
-let _puxadorBusy = false;
-async function puxarLeadsRemalho(){
-  if(_puxadorBusy){ toast('Aguarde...','err'); return; }
-  _puxadorBusy = true;
-  const btn = document.getElementById('btn-puxador');
-  if(btn){ btn.disabled=true; btn.innerHTML='⏳ Puxando...'; }
-
-  try{
-    // Busca leads remalho sem responsável E sem equipe (pool livre) — filtro feito
-    // direto no banco (não em memória). equipe_id é coluna do tipo uuid: só pode ser
-    // um UUID válido ou NULL — não existe "" ou "0" possível aqui (por isso usamos
-    // .is('equipe_id', null) puro, sem comparações impossíveis que o Postgres rejeita).
-    const{data, error} = await sb.from('crm_leads')
-      .select('*')
-      .eq('tipo_lead','Remalho')
-      .is('responsavel_id', null)
-      .is('equipe_id', null)
-      .order('created_at', {ascending: true})
-      .limit(5);
-
-    if(error){
-      console.error('[Puxador] Erro na busca:', error);
-      toast('❌ Erro ao buscar leads: '+error.message,'err');
-      return;
-    }
-
-    const disponiveis = data||[];
-
-    if(!disponiveis.length){
-      toast('🎣 Não há leads remalho disponíveis no momento','err');
-      await atualizarContadorPuxador();
-      return;
-    }
-
-    // Já vêm no máximo 5 do banco (limit(5) acima)
-    const candidatos = disponiveis;
-    const ids = candidatos.map(l=>l.id);
-    const now = new Date().toISOString();
-
-    // Monta payload — reseta status para Novo e registra data de atribuição
-    const assignPayload = {
-      responsavel_id: CU.id,
-      distribuido_em: now,
-      status: 'Novo',
-    };
-    if(_hasAtribuidoEm) assignPayload.atribuido_em = now;
-
-    // UPDATE atômico: só atualiza leads que AINDA estão sem responsável (race condition guard)
-    const{data: updated, error: updErr} = await sb.from('crm_leads')
-      .update(assignPayload)
-      .in('id', ids)
-      .is('responsavel_id', null)
-      .select('*'); // retorna o objeto completo para atualizar a memória
-
-    if(updErr){
-      console.error('[Puxador] Erro no update:', updErr);
-      toast('❌ Erro ao atribuir leads: '+updErr.message,'err');
-      return;
-    }
-
-    const leadsAtribuidos = updated||[];
-
-    if(!leadsAtribuidos.length){
-      toast('🎣 Os leads foram puxados por outro vendedor. Tente novamente!','err');
-      await atualizarContadorPuxador();
-      return;
-    }
-
-    // Atualiza memória local: remove do lugar original e insere no INÍCIO
-    // para que apareçam no topo da lista "Meus Leads"
-    leadsAtribuidos.forEach(lead=>{
-      lead.responsavel_id = CU.id;
-      lead.distribuido_em = now;
-      if(_hasAtribuidoEm) lead.atribuido_em = now;
-      lead.status = 'Novo';
-      // Remove da posição atual se já estava em allLeads
-      const idx = allLeads.findIndex(l=>l.id===lead.id);
-      if(idx > -1){
-        allLeads.splice(idx, 1);
-      }
-    });
-    // Insere todos no início (ordem: mais recentemente puxado primeiro)
-    allLeads.unshift(...leadsAtribuidos);
-
-    // Registra no histórico
-    try{
-      const histRows = leadsAtribuidos.map(l=>({
-        lead_id: l.id,
-        user_id: CU.id,
-        tipo: '🎣 Puxador',
-        descricao: 'Lead remalho puxado pelo vendedor via Puxador',
-        created_at: now
-      }));
-      await sb.from('crm_historico').insert(histRows);
-    } catch(he){ console.warn('[Puxador] Hist error:', he.message); }
-
-    saveCacheLazy();
-    renderMeusLeads();
-    await atualizarContadorPuxador();
-    const n = leadsAtribuidos.length;
-    toast('🎣 '+n+' lead'+(n!==1?'s remalhos':' remalho')+' puxado'+(n!==1?'s':'')+' com sucesso!','ok');
-
-  } catch(e){
-    console.error('[Puxador] Erro inesperado:', e);
-    toast('❌ Erro inesperado: '+e.message,'err');
-  } finally {
-    _puxadorBusy = false;
-    if(btn){ btn.disabled=false; btn.innerHTML='🎣 Puxar 5 Remalhos'; }
-  }
-}
-
-async function atualizarContadorPuxador(){
-  try{
-    const{count} = await sb.from('crm_leads')
-      .select('*',{count:'exact',head:true})
-      .eq('tipo_lead','Remalho')
-      .is('responsavel_id',null)
-      .is('equipe_id',null);
-    const wrap = document.getElementById('puxador-count-wrap');
-    const span = document.getElementById('puxador-disponiveis');
-    if(wrap && span){
-      span.textContent = (count||0).toLocaleString('pt-BR');
-      wrap.style.display = 'block';
-      // Disable button if nothing available
-      const btn = document.getElementById('btn-puxador');
-      if(btn){ btn.disabled = count===0; btn.style.opacity = count===0?'0.45':'1'; }
-    }
-  } catch(e){ console.warn('contador puxador error:', e.message); }
-}
+/* ═══ PUXADOR DE REMALHO — REMOVIDO A PEDIDO DO GR ═══
+   Existia aqui um botão "🎣 Puxar 5 Remalhos" na página Meus Leads que deixava
+   qualquer vendedor se auto-atribuir leads Remalho do pool livre, sem
+   aprovação de ninguém. Removido junto com as duas funções que ele usava
+   (puxarLeadsRemalho e atualizarContadorPuxador) — não sobrou nenhuma
+   chamada a elas em lugar nenhum do arquivo. Se precisar de novo, a lógica
+   de query (Remalho + sem responsável + sem equipe, limit 5, update atômico
+   com guard de responsavel_id null) está preservada no histórico de versões,
+   não precisa reinventar do zero. */
 
 
 /* ═══ LEAD DETAIL ═══ */
@@ -4550,7 +4449,7 @@ async function saveLead(){
     // Resultado: o novo vendedor herdava a data de atribuição do vendedor anterior,
     // e a regra de 3/7/10 dias podia reciclar o lead quase na hora, mesmo tendo
     // acabado de cair pra ele. Agora, sempre que o vendedor muda nessa edição, o
-    // cronômetro é resetado — igual já acontece em buildAssignPayload/puxarLeadsRemalho.
+    // cronômetro é resetado — igual já acontece em buildAssignPayload.
     if(leadAntesStage&&'responsavel_id' in payload&&payload.responsavel_id!==leadAntesStage.responsavel_id){
       const nowIso=new Date().toISOString();
       payload.distribuido_em = payload.responsavel_id ? nowIso : null;
@@ -4598,7 +4497,7 @@ async function saveLead(){
     toast('Lead atualizado!','ok');
     editLeadId=null;
     // Se for vendedor, re-renderiza meus leads; senão, a tabela admin
-    if(CUProfile?.role==='vendedor'){ renderMeusLeads(); atualizarContadorPuxador(); } else renderLeads(true);
+    if(CUProfile?.role==='vendedor'){ renderMeusLeads(); } else renderLeads(true);
     if(isAdminOrCoord()) populateSelects();
     saveCache();
   } else {
@@ -9045,6 +8944,101 @@ let _solLeadId=null;
 
 let _srchBaseTimer=null;
 let _srchBaseResults=[];
+
+/* ═══ LEADS POR VENDEDOR/DIA (admin + supervisor) ═══
+   Consulta direto no Supabase, não usa o allLeads em memória — o cache local
+   de leads tem um teto de carregamento por sessão (visto em log real:
+   "Carga completa: 12.000 leads, total na base: 52.922"), então filtrar em
+   memória daria contagem ERRADA pra base desse tamanho. Isso aqui sempre
+   bate no banco inteiro.
+
+   LIMITAÇÃO HONESTA, pra não vender isso como algo que não é: filtra por
+   responsavel_id = vendedor atual E atribuido_em (ou distribuido_em, se a
+   coluna opcional atribuido_em não existir) igual à data escolhida. Ou seja,
+   mostra "leads que esse vendedor TEM HOJE, que foram atribuídos a ele
+   NAQUELE dia" — não é uma foto congelada do passado. Se um lead foi
+   atribuído ao vendedor X no dia 10 mas depois foi transferido pra outro
+   vendedor, ele deixa de aparecer na busca do dia 10 pro vendedor X, porque
+   responsavel_id mudou. Um histórico realmente imutável exigiria reconstruir
+   a partir do crm_historico (texto livre, bem mais frágil de interpretar) —
+   isso NÃO foi implementado aqui. Avise se esse nível de precisão histórica
+   for necessário; dá pra construir separado. */
+function popularVendedoresLPD(){
+  const sel=document.getElementById('lpd-vend');
+  if(!sel || sel.options.length>1) return; // já populado nesta sessão
+  let vendedores;
+  if(isAdmin()){
+    vendedores=allUsers.filter(u=>u.role==='vendedor');
+  } else if(isSupervisor()){
+    const mbs=getCoordMembers();
+    vendedores=allUsers.filter(u=>u.role==='vendedor'&&mbs.includes(u.user_id));
+  } else {
+    vendedores=[];
+  }
+  vendedores.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  sel.innerHTML='<option value="">Selecione um vendedor...</option>'+
+    vendedores.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+}
+
+function renderLeadsPorDia(){
+  popularVendedoresLPD();
+  const dataInp=document.getElementById('lpd-data');
+  if(dataInp && !dataInp.value){
+    // Default: hoje, no fuso do navegador do usuário
+    const hoje=new Date();
+    const off=hoje.getTimezoneOffset();
+    dataInp.value=new Date(hoje.getTime()-off*60000).toISOString().slice(0,10);
+  }
+  const aviso=document.getElementById('lpd-aviso');
+  if(aviso) aviso.textContent='Mostra leads que o vendedor TEM ATUALMENTE e que foram atribuídos a ele nessa data. Se um lead foi transferido depois pra outro vendedor, ele some daqui — não é uma foto congelada do histórico.';
+  document.getElementById('lpd-tbody').innerHTML='<tr><td colspan="6"><div class="empty"><div class="ei">📅</div>Escolha um vendedor e uma data, depois clique em Buscar</div></td></tr>';
+  document.getElementById('lpd-title').textContent='Resultados';
+}
+
+async function buscarLeadsPorDia(){
+  const vendId=document.getElementById('lpd-vend').value;
+  const dataStr=document.getElementById('lpd-data').value;
+  const tbody=document.getElementById('lpd-tbody');
+  if(!vendId||!dataStr){
+    toast('Selecione vendedor e data','err');
+    return;
+  }
+  tbody.innerHTML='<tr><td colspan="6"><div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:8px;color:var(--muted2);font-size:13px">Buscando...</div></div></td></tr>';
+
+  // Filtra por atribuido_em se a coluna existir, senão cai pra distribuido_em
+  // (mesmo padrão de fallback usado no resto do sistema de reciclagem).
+  const col=_hasAtribuidoEm?'atribuido_em':'distribuido_em';
+  const inicio=dataStr+'T00:00:00.000Z';
+  const fimDate=new Date(dataStr+'T00:00:00.000Z');
+  fimDate.setUTCDate(fimDate.getUTCDate()+1);
+  const fim=fimDate.toISOString();
+
+  try{
+    const{data,error}=await sb.from('crm_leads')
+      .select('*')
+      .eq('responsavel_id',vendId)
+      .gte(col,inicio)
+      .lt(col,fim)
+      .order(col,{ascending:false});
+    if(error) throw error;
+    const leads=data||[];
+    const vendNome=allUsers.find(u=>u.user_id===vendId)?.name||'Vendedor';
+    const dataFmt=dataStr.split('-').reverse().join('/');
+    document.getElementById('lpd-title').textContent=`${vendNome} — ${leads.length} lead(s) em ${dataFmt}`;
+    tbody.innerHTML=leads.length===0
+      ?'<tr><td colspan="6"><div class="empty"><div class="ei">📭</div>Nenhum lead atribuído a este vendedor nessa data (ou os leads de então já foram transferidos pra outro vendedor — ver aviso acima)</div></td></tr>'
+      :leads.map(l=>`<tr>
+        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads-por-dia')">${l.nome}</td>
+        <td>${l.telefone||'—'}</td>
+        <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
+        <td style="font-size:11.5px">${l.tipo_lead||'—'}</td>
+        <td style="font-size:11px;color:var(--muted2)">${fmtDt(l[col]||l.created_at)}</td>
+        <td><button class="act" onclick="openDetail('${l.id}','leads-por-dia')">Ver →</button></td>
+      </tr>`).join('');
+  }catch(e){
+    tbody.innerHTML=`<tr><td colspan="6"><div class="empty"><div class="ei">⚠️</div>Erro ao buscar: ${e.message}</div></td></tr>`;
+  }
+}
 
 function renderBuscaBase(){
   _srchBasePage=1;
