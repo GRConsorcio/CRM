@@ -5949,6 +5949,26 @@ async function refreshInBackground(){
    equipeDestino: null = pool geral (sem equipe). Passe um id de equipe pra
    "Enviar p/ Equipe" (o lead fica visível só pra aquela equipe, mas mesmo
    assim volta como status Novo e passa pela mesma contagem de retornos). */
+/* ═══ UTILITÁRIO: roda uma lista de tarefas assíncronas em lotes ═══
+   Existe pra evitar o erro visto em produção: ERR_INSUFFICIENT_RESOURCES —
+   o navegador recusando abrir mais conexões porque algum Promise.all(items.map(...))
+   sem limite tentou disparar centenas de requisições HTTP ao mesmo tempo. Isso
+   aconteceu bem na 1ª ativação do retorno automático porque o backlog era
+   grande (leads acumulados de meses sem a automação rodar). Concorrência de 6
+   por vez, com uma pequena pausa entre lotes, é bem mais lento que "tudo de
+   uma vez" mas não derruba a aba do navegador.
+   worker(item) deve retornar uma Promise. Retorna array de resultados na
+   mesma ordem de items. */
+async function runInChunks(items, worker, conc=6, delayMs=150){
+  const resultados=[];
+  for(let i=0;i<items.length;i+=conc){
+    const slice=items.slice(i,i+conc);
+    resultados.push(...await Promise.all(slice.map(worker)));
+    if(i+conc<items.length&&delayMs) await new Promise(r=>setTimeout(r,delayMs));
+  }
+  return resultados;
+}
+
 async function reciclarLeadParaPool(lead, opts={}){
   const equipeDestino = opts.equipeDestino ?? null;
   const retornosAtual = (lead.retornos_count||0) + 1;
@@ -6074,15 +6094,15 @@ async function runAutoReturnRules(){
     })().catch(e=>console.warn('Auto-remalho 14d error:',e.message));
   }
 
-  // Bloqueados por palavra-chave: registra histórico (não bloqueante) e segue.
+  // Bloqueados por palavra-chave: registra histórico (não bloqueante) e segue,
+  // mas em lotes — antes disparava tudo de uma vez com forEach, sem limite.
   if(bloqueados3.length){
-    bloqueados3.forEach(b=>{
-      sb.from('crm_historico').insert({
-        lead_id:b.id, user_id:CU.id, tipo:'🔒 Interno (Adm)',
-        descricao:`[BLOQUEADO DE RECICLAGEM] Palavra-chave detectada: "${b.label}" — lead mantido como Perdido (retorno automático)`,
-        created_at:new Date().toISOString()
-      }).then(({error})=>{ if(error) console.warn('Hist bloqueio (auto) error:',error.message); });
-    });
+    runInChunks(bloqueados3, b=>sb.from('crm_historico').insert({
+      lead_id:b.id, user_id:CU.id, tipo:'🔒 Interno (Adm)',
+      descricao:`[BLOQUEADO DE RECICLAGEM] Palavra-chave detectada: "${b.label}" — lead mantido como Perdido (retorno automático)`,
+      created_at:new Date().toISOString()
+    }).then(({error})=>{ if(error) console.warn('Hist bloqueio (auto) error:',error.message); }))
+      .catch(e=>console.warn('Bloqueados hist error:',e.message));
     console.log(`Auto-return: ${bloqueados3.length} lead(s) Perdido(s) NÃO reciclado(s) por estarem na lista de bloqueio.`);
   }
 
@@ -6092,20 +6112,16 @@ async function runAutoReturnRules(){
   // ── Update INDIVIDUAL (não em lote) ──
   // O tipo_lead final de cada lead depende do retornos_count DELE (ver
   // reciclarLeadParaPool) — não dá mais pra mandar um único payload igual
-  // pra todos os ids de uma vez como antes. Concorrência limitada pra não
-  // estourar o Supabase quando há muitos leads pra reciclar de uma vez.
-  const CONC=15;
-  const resultadosUpdate=[];
-  for(let i=0;i<todos.length;i+=CONC){
-    const slice=todos.slice(i,i+CONC);
-    const parcial=await Promise.all(slice.map(async item=>{
-      const lead=allLeads.find(l=>l.id===item.id);
-      if(!lead) return {ok:false,item,error:{message:'lead não encontrado em memória'}};
-      const r=await reciclarLeadParaPool(lead);
-      return {...r,item};
-    }));
-    resultadosUpdate.push(...parcial);
-  }
+  // pra todos os ids de uma vez como antes. Concorrência limitada (runInChunks,
+  // 6 por vez) pra não estourar o navegador — isso já causou
+  // ERR_INSUFFICIENT_RESOURCES em produção quando o limite era mais alto e sem
+  // pausa entre lotes, especialmente no 1º disparo com backlog grande.
+  const resultadosUpdate=await runInChunks(todos, async item=>{
+    const lead=allLeads.find(l=>l.id===item.id);
+    if(!lead) return {ok:false,item,error:{message:'lead não encontrado em memória'}};
+    const r=await reciclarLeadParaPool(lead);
+    return {...r,item};
+  });
   const falhasUpdate=resultadosUpdate.filter(r=>!r.ok);
   if(falhasUpdate.length){
     console.error(`Auto-return: ${falhasUpdate.length} lead(s) falharam ao atualizar:`,falhasUpdate.map(f=>f.item.id));
@@ -6161,7 +6177,11 @@ async function runAutoReturnRules(){
     return {ok:false,item};
   }
 
-  const resultadosHist = await Promise.all(todosOk.map(item=>inserirHistoricoComRetry(item)));
+  // BUGFIX (visto em produção): isso disparava um Promise.all sem limite —
+  // com o backlog grande do 1º disparo da automação, centenas de INSERTs
+  // simultâneos no crm_historico derrubaram a aba com ERR_INSUFFICIENT_RESOURCES
+  // (o navegador recusando abrir mais conexões). Agora vai em lotes de 6.
+  const resultadosHist = await runInChunks(todosOk, item=>inserirHistoricoComRetry(item));
   const falhas = resultadosHist.filter(r=>!r.ok);
   const sucessos = resultadosHist.filter(r=>r.ok);
 
@@ -6247,6 +6267,22 @@ function getLabelBloqueioPorLead(lead){
 }
 
 /* ═══ AVALIAR PERDIDOS SEM COMENTÁRIO ═══ */
+// Tipos de histórico gerados automaticamente pelo PRÓPRIO sistema (edição de
+// campo, troca de status, retorno automático, etc.) — nunca contam como
+// "comentário real" do vendedor pra decidir se um Perdido pode ser reciclado.
+const TIPOS_HIST_SISTEMA = new Set(['🔄 Status','✏️ Edição','🔒 Interno (Adm)','🔄 Retorno Automático','📤 Enviado p/ Equipe','🌟 Criação']);
+function leadTemComentarioReal(leadId){
+  const hist = allHist.filter(h => h.lead_id === leadId);
+  return hist.some(h => {
+    const desc = (h.descricao || '').trim();
+    if(TIPOS_HIST_SISTEMA.has(h.tipo)) return false;
+    // "Venda revertida" usa tipo 📝 Anotação — mesmo tipo de um comentário real
+    // — mas é texto fixo gerado pelo sistema, não escrito pelo vendedor.
+    if(desc.startsWith('Venda revertida')) return false;
+    if(desc.startsWith('[BLOQUEADO')) return false;
+    return desc.length >= 3;
+  });
+}
 async function openAvaliarPerdidos(){
   // Coleta todos os perdidos e classifica em: reciclar, bloqueados, com_comentário
   const perdidos = allLeads.filter(l => l.status === 'Perdido');
@@ -6254,16 +6290,7 @@ async function openAvaliarPerdidos(){
   const listaBloqueados = [];  // {lead, label}
 
   for(const l of perdidos){
-    const hist = allHist.filter(h => h.lead_id === l.id);
-    const temComentarioReal = hist.some(h => {
-      const desc = (h.descricao || '').trim();
-      if(desc.startsWith('Status →')) return false;
-      if(desc.startsWith('Retornado automaticamente')) return false;
-      if(desc.startsWith('Venda revertida')) return false;
-      if(desc.startsWith('[BLOQUEADO')) return false;
-      return desc.length >= 3;
-    });
-    if(!temComentarioReal){
+    if(!leadTemComentarioReal(l.id)){
       const label = getLabelBloqueioPorLead(l);
       if(label) listaBloqueados.push({lead:l, label});
       else listaReciclar.push(l);
@@ -6334,15 +6361,7 @@ async function confirmarAvaliarPerdidos(){
     const perdidos = allLeads.filter(l => l.status === 'Perdido');
     const paraReciclar = [];
     for(const l of perdidos){
-      const hist = allHist.filter(h => h.lead_id === l.id);
-      const temComentarioReal = hist.some(h => {
-        const desc = (h.descricao || '').trim();
-        if(desc.startsWith('Status →')) return false;
-        if(desc.startsWith('Retornado automaticamente')) return false;
-        if(desc.startsWith('Venda revertida')) return false;
-        return desc.length >= 3;
-      });
-      if(!temComentarioReal){
+      if(!leadTemComentarioReal(l.id)){
         if(temPalavraBloqueiaNaObs(l)){
           // NÃO recicla — registra histórico de bloqueio
           try{
@@ -6371,14 +6390,11 @@ async function confirmarAvaliarPerdidos(){
     }]));
     // 1. Reciclagem via função central (mesma usada no retorno automático) —
     // garante que a regra "só marca Remalho a partir do 2º retorno" e a
-    // contagem de retornos_count fiquem iguais nos dois fluxos.
-    const CONC=15;
-    const falhasUpd=[];
-    for(let i=0;i<paraReciclar.length;i+=CONC){
-      const slice=paraReciclar.slice(i,i+CONC);
-      const parcial=await Promise.all(slice.map(l=>reciclarLeadParaPool(l)));
-      parcial.forEach((r,idx)=>{ if(!r.ok) falhasUpd.push(slice[idx]); });
-    }
+    // contagem de retornos_count fiquem iguais nos dois fluxos. runInChunks
+    // evita o ERR_INSUFFICIENT_RESOURCES visto em produção quando muitos leads
+    // são reciclados de uma vez.
+    const resultadosRecicl = await runInChunks(paraReciclar, l=>reciclarLeadParaPool(l));
+    const falhasUpd = paraReciclar.filter((l,idx)=>!resultadosRecicl[idx].ok);
     const reciclados = paraReciclar.filter(l=>!falhasUpd.includes(l));
     if(falhasUpd.length) console.error('Avaliar Perdidos: falha ao atualizar', falhasUpd.map(l=>l.id));
     if(!reciclados.length){
