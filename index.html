@@ -9118,23 +9118,23 @@ let _srchBaseTimer=null;
 let _srchBaseResults=[];
 
 /* ═══ LEADS POR VENDEDOR/DIA (admin + supervisor) ═══
-   Consulta direto no Supabase, não usa o allLeads em memória — o cache local
-   de leads tem um teto de carregamento por sessão (visto em log real:
-   "Carga completa: 12.000 leads, total na base: 52.922"), então filtrar em
-   memória daria contagem ERRADA pra base desse tamanho. Isso aqui sempre
-   bate no banco inteiro.
+   MUDANÇA (a pedido do GR): antes filtrava crm_leads por responsavel_id ATUAL +
+   data de atribuição — se o lead fosse transferido depois, sumia da contagem do
+   vendedor original (não era uma foto congelada). Agora consulta a tabela
+   crm_atribuicoes_dia, que guarda um registro IMUTÁVEL toda vez que um lead é
+   atribuído a um vendedor (nome/telefone/status/tipo/origem congelados no
+   momento da atribuição). Esse registro é criado por um TRIGGER no Postgres
+   (fn_log_atribuicao_lead / trg_log_atribuicao_lead — ver SQL enviado), não por
+   código daqui do front — assim nenhum dos vários caminhos de atribuição/
+   transferência do app (manual, distribuição automática, transferência em
+   massa, importação CSV, "Puxar", mesclagem por DDD etc.) fica de fora por
+   esquecimento.
 
-   LIMITAÇÃO HONESTA, pra não vender isso como algo que não é: filtra por
-   responsavel_id = vendedor atual E atribuido_em (ou distribuido_em, se a
-   coluna opcional atribuido_em não existir) igual à data escolhida. Ou seja,
-   mostra "leads que esse vendedor TEM HOJE, que foram atribuídos a ele
-   NAQUELE dia" — não é uma foto congelada do passado. Se um lead foi
-   atribuído ao vendedor X no dia 10 mas depois foi transferido pra outro
-   vendedor, ele deixa de aparecer na busca do dia 10 pro vendedor X, porque
-   responsavel_id mudou. Um histórico realmente imutável exigiria reconstruir
-   a partir do crm_historico (texto livre, bem mais frágil de interpretar) —
-   isso NÃO foi implementado aqui. Avise se esse nível de precisão histórica
-   for necessário; dá pra construir separado. */
+   LIMITAÇÃO HONESTA: só existe registro a partir do dia em que o SQL da tabela
+   e do trigger for executado no Supabase. Atribuições feitas ANTES disso não
+   têm foto congelada — pra elas, essa tela vai mostrar 0 resultados mesmo que o
+   vendedor tivesse recebido leads naquele dia. Não tem como reconstruir o
+   passado sem essa base (crm_historico é texto livre, não dá pra confiar). */
 function popularVendedoresLPD(){
   const sel=document.getElementById('lpd-vend');
   if(!sel || sel.options.length>1) return; // já populado nesta sessão
@@ -9162,7 +9162,7 @@ function renderLeadsPorDia(){
     dataInp.value=new Date(hoje.getTime()-off*60000).toISOString().slice(0,10);
   }
   const aviso=document.getElementById('lpd-aviso');
-  if(aviso) aviso.textContent='Mostra leads que o vendedor TEM ATUALMENTE e que foram atribuídos a ele nessa data. Se um lead foi transferido depois pra outro vendedor, ele some daqui — não é uma foto congelada do histórico.';
+  if(aviso) aviso.textContent='Foto congelada: mostra quantos leads foram atribuídos a esse vendedor nessa data, mesmo que depois tenham sido transferidos pra outra pessoa. Só vale a partir do dia em que o registro de atribuições foi ativado no banco — datas anteriores a isso aparecem vazias.';
   document.getElementById('lpd-tbody').innerHTML='<tr><td colspan="6"><div class="empty"><div class="ei">📅</div>Escolha um vendedor e uma data, depois clique em Buscar</div></td></tr>';
   document.getElementById('lpd-title').textContent='Resultados';
 }
@@ -9177,38 +9177,37 @@ async function buscarLeadsPorDia(){
   }
   tbody.innerHTML='<tr><td colspan="6"><div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:8px;color:var(--muted2);font-size:13px">Buscando...</div></div></td></tr>';
 
-  // Filtra por atribuido_em se a coluna existir, senão cai pra distribuido_em
-  // (mesmo padrão de fallback usado no resto do sistema de reciclagem).
-  const col=_hasAtribuidoEm?'atribuido_em':'distribuido_em';
   const inicio=dataStr+'T00:00:00.000Z';
   const fimDate=new Date(dataStr+'T00:00:00.000Z');
   fimDate.setUTCDate(fimDate.getUTCDate()+1);
   const fim=fimDate.toISOString();
 
   try{
-    const{data,error}=await sb.from('crm_leads')
+    // Consulta a tabela de log (crm_atribuicoes_dia), populada por trigger no Postgres —
+    // não a crm_leads. Isso é o que garante a foto congelada (ver comentário acima).
+    const{data,error}=await sb.from('crm_atribuicoes_dia')
       .select('*')
-      .eq('responsavel_id',vendId)
-      .gte(col,inicio)
-      .lt(col,fim)
-      .order(col,{ascending:false});
+      .eq('vendedor_id',vendId)
+      .gte('created_at',inicio)
+      .lt('created_at',fim)
+      .order('created_at',{ascending:false});
     if(error) throw error;
-    const leads=data||[];
+    const regs=data||[];
     const vendNome=allUsers.find(u=>u.user_id===vendId)?.name||'Vendedor';
     const dataFmt=dataStr.split('-').reverse().join('/');
-    document.getElementById('lpd-title').textContent=`${vendNome} — ${leads.length} lead(s) em ${dataFmt}`;
-    tbody.innerHTML=leads.length===0
-      ?'<tr><td colspan="6"><div class="empty"><div class="ei">📭</div>Nenhum lead atribuído a este vendedor nessa data (ou os leads de então já foram transferidos pra outro vendedor — ver aviso acima)</div></td></tr>'
-      :leads.map(l=>`<tr>
-        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads-por-dia')">${l.nome}</td>
-        <td>${l.telefone||'—'}</td>
-        <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
-        <td style="font-size:11.5px">${l.tipo_lead||'—'}</td>
-        <td style="font-size:11px;color:var(--muted2)">${fmtDt(l[col]||l.created_at)}</td>
-        <td><button class="act" onclick="openDetail('${l.id}','leads-por-dia')">Ver →</button></td>
+    document.getElementById('lpd-title').textContent=`${vendNome} — ${regs.length} lead(s) recebido(s) em ${dataFmt}`;
+    tbody.innerHTML=regs.length===0
+      ?'<tr><td colspan="6"><div class="empty"><div class="ei">📭</div>Nenhum lead recebido por este vendedor nessa data (ou a data é anterior à ativação do registro de atribuições — ver aviso acima).</div></td></tr>'
+      :regs.map(r=>`<tr>
+        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${r.lead_id}','leads-por-dia')">${r.nome||'—'}</td>
+        <td>${r.telefone||'—'}</td>
+        <td>${sBadge(r.status,r.tipo_lead)}</td>
+        <td style="font-size:11.5px">${r.tipo_lead||'—'}</td>
+        <td style="font-size:11px;color:var(--muted2)">${fmtDt(r.created_at)}</td>
+        <td><button class="act" onclick="openDetail('${r.lead_id}','leads-por-dia')">Ver →</button></td>
       </tr>`).join('');
   }catch(e){
-    tbody.innerHTML=`<tr><td colspan="6"><div class="empty"><div class="ei">⚠️</div>Erro ao buscar: ${e.message}</div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="6"><div class="empty"><div class="ei">⚠️</div>Erro ao buscar: ${e.message}${e.message?.includes('does not exist')?' — a tabela crm_atribuicoes_dia ainda não foi criada no Supabase (ver SQL).':''}</div></td></tr>`;
   }
 }
 
