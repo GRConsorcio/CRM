@@ -4188,7 +4188,15 @@ async function quickDist(leadId){
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   const idx=(dc?.ultimo_vendedor_idx||0)%vends.length;
   const vend=vends[idx];
-  await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',leadId);
+  // BUGFIX (mesma classe do bug já visto em distParaEquipe/coordQuickDist): esse
+  // update não checava {error} — se falhasse, aparecia "Lead atribuído!" mesmo
+  // com o lead continuando sem vendedor de verdade no banco.
+  const{error}=await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',leadId);
+  if(error){
+    toast('Erro ao atribuir lead: '+error.message,'err');
+    console.error('[quickDist] falha ao atualizar crm_leads:',error);
+    return;
+  }
   await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()}).eq('id',dc.id);
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1){allLeads[i].responsavel_id=vend.user_id;}
@@ -4204,15 +4212,25 @@ async function distAutoAll(){
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
+  // BUGFIX: mesmo problema do loop em coordDistAutoAll — não checava {error}
+  // de cada update, então mesmo com todos falhando o toast dizia "distribuídos!".
+  let sucesso=0;const falhas=[];
   for(const lead of semVend){
     const vend=vends[idx%vends.length];
-    await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',lead.id);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',lead.id);
+    idx++;
+    if(error){ falhas.push(error); continue; }
     const i=allLeads.findIndex(l=>l.id===lead.id);
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
-    idx++;
+    sucesso++;
   }
   await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
-  toast(`${semVend.length} lead(s) distribuídos!`,'ok');
+  if(falhas.length){
+    console.error('[distAutoAll] falhas:',falhas.map(f=>f.message));
+    toast(`${sucesso} distribuído(s), ${falhas.length} falharam: ${falhas[0].message}`,'err');
+  } else {
+    toast(`${sucesso} lead(s) distribuídos!`,'ok');
+  }
   renderDistribuicao();
 }
 
@@ -5134,7 +5152,12 @@ async function uploadContratoLead(leadId, files){
 async function distManual(){
   const leadId=v('dm-lead'),vendId=v('dm-vend');
   if(!leadId||!vendId){toast('Selecione lead e vendedor','err');return;}
-  await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',leadId);
+  const{error}=await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',leadId);
+  if(error){
+    toast('Erro ao atribuir lead: '+error.message,'err');
+    console.error('[distManual] falha ao atualizar crm_leads:',error);
+    return;
+  }
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1) allLeads[i].responsavel_id=vendId;
   closeModal('dist-manual');
@@ -5153,16 +5176,24 @@ async function distAuto(){
   if(!semVend.length){toast('Nenhum lead sem vendedor e sem equipe','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
+  let sucesso=0;const falhas=[];
   for(const lead of semVend){
     const vend=vends[idx%vends.length];
-    await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',lead.id);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',lead.id);
+    idx++;
+    if(error){ falhas.push(error); continue; }
     const i=allLeads.findIndex(l=>l.id===lead.id);
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
-    idx++;
+    sucesso++;
   }
   await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
   closeModal('dist-auto');
-  toast(`${semVend.length} lead(s) distribuídos!`,'ok');
+  if(falhas.length){
+    console.error('[distAuto] falhas:',falhas.map(f=>f.message));
+    toast(`${sucesso} distribuído(s), ${falhas.length} falharam: ${falhas[0].message}`,'err');
+  } else {
+    toast(`${sucesso} lead(s) distribuídos!`,'ok');
+  }
   renderDistribuicao();
 }
 
@@ -7214,17 +7245,28 @@ async function confirmDistAll(){
   if(!semVend.length){toast('Nenhum lead sem vendedor e sem equipe','err');return;}
   let{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
+  // BUGFIX: mesma classe de bug das outras funções de distribuição — não checava
+  // {error} de cada update no loop, então mesmo com todos falhando o toast final
+  // dizia "N lead(s) distribuídos!" sem nenhum ter sido realmente salvo.
+  let sucesso=0;const falhas=[];
   for(const lead of semVend){
     const vendId=mode==='one'?specificVend:vends[idx%vends.length].user_id;
-    await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',lead.id);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',lead.id);
+    if(mode==='round') idx++;
+    if(error){ falhas.push(error); continue; }
     const i=allLeads.findIndex(l=>l.id===lead.id);
     if(i>-1) allLeads[i].responsavel_id=vendId;
-    if(mode==='round') idx++;
+    sucesso++;
   }
   if(dc&&mode==='round') await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
   saveCache();populateSelects();
   closeModal('dist-all-picker');
-  toast(semVend.length+' lead'+(semVend.length!==1?'s':'')+' distribuído'+(semVend.length!==1?'s':'')+'!','ok');
+  if(falhas.length){
+    console.error('[confirmDistAll] falhas:',falhas.map(f=>f.message));
+    toast(`${sucesso} distribuído(s), ${falhas.length} falharam: ${falhas[0].message}`,'err');
+  } else {
+    toast(sucesso+' lead'+(sucesso!==1?'s':'')+' distribuído'+(sucesso!==1?'s':'')+'!','ok');
+  }
   if(document.getElementById('page-distribuicao')?.classList.contains('on')) renderDistribuicao();
   else if(document.getElementById('page-coord-dist')?.classList.contains('on')) renderCoordDist();
 }
@@ -7554,7 +7596,15 @@ async function coordQuickDist(leadId){
   const counts=vends.map(u=>({u,c:allLeads.filter(l=>l.responsavel_id===u.user_id).length}));
   counts.sort((a,b)=>a.c-b.c);
   const vend=counts[0].u;
-  await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',leadId);
+  // BUGFIX (mesma classe do bug já visto em distParaEquipe): esse update nunca
+  // checava {error} — se falhasse (RLS, coluna, rede), o supervisor via "Lead
+  // atribuído!" mesmo com o lead continuando sem vendedor de verdade no banco.
+  const{error}=await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',leadId);
+  if(error){
+    toast('Erro ao atribuir lead: '+error.message,'err');
+    console.error('[coordQuickDist] falha ao atualizar crm_leads:',error);
+    return;
+  }
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1) allLeads[i].responsavel_id=vend.user_id;
   saveCache();renderCoordDist();
@@ -7569,16 +7619,27 @@ async function coordDistAutoAll(){
   // Só leads sem vendedor E que pertençam à equipe do coord
   const semVend=allLeads.filter(l=>!l.responsavel_id&&eqs.includes(l.equipe_id));
   if(!semVend.length){toast('Nenhum lead sem vendedor na sua equipe','err');return;}
-  let idx=0;
+  // BUGFIX: mesmo problema — o update de cada lead no loop não checava {error},
+  // então mesmo se TODOS falhassem o toast final dizia "N distribuídos!" do
+  // mesmo jeito. Agora conta separado sucesso e falha, e só finge sucesso no
+  // que realmente foi salvo.
+  let idx=0,sucesso=0;const falhas=[];
   for(const lead of semVend){
     const vend=vends[idx%vends.length];
-    await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',lead.id);
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(vend.user_id,new Date().toISOString())).eq('id',lead.id);
+    idx++;
+    if(error){ falhas.push(error); continue; }
     const i=allLeads.findIndex(l=>l.id===lead.id);
     if(i>-1) allLeads[i].responsavel_id=vend.user_id;
-    idx++;
+    sucesso++;
   }
   saveCache();renderCoordDist();
-  toast(semVend.length+' lead'+(semVend.length!==1?'s':'')+' distribuído'+(semVend.length!==1?'s':'')+'!','ok');
+  if(falhas.length){
+    console.error('[coordDistAutoAll] falhas:',falhas.map(f=>f.message));
+    toast(`${sucesso} distribuído(s), ${falhas.length} falharam: ${falhas[0].message}`,'err');
+  } else {
+    toast(sucesso+' lead'+(sucesso!==1?'s':'')+' distribuído'+(sucesso!==1?'s':'')+'!','ok');
+  }
 }
 
 /* ═══ SELEÇÃO EM MASSA — FUNIL EQUIPE ═══ */
