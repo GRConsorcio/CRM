@@ -2882,7 +2882,8 @@ function renderNav(){
   // CEO — nav enxuto e isolado: só o funil de leads de Anúncio GR, nada de editar/gerir.
   if(isCEO()){
     document.getElementById('nav-body').innerHTML=`<div class="nav-sect">Visão Geral</div>
-      <div class="nav-item on" onclick="nav('funil-ceo',this)" title="Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil — Anúncio GR</span></div>`;
+      <div class="nav-item on" onclick="nav('funil-ceo',this)" title="Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil — Anúncio GR</span></div>
+      <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads Atribuídos por Dia"><span class="nav-icon">📅</span><span class="nav-label">Leads Atribuídos/Dia</span></div>`;
     const flBtnCeo=document.getElementById('sb-force-logout');
     if(flBtnCeo) flBtnCeo.style.display='none';
     const demBtnCeo=document.getElementById('sb-demandas-btn');
@@ -3593,6 +3594,13 @@ function buildAssignPayload(vendedorId, timestamp, resetStatus=true){
 
 /* ═══ LEAD DETAIL ═══ */
 async function openDetail(id,from){
+  // CEO é somente-leitura por definição — essa página tem botões que NÃO são
+  // protegidos por perfil (toggle/apagar tarefa, editar e-mail/observações),
+  // então em vez de caçar cada um deles, bloqueia aqui na entrada mesmo.
+  if(isCEO()){
+    toast('Esse perfil não tem acesso ao detalhe do lead.','err');
+    return;
+  }
   fromPage=from;
   detailLeadId=id;
   let lead=allLeads.find(l=>l.id===id);
@@ -7976,8 +7984,8 @@ function equipeIdParaLeadCeo(lead){
 function renderFunilCeo(){
   const wrap=document.getElementById('ceo-funil-equipes');
   if(!wrap) return;
-  if(!ceoLeads.length){
-    wrap.innerHTML='<div class="empty"><div class="ei">🔭</div>Nenhum lead novo de Anúncio GR no momento.</div>';
+  if(!allEquipes.length && !ceoLeads.length){
+    wrap.innerHTML='<div class="empty"><div class="ei">🔭</div>Nenhuma equipe cadastrada e nenhum lead de Anúncio GR no momento.</div>';
     return;
   }
   // Agrupa por equipe (ou "sem equipe" quando não dá pra resolver)
@@ -7987,13 +7995,24 @@ function renderFunilCeo(){
     if(!grupos.has(eid)) grupos.set(eid,[]);
     grupos.get(eid).push(l);
   });
-  const entradas=[...grupos.entries()].sort((a,b)=>{
+  // MUDANÇA (a pedido do GR): antes só apareciam equipes que tinham pelo menos um
+  // lead em ceoLeads — uma equipe zerada simplesmente sumia da tela, e o CEO não
+  // conseguia comparar todas as equipes entre si. Agora toda equipe cadastrada em
+  // allEquipes aparece sempre, mesmo com 0 leads (as colunas do funil ficam
+  // "Vazio"). O grupo "Sem equipe" só aparece se realmente existir algum lead
+  // nele — não é uma equipe de verdade, não faz sentido mostrá-lo vazio.
+  allEquipes.forEach(eq=>{ if(!grupos.has(eq.id)) grupos.set(eq.id,[]); });
+  const entradas=[...grupos.entries()].filter(([eid,leads])=>eid!=='sem'||leads.length>0).sort((a,b)=>{
     if(a[0]==='sem') return 1;
     if(b[0]==='sem') return -1;
     const na=allEquipes.find(e=>e.id===a[0])?.nome||'';
     const nb=allEquipes.find(e=>e.id===b[0])?.nome||'';
     return na.localeCompare(nb,'pt-BR');
   });
+  if(!entradas.length){
+    wrap.innerHTML='<div class="empty"><div class="ei">🔭</div>Nenhuma equipe cadastrada e nenhum lead de Anúncio GR no momento.</div>';
+    return;
+  }
   wrap.innerHTML=entradas.map(([eid,leads])=>{
     const equipe=eid==='sem'?null:allEquipes.find(e=>e.id===eid);
     const nome=equipe?equipe.nome:'Sem equipe definida';
@@ -9139,7 +9158,10 @@ function popularVendedoresLPD(){
   const sel=document.getElementById('lpd-vend');
   if(!sel || sel.options.length>1) return; // já populado nesta sessão
   let vendedores;
-  if(isAdmin()){
+  if(isAdmin()||isCEO()){
+    // CEO vê a lista completa de vendedores (todas as equipes) — a restrição dele
+    // não é "quais vendedores", é "quais leads" (só Anúncio GR, sem Remalho —
+    // aplicado em buscarLeadsPorDia()).
     vendedores=allUsers.filter(u=>u.role==='vendedor');
   } else if(isSupervisor()){
     const mbs=getCoordMembers();
@@ -9185,14 +9207,20 @@ async function buscarLeadsPorDia(){
   try{
     // Consulta a tabela de log (crm_atribuicoes_dia), populada por trigger no Postgres —
     // não a crm_leads. Isso é o que garante a foto congelada (ver comentário acima).
-    const{data,error}=await sb.from('crm_atribuicoes_dia')
+    let query=sb.from('crm_atribuicoes_dia')
       .select('*')
       .eq('vendedor_id',vendId)
       .gte('created_at',inicio)
       .lt('created_at',fim)
       .order('created_at',{ascending:false});
+    // CEO só pode ver leads de Anúncio GR — mesma regra do funil dele. O filtro de
+    // tipo_lead (Remalho) não dá pra fazer direto na query (precisaria de "≠", o
+    // ilike só cobre a origem), então é aplicado no cliente logo abaixo.
+    if(isCEO()) query=query.ilike('origem','%anúncio%');
+    const{data,error}=await query;
     if(error) throw error;
-    const regs=data||[];
+    let regs=data||[];
+    if(isCEO()) regs=regs.filter(r=>(r.tipo_lead||'Novo')!=='Remalho');
     const vendNome=allUsers.find(u=>u.user_id===vendId)?.name||'Vendedor';
     const dataFmt=dataStr.split('-').reverse().join('/');
     document.getElementById('lpd-title').textContent=`${vendNome} — ${regs.length} lead(s) recebido(s) em ${dataFmt}`;
