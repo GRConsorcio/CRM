@@ -984,6 +984,13 @@ document.addEventListener('DOMContentLoaded', function(){
       <select id="cl-f-vend" onchange="renderCoordLeads()">
         <option value="">Todos os vendedores</option>
       </select>
+      <select id="cl-f-tipo" onchange="renderCoordLeads()">
+        <option value="">Novo + Remalho</option>
+        <option value="Novo">🆕 Só Novo</option>
+        <option value="Remalho">♻️ Só Remalho</option>
+      </select>
+      <input type="date" id="cl-f-data" onchange="renderCoordLeads()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none">
+      <button class="btn-sm" onclick="document.getElementById('cl-f-data').value='';renderCoordLeads()" title="Limpar filtro de data">✕ Data</button>
     </div>
     <div id="coord-mass-bar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
       <span id="coord-mass-count" style="font-size:12px;color:var(--muted2)"></span>
@@ -7259,6 +7266,8 @@ function renderCoordLeads(){
   const q=(document.getElementById('cl-srch')?.value||'').toLowerCase();
   const fs=document.getElementById('cl-f-status')?.value;
   const fv=document.getElementById('cl-f-vend')?.value;
+  const ft=document.getElementById('cl-f-tipo')?.value;
+  const fd=document.getElementById('cl-f-data')?.value; // yyyy-mm-dd, compara contra created_at (UTC) — mesmo padrão usado em Leads por Dia
   const mbs=getCoordMembers();
   const vSel=document.getElementById('cl-f-vend');
   if(vSel&&vSel.options.length<=1){
@@ -7269,6 +7278,8 @@ function renderCoordLeads(){
   if(q) leads=leads.filter(l=>l.nome.toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q));
   if(fs) leads=leads.filter(l=>l.status===fs);
   if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
+  if(ft) leads=leads.filter(l=>(l.tipo_lead||'Novo')===ft);
+  if(fd) leads=leads.filter(l=>(l.created_at||'').slice(0,10)===fd);
   document.getElementById('cl-title').textContent=`Leads da Equipe — ${leads.length}`;
   document.getElementById('cl-tbody').innerHTML=leads.length===0
     ?`<tr><td colspan="8"><div class="empty"><div class="ei">👥</div>Nenhum lead</div></td></tr>`
