@@ -2302,7 +2302,14 @@ async function loadAll(){
       // ── Tenta sincronização incremental primeiro (só o que mudou desde o último acesso) ──
       let usouIncremental=false;
       const lastSync=getLastSyncTime();
-      const cacheValido = allLeads.length>0 && !!lastSync && (Date.now()-new Date(lastSync).getTime()) < SYNC_FULL_RESYNC_HOURS*3600000;
+      // BUGFIX: antes bastava allLeads.length>0 pra confiar no cache e só buscar o
+      // delta. Se o cache ficasse corrompido/truncado por qualquer motivo (ex: cache
+      // salvo no meio de uma carga incompleta), o app ficava preso pra sempre naquele
+      // número baixo — a sincronização incremental só confirma o delta (que dá 0),
+      // nunca detecta que faltam milhares de leads. Piso de 1000 (mesmo valor já usado
+      // em refreshInBackground como "carga incompleta") força carga completa sempre
+      // que o cache estiver visivelmente quebrado, em vez de perpetuar o erro.
+      const cacheValido = allLeads.length>1000 && !!lastSync && (Date.now()-new Date(lastSync).getTime()) < SYNC_FULL_RESYNC_HOURS*3600000;
       if(cacheValido){
         try{
           const cutoff=lastSync;
