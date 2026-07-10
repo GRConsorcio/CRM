@@ -621,6 +621,8 @@ document.addEventListener('DOMContentLoaded', function(){
     <div style="font-size:11.5px;color:var(--muted2);margin-bottom:14px;display:flex;align-items:center;gap:8px">
       <span>👁️ Visão somente leitura — leads novos de Anúncio GR, por equipe. Atualiza automaticamente, sem precisar recarregar.</span>
     </div>
+    <div id="ceo-funil-filtro" style="display:flex;gap:6px;margin-bottom:14px"></div>
+    <div id="ceo-funil-cap-aviso" style="display:none;font-size:11px;color:var(--orange);margin-bottom:10px"></div>
     <div id="ceo-funil-equipes"></div>
   </div>
 
@@ -2275,6 +2277,10 @@ async function loadAll(){
         const query=sb.from('crm_leads').select(getLeadListCols()).ilike('origem','%anúncio%').order('created_at',{ascending:false});
         const data=await fetchAllPages(query,1000);
         ceoLeads=(data||[]).filter(l=>(l.tipo_lead||'Novo')!=='Remalho');
+        // Teto de exibição — mesma lógica do admin, mas com CEO_LEADS_CAP (menor).
+        // Mantém sempre os mais recentes.
+        ceoLeads.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+        if(ceoLeads.length>CEO_LEADS_CAP) ceoLeads=ceoLeads.slice(0,CEO_LEADS_CAP);
       }catch(e){
         console.warn('[loadAll] leads CEO falhou:',e.message);
         toast('Não foi possível atualizar os leads agora.','err');
@@ -2689,6 +2695,9 @@ const SYNC_FULL_RESYNC_HOURS=48;
 // Sempre os mais recentes por created_at — leads mais antigos continuam acessíveis
 // via "Buscar na Base Completa", que consulta o banco direto, sem depender desse cache.
 const ADMIN_LEADS_CAP=12000;
+// Teto de leads carregados/exibidos pro perfil CEO — mesma lógica do ADMIN_LEADS_CAP
+// (controla custo/memória), mas menor porque o CEO só vê Anúncio GR (volume menor).
+const CEO_LEADS_CAP=1000;
 function _lastSyncKey(){ return 'crm_last_full_sync_'+(CU?.id||'anon'); }
 function getLastSyncTime(){ try{ return localStorage.getItem(_lastSyncKey()); }catch(e){ return null; } }
 function setLastSyncTime(iso){ try{ localStorage.setItem(_lastSyncKey(), iso||new Date().toISOString()); }catch(e){} }
@@ -6546,6 +6555,9 @@ function setupRealtime(){
       } else if(isOrigemAnuncioGR(n.origem)&&(n.tipo_lead||'Novo')!=='Remalho'){
         const idx=ceoLeads.findIndex(l=>l.id===n.id);
         if(idx>-1) ceoLeads[idx]={...ceoLeads[idx],...n}; else ceoLeads.unshift(n);
+        // Mantém o teto — corta os mais antigos do fim (a lista fica sempre ordenada
+        // com os mais recentes primeiro, por causa do unshift acima e da ordenação inicial).
+        if(ceoLeads.length>CEO_LEADS_CAP) ceoLeads=ceoLeads.slice(0,CEO_LEADS_CAP);
       } else {
         // Deixou de ser Anúncio GR ou virou Remalho — some da lista do CEO, se estava nela.
         ceoLeads=ceoLeads.filter(l=>l.id!==n.id);
@@ -8048,6 +8060,21 @@ function renderFunisEquipe(){
    ao vivo em setupRealtime() — ver ambos, branch isCEO()). Já vêm filtrados por
    origem (Anúncio GR/relacionado) e sem tipo_lead='Remalho'. Sem onclick nenhum
    nos cards de propósito: esse perfil não deve ter como abrir/editar um lead. */
+/* ═══ FILTRO DE EQUIPE NO FUNIL DO CEO ═══
+   Chis engloba a equipe "Chis" e a "Danylo" (mesmo agrupamento usado no ranking
+   Firebase — ver fbKey em sincronizarVendaFirebase). Luiz é a equipe "Luiz".
+   "Todos" mostra tudo, sem filtrar. */
+let _ceoFunilFiltro='todos';
+function _ceoEquipeGrupo(nomeEquipe){
+  const n=(nomeEquipe||'').toLowerCase();
+  if(n.includes('chis')||n.includes('danylo')) return 'chis';
+  if(n.includes('luiz')) return 'luiz';
+  return 'outro';
+}
+function setCeoFunilFiltro(f){
+  _ceoFunilFiltro=f;
+  renderFunilCeo();
+}
 function equipeIdParaLeadCeo(lead){
   if(lead.equipe_id) return lead.equipe_id;
   if(lead.responsavel_id){
@@ -8059,13 +8086,39 @@ function equipeIdParaLeadCeo(lead){
 function renderFunilCeo(){
   const wrap=document.getElementById('ceo-funil-equipes');
   if(!wrap) return;
+  // Abas de filtro (Todos / Chis / Luiz)
+  const filtroWrap=document.getElementById('ceo-funil-filtro');
+  if(filtroWrap){
+    const opcoes=[['todos','Todos'],['chis','Chis'],['luiz','Luiz']];
+    filtroWrap.innerHTML=opcoes.map(([v,label])=>
+      `<button class="btn-sm${_ceoFunilFiltro===v?' on':''}" onclick="setCeoFunilFiltro('${v}')" style="${_ceoFunilFiltro===v?'background:var(--gold);color:#0a0a0a':''}">${label}</button>`
+    ).join('');
+  }
+  // Aviso de teto — só aparece se o cache bateu no CEO_LEADS_CAP (pode haver leads
+  // mais antigos fora da lista; a leitura é sempre "os mais recentes até o teto").
+  const capAviso=document.getElementById('ceo-funil-cap-aviso');
+  if(capAviso){
+    if(ceoLeads.length>=CEO_LEADS_CAP){
+      capAviso.style.display='block';
+      capAviso.textContent=`⚠️ Mostrando os ${CEO_LEADS_CAP.toLocaleString('pt-BR')} leads mais recentes. Pode haver leads mais antigos fora dessa visão.`;
+    } else {
+      capAviso.style.display='none';
+    }
+  }
   if(!allEquipes.length && !ceoLeads.length){
     wrap.innerHTML='<div class="empty"><div class="ei">🔭</div>Nenhuma equipe cadastrada e nenhum lead de Anúncio GR no momento.</div>';
     return;
   }
   // Agrupa por equipe (ou "sem equipe" quando não dá pra resolver)
+  const equipesFiltradas=_ceoFunilFiltro==='todos'
+    ? allEquipes
+    : allEquipes.filter(eq=>_ceoEquipeGrupo(eq.nome)===_ceoFunilFiltro);
+  const idsEquipesFiltradas=new Set(equipesFiltradas.map(eq=>eq.id));
+  const leadsFiltrados=_ceoFunilFiltro==='todos'
+    ? ceoLeads
+    : ceoLeads.filter(l=>idsEquipesFiltradas.has(equipeIdParaLeadCeo(l)));
   const grupos=new Map();
-  ceoLeads.forEach(l=>{
+  leadsFiltrados.forEach(l=>{
     const eid=equipeIdParaLeadCeo(l)||'sem';
     if(!grupos.has(eid)) grupos.set(eid,[]);
     grupos.get(eid).push(l);
@@ -8073,10 +8126,13 @@ function renderFunilCeo(){
   // MUDANÇA (a pedido do GR): antes só apareciam equipes que tinham pelo menos um
   // lead em ceoLeads — uma equipe zerada simplesmente sumia da tela, e o CEO não
   // conseguia comparar todas as equipes entre si. Agora toda equipe cadastrada em
-  // allEquipes aparece sempre, mesmo com 0 leads (as colunas do funil ficam
-  // "Vazio"). O grupo "Sem equipe" só aparece se realmente existir algum lead
-  // nele — não é uma equipe de verdade, não faz sentido mostrá-lo vazio.
-  allEquipes.forEach(eq=>{ if(!grupos.has(eq.id)) grupos.set(eq.id,[]); });
+  // allEquipes (dentro do filtro ativo) aparece sempre, mesmo com 0 leads (as
+  // colunas do funil ficam "Vazio"). O grupo "Sem equipe" só aparece se realmente
+  // existir algum lead nele — não é uma equipe de verdade, não faz sentido mostrá-lo
+  // vazio, e só conta quando o filtro é "Todos" (não dá pra saber o grupo de um
+  // lead sem equipe resolvida).
+  equipesFiltradas.forEach(eq=>{ if(!grupos.has(eq.id)) grupos.set(eq.id,[]); });
+  if(_ceoFunilFiltro!=='todos') grupos.delete('sem');
   const entradas=[...grupos.entries()].filter(([eid,leads])=>eid!=='sem'||leads.length>0).sort((a,b)=>{
     if(a[0]==='sem') return 1;
     if(b[0]==='sem') return -1;
