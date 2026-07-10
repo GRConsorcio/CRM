@@ -2305,7 +2305,7 @@ async function loadAll(){
     // ════════════════════════════════════════════
     if(isCEO()){
       try{
-        const query=sb.from('crm_leads').select(getLeadListCols()).ilike('origem','%anúncio%').order('created_at',{ascending:false});
+        const query=sb.from('crm_leads').select(getLeadListCols()).eq('origem','Anúncio GR').order('created_at',{ascending:false});
         const data=await fetchAllPages(query,1000);
         ceoLeads=(data||[]).filter(l=>(l.tipo_lead||'Novo')!=='Remalho');
         // Teto de exibição — mesma lógica do admin, mas com CEO_LEADS_CAP (menor).
@@ -2772,12 +2772,13 @@ function isVendedor(){return CUProfile?.role==='vendedor';}
 // pelo app inteiro, então deixar 'ceo' de fora deles garante que esse perfil nunca
 // ganhe nenhuma dessas ações sem querer.
 function isCEO(){return CUProfile?.role==='ceo';}
-// Considera "Anúncio GR" e variações/legado (Instagram, Facebook, WhatsApp — origens
-// antigas já migradas para "Anúncio GR", mantidas aqui só por segurança caso algum
-// lead antigo não tenha passado pela migração).
+// MUDANÇA (a pedido do GR): antes aceitava variações/legado (substring "anúncio",
+// e origens antigas Instagram/Facebook/WhatsApp pré-migração). Agora é estrito —
+// só "Anúncio GR" exatamente, sem exceção. Se sobrar lead legado com origem antiga
+// não migrada, ele simplesmente não aparece pro CEO (visão correta é essa: só
+// Anúncio GR, e apenas isso).
 function isOrigemAnuncioGR(origem){
-  const o=(origem||'').toLowerCase();
-  return o.includes('anúncio')||o.includes('anuncio')||o==='instagram'||o==='facebook'||o==='whatsapp';
+  return origem==='Anúncio GR';
 }
 
 // ═══ Select "Lead relacionado" da Tarefa — busca + garantia de não perder vínculo ═══
@@ -9450,10 +9451,10 @@ async function buscarLeadsPorDia(){
       .gte('created_at',inicio)
       .lt('created_at',fim)
       .order('created_at',{ascending:false});
-    // CEO só pode ver leads de Anúncio GR — mesma regra do funil dele. O filtro de
-    // tipo_lead (Remalho) não dá pra fazer direto na query (precisaria de "≠", o
-    // ilike só cobre a origem), então é aplicado no cliente logo abaixo.
-    if(isCEO()) query=query.ilike('origem','%anúncio%');
+    // CEO só pode ver leads de Anúncio GR — mesma regra estrita do funil/Todos os Leads dele
+    // (match exato, não substring — ver isOrigemAnuncioGR). O filtro de tipo_lead (Remalho)
+    // não dá pra fazer direto na query (precisaria de "≠"), então é aplicado no cliente abaixo.
+    if(isCEO()) query=query.eq('origem','Anúncio GR');
     const{data,error}=await query;
     if(error) throw error;
     let regs=data||[];
