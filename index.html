@@ -626,6 +626,37 @@ document.addEventListener('DOMContentLoaded', function(){
     <div id="ceo-funil-equipes"></div>
   </div>
 
+  <!-- TODOS OS LEADS — CEO, somente leitura, lista plana com 4 filtros -->
+  <div class="page" id="page-leads-ceo">
+    <div style="font-size:11.5px;color:var(--muted2);margin-bottom:14px">
+      👁️ Visão somente leitura — mesma base do funil (Anúncio GR, sem Remalho), teto de <span id="leads-ceo-cap-txt"></span> leads.
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <select class="inp" id="lceo-status" style="width:170px" onchange="renderLeadsCeo()">
+        <option value="">Todos os status</option>
+      </select>
+      <select class="inp" id="lceo-vendedor" style="width:190px" onchange="renderLeadsCeo()">
+        <option value="">Todos os vendedores</option>
+      </select>
+      <select class="inp" id="lceo-equipe" style="width:170px" onchange="renderLeadsCeo()">
+        <option value="">Todas as equipes</option>
+      </select>
+      <input type="date" class="inp" id="lceo-data" style="width:150px" onchange="renderLeadsCeo()">
+      <button class="btn-sm" onclick="document.getElementById('lceo-data').value='';renderLeadsCeo()">✕ Data</button>
+    </div>
+    <div id="leads-ceo-title" style="font-size:12px;color:var(--muted2);margin-bottom:8px"></div>
+    <div class="panel">
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-wrap">
+          <table><thead><tr>
+            <th>Nome</th><th>Telefone</th><th>Status</th><th>Vendedor</th><th>Equipe</th><th>Data</th>
+          </tr></thead>
+          <tbody id="leads-ceo-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- DISTRIBUIÇÃO (admin/coord) -->
   <div class="page" id="page-distribuicao">
     <div class="panel" style="margin-bottom:16px">
@@ -2902,6 +2933,7 @@ function renderNav(){
   if(isCEO()){
     document.getElementById('nav-body').innerHTML=`<div class="nav-sect">Visão Geral</div>
       <div class="nav-item on" onclick="nav('funil-ceo',this)" title="Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil — Anúncio GR</span></div>
+      <div class="nav-item" onclick="nav('leads-ceo',this)" title="Todos os Leads"><span class="nav-icon">${IC.leads}</span><span class="nav-label">Todos os Leads</span></div>
       <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads Atribuídos por Dia"><span class="nav-icon">📅</span><span class="nav-label">Leads Atribuídos/Dia</span></div>`;
     const flBtnCeo=document.getElementById('sb-force-logout');
     if(flBtnCeo) flBtnCeo.style.display='none';
@@ -3000,7 +3032,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads'};
 /* ═══ PERSISTÊNCIA DE PÁGINA ATUAL (item solicitado: não voltar sempre pro dashboard) ═══
    Salva a última página visitada por usuário (localStorage, sobrevive a refresh/F5 e a
    logins futuros no mesmo navegador). Páginas de "detalhe" (que dependem de um ID
@@ -3068,6 +3100,7 @@ function nav(page,el){
   if(page==='leads-por-dia') renderLeadsPorDia();
   if(page==='funil-vendedor') {/* rendered by openFunilVendedor */}
   if(page==='funil-ceo') renderFunilCeo();
+  if(page==='leads-ceo') renderLeadsCeo();
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 
@@ -6576,6 +6609,7 @@ function setupRealtime(){
         ceoLeads=ceoLeads.filter(l=>l.id!==n.id);
       }
       if(document.getElementById('page-funil-ceo')?.classList.contains('on')) renderFunilCeo();
+      if(document.getElementById('page-leads-ceo')?.classList.contains('on')) renderLeadsCeo();
     });
   } else if(isFullScope){
     ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_leads'},async(payload)=>{
@@ -8191,6 +8225,65 @@ function renderFunilCeo(){
       </div>
     </div>`;
   }).join('');
+}
+
+/* ═══ "TODOS OS LEADS" DO CEO — lista plana, 4 filtros (status/vendedor/equipe/data) ═══
+   Mesma base de dados que o funil (ceoLeads — já vem só Anúncio GR, sem Remalho,
+   com teto de CEO_LEADS_CAP). Somente leitura, sem onclick nos leads, igual ao funil. */
+let _lceoSelectsPopulados=false;
+function _popularFiltrosLeadsCeo(){
+  if(_lceoSelectsPopulados) return;
+  const selStatus=document.getElementById('lceo-status');
+  if(selStatus) selStatus.innerHTML='<option value="">Todos os status</option>'+
+    STAGES.map(s=>`<option value="${s}">${s}</option>`).join('');
+  const selVend=document.getElementById('lceo-vendedor');
+  if(selVend){
+    const vendedores=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    selVend.innerHTML='<option value="">Todos os vendedores</option>'+
+      vendedores.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
+  }
+  const selEq=document.getElementById('lceo-equipe');
+  if(selEq){
+    const equipes=[...allEquipes].sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+    selEq.innerHTML='<option value="">Todas as equipes</option>'+
+      equipes.map(eq=>`<option value="${eq.id}">${eq.nome}</option>`).join('');
+  }
+  const capTxt=document.getElementById('leads-ceo-cap-txt');
+  if(capTxt) capTxt.textContent=CEO_LEADS_CAP.toLocaleString('pt-BR');
+  _lceoSelectsPopulados=true;
+}
+function renderLeadsCeo(){
+  _popularFiltrosLeadsCeo();
+  const tbody=document.getElementById('leads-ceo-tbody');
+  if(!tbody) return;
+  const fStatus=document.getElementById('lceo-status')?.value||'';
+  const fVend=document.getElementById('lceo-vendedor')?.value||'';
+  const fEquipe=document.getElementById('lceo-equipe')?.value||'';
+  const fData=document.getElementById('lceo-data')?.value||''; // yyyy-mm-dd
+  let leads=ceoLeads.filter(l=>{
+    if(fStatus&&l.status!==fStatus) return false;
+    if(fVend&&l.responsavel_id!==fVend) return false;
+    if(fEquipe&&equipeIdParaLeadCeo(l)!==fEquipe) return false;
+    if(fData&&(l.created_at||'').slice(0,10)!==fData) return false;
+    return true;
+  });
+  leads.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const titleEl=document.getElementById('leads-ceo-title');
+  if(titleEl) titleEl.textContent=`${leads.length.toLocaleString('pt-BR')} lead(s)`;
+  tbody.innerHTML=leads.length===0
+    ?'<tr><td colspan="6"><div class="empty"><div class="ei">📭</div>Nenhum lead encontrado com esses filtros.</div></td></tr>'
+    :leads.map(l=>{
+      const u=allUsers.find(u=>u.user_id===l.responsavel_id);
+      const eq=allEquipes.find(e=>e.id===equipeIdParaLeadCeo(l));
+      return`<tr>
+        <td style="font-weight:700">${l.nome}</td>
+        <td>${l.telefone||'—'}</td>
+        <td>${sBadge(l.status,l.tipo_lead)}</td>
+        <td>${u?u.name:'<span style="color:var(--orange)">Sem vendedor</span>'}</td>
+        <td>${eq?eq.nome:'—'}</td>
+        <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
+      </tr>`;
+    }).join('');
 }
 
 async function openFunilVendedor(userId){
