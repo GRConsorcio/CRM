@@ -1614,7 +1614,16 @@ async function doAuth(){
     const remember=document.getElementById('a-remember')?.checked!==false;
     const{data,error}=await sb.auth.signInWithPassword({email,password:pass});
     btn.textContent='Entrar';btn.disabled=false;
-    if(error){err.textContent='E-mail ou senha incorretos.';return;}
+    if(error){
+      // Mostra a causa real quando o Supabase informa uma (ex: e-mail não confirmado),
+      // em vez de sempre dizer "senha incorreta" — isso escondia problemas reais de
+      // configuração da conta e dava a entender que era erro de digitação.
+      const msg=(error.message||'').toLowerCase();
+      if(msg.includes('email not confirmed')) err.textContent='E-mail não confirmado. No Supabase, marque "Auto Confirm User" ao criar o usuário, ou confirme manualmente em Authentication → Users.';
+      else if(msg.includes('invalid login credentials')) err.textContent='E-mail ou senha incorretos.';
+      else err.textContent='Erro ao entrar: '+(error.message||'desconhecido');
+      return;
+    }
     // If not remember — clear session on tab close
     if(!remember){
       sessionStorage.setItem('crm_no_persist','1');
