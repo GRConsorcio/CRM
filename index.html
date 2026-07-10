@@ -3076,6 +3076,19 @@ async function renderDashboard(){
   // CEO não usa o Dashboard padrão (nav só tem o funil) — sai cedo pra não gastar
   // tempo montando KPIs/rankings que nunca ficam visíveis pra esse perfil.
   if(isCEO()) return;
+  // BUGFIX: quando ensureProfile() dá timeout, CUProfile vira um fallback temporário
+  // com role:'vendedor' (ver ensureProfile) até a confirmação real chegar em
+  // background (~3s depois). Se o dashboard renderizasse nesse meio-tempo, um
+  // admin/coordenador via "Total de Leads: 0" — o cálculo de myLeads usava o role
+  // errado (vendedor sem leads próprios), mesmo com a base inteira já carregada em
+  // allLeads. Agora, nesse estado, mostra um placeholder de carregamento em vez de
+  // números errados. O retry em ensureProfile já chama renderDashboard() de novo
+  // assim que o role real confirma.
+  if(CUProfile?._fallback){
+    const kpisEl=document.getElementById('dash-kpis');
+    if(kpisEl) kpisEl.innerHTML='<div class="kpi" style="grid-column:1/-1;text-align:center;color:var(--muted2)">Confirmando permissões…</div>';
+    return;
+  }
   // Escopo de leads por perfil
   let myLeads;
   let _myEquipeIds=[],_myMemberIds=[];
