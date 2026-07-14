@@ -663,6 +663,19 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="panel-head"><div class="panel-title">👥 Vendedores Ativos</div></div>
       <div class="panel-body" id="dist-vendedores"></div>
     </div>
+    <!-- Total geral por equipe/pessoa — admin apenas -->
+    <div class="panel" id="dist-admin-totais-panel" style="margin-bottom:16px;display:none">
+      <div class="panel-head">
+        <div class="panel-title">📊 Total de Leads na Base</div>
+        <div style="font-size:11px;color:var(--muted2)">Todos os leads da base, atribuídos ou não</div>
+      </div>
+      <div class="panel-body">
+        <div style="font-size:12px;font-weight:700;color:var(--gold2);margin-bottom:8px">Por equipe</div>
+        <div id="dist-admin-totais-equipe" style="margin-bottom:18px"></div>
+        <div style="font-size:12px;font-weight:700;color:var(--gold2);margin-bottom:8px">Por pessoa (vendedor, supervisor e coordenador)</div>
+        <div id="dist-admin-totais-pessoa"></div>
+      </div>
+    </div>
     <!-- Equipes panel — admin/coord only -->
     <div class="panel" id="dist-equipes-panel" style="margin-bottom:16px;display:none">
       <div class="panel-head">
@@ -4199,6 +4212,7 @@ async function moveStage(id,status){
 
 /* ═══ DISTRIBUIÇÃO ═══ */
 function renderDistribuicao(){
+  renderAdminTotaisLeads();
   // Painel de equipes — admin e coord apenas
   const eqPanel=document.getElementById('dist-equipes-panel');
   if(eqPanel){
@@ -4248,6 +4262,51 @@ function renderDistribuicao(){
           <button class="act" onclick="quickDist('${l.id}')">👤 Atribuir</button>
         </div></td>
       </tr>`).join('');
+}
+
+function renderAdminTotaisLeads(){
+  const panel=document.getElementById('dist-admin-totais-panel');
+  if(!panel) return;
+  if(!isAdmin()){ panel.style.display='none'; return; }
+  panel.style.display='';
+
+  // Total por equipe: todo lead com aquela equipe_id, atribuído ou não.
+  const totalEquipeHtml=allEquipes.length===0
+    ? '<div class="empty"><div class="ei">🏅</div>Nenhuma equipe cadastrada</div>'
+    : allEquipes.map(eq=>{
+        const count=allLeads.filter(l=>l.equipe_id===eq.id).length;
+        const semVendCount=allLeads.filter(l=>l.equipe_id===eq.id&&!l.responsavel_id).length;
+        return`<div class="dist-card">
+          <div class="dist-av">🏅</div>
+          <div class="dist-info">
+            <div class="dist-name">${eq.nome}</div>
+            <div class="dist-meta">${semVendCount} sem vendedor</div>
+          </div>
+          <div class="dist-count">${count}</div>
+        </div>`;
+      }).join('');
+  document.getElementById('dist-admin-totais-equipe').innerHTML=totalEquipeHtml;
+
+  // Total por pessoa: vendedor, supervisor e coordenador — não só vendedor.
+  const pessoas=allUsers.filter(u=>['vendedor','supervisor','coordenador'].includes(u.role))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  const roleLabel={vendedor:'Vendedor',supervisor:'Supervisor',coordenador:'Coordenador'};
+  const totalPessoaHtml=pessoas.length===0
+    ? '<div class="empty"><div class="ei">👥</div>Nenhum usuário cadastrado</div>'
+    : pessoas.map(u=>{
+        const count=allLeads.filter(l=>l.responsavel_id===u.user_id).length;
+        const eqIds=getVendorEquipeIds(u.user_id);
+        const eqNomes=eqIds.map(id=>allEquipes.find(e=>e.id===id)?.nome).filter(Boolean).join(', ')||'sem equipe';
+        return`<div class="dist-card">
+          <div class="dist-av">${u.name[0].toUpperCase()}</div>
+          <div class="dist-info">
+            <div class="dist-name">${u.name} <span style="font-size:10px;color:var(--muted2);font-weight:400">(${roleLabel[u.role]})</span></div>
+            <div class="dist-meta">${eqNomes}</div>
+          </div>
+          <div class="dist-count">${count}</div>
+        </div>`;
+      }).join('');
+  document.getElementById('dist-admin-totais-pessoa').innerHTML=totalPessoaHtml;
 }
 
 async function quickDist(leadId){
