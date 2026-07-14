@@ -7249,6 +7249,10 @@ async function onDropMeuFunil(e,newStage){
 /* ═══ DISTRIBUIÇÃO COM ESCOLHA ═══ */
 let _distPickerLeadId=null;
 
+function getVendorEquipeIds(vendId){
+  return allMembroEquipes.filter(m=>m.user_id===vendId).map(m=>m.equipe_id);
+}
+
 function getDistVendors(){
   // Admin/coord: all vendedores; supervisor: own equipe vendedores
   // Ordenação estável por user_id garante que o round-robin não pule vendedores
@@ -7288,9 +7292,14 @@ async function confirmDistPicker(){
 }
 
 function openDistAllPicker(){
-  const semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
-  document.getElementById('dist-all-info').textContent=semVend.length+' lead'+(semVend.length!==1?'s':'')+' sem vendedor e sem equipe';
   const vends=getDistVendors();
+  // FIX: antes só considerava leads SEM equipe nenhuma (equipe_id null), o que é
+  // redundante — o fluxo real é: lead já tem equipe (Luiz, Chis, etc), falta só
+  // vendedor. Agora conta leads com equipe_id, desde que a equipe tenha vendedor.
+  const equipesComVendedor=new Set();
+  vends.forEach(v=>getVendorEquipeIds(v.user_id).forEach(eq=>equipesComVendedor.add(eq)));
+  const semVend=allLeads.filter(l=>!l.responsavel_id&&l.equipe_id&&equipesComVendedor.has(l.equipe_id));
+  document.getElementById('dist-all-info').textContent=semVend.length+' lead'+(semVend.length!==1?'s':'')+' sem vendedor (com equipe definida)';
   document.getElementById('dist-all-vend').innerHTML=vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
   document.getElementById('dist-all-mode').value='round';
   document.getElementById('dist-all-vend-wrap').style.display='none';
@@ -7312,9 +7321,20 @@ async function confirmDistAll(){
   const vends=getDistVendors();
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   if(mode==='one'&&!specificVend){toast('Selecione um vendedor','err');return;}
-  let semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
+  // FIX: distribuição agora respeita a equipe do lead — lead da equipe Luiz só vai
+  // pra vendedor da equipe Luiz, lead da equipe Chis só pra vendedor da equipe Chis,
+  // e assim por diante. Não distribui mais leads sem equipe (era redundante).
+  let semVend;
+  if(mode==='one'){
+    const eqDoVendedor=getVendorEquipeIds(specificVend);
+    semVend=allLeads.filter(l=>!l.responsavel_id&&l.equipe_id&&eqDoVendedor.includes(l.equipe_id));
+  }else{
+    const equipesComVendedor=new Set();
+    vends.forEach(v=>getVendorEquipeIds(v.user_id).forEach(eq=>equipesComVendedor.add(eq)));
+    semVend=allLeads.filter(l=>!l.responsavel_id&&l.equipe_id&&equipesComVendedor.has(l.equipe_id));
+  }
   if(qty) semVend=semVend.slice(0,qty);
-  if(!semVend.length){toast('Nenhum lead sem vendedor e sem equipe','err');return;}
+  if(!semVend.length){toast('Nenhum lead sem vendedor na(s) equipe(s) selecionada(s)','err');return;}
   let{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
   let idx=dc?.ultimo_vendedor_idx||0;
   // BUGFIX: mesma classe de bug das outras funções de distribuição — não checava
@@ -7324,12 +7344,22 @@ async function confirmDistAll(){
   // Com milhares de leads sem vendedor isso trava o navegador por dezenas de minutos
   // e pode cair por causa da cota do Realtime — parecia "não funcionar".
   // Agora: calcula o vendedor de cada lead ANTES (mantém round-robin correto e
-  // determinístico), depois dispara os updates em lotes paralelos via runInChunks.
-  const atribuicoes=semVend.map(lead=>{
-    const vendId=mode==='one'?specificVend:vends[idx%vends.length].user_id;
-    if(mode==='round') idx++;
-    return{lead,vendId};
+  // determinístico, agora escopado por equipe), depois dispara os updates em
+  // lotes paralelos via runInChunks.
+  const atribuicoes=[];
+  semVend.forEach(lead=>{
+    let vendId;
+    if(mode==='one'){
+      vendId=specificVend;
+    }else{
+      const vendsDaEquipe=vends.filter(v=>getVendorEquipeIds(v.user_id).includes(lead.equipe_id));
+      if(!vendsDaEquipe.length) return; // sem vendedor pra essa equipe, pula o lead
+      vendId=vendsDaEquipe[idx%vendsDaEquipe.length].user_id;
+      idx++;
+    }
+    atribuicoes.push({lead,vendId});
   });
+  if(!atribuicoes.length){toast('Nenhuma equipe com lead pendente tem vendedor disponível','err');return;}
   const btn=document.getElementById('btn-confirm-dist-all');
   const btnTextoOriginal=btn?btn.textContent:null;
   if(btn){btn.disabled=true;}
