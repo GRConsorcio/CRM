@@ -1541,7 +1541,7 @@ document.addEventListener('DOMContentLoaded', function(){
     </div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('dist-all-picker')">Cancelar</button>
-      <button class="btn-save" onclick="confirmDistAll()">Distribuir</button>
+      <button class="btn-save" id="btn-confirm-dist-all" onclick="confirmDistAll()">Distribuir</button>
     </div>
   </div>
 </div>
@@ -7320,16 +7320,30 @@ async function confirmDistAll(){
   // BUGFIX: mesma classe de bug das outras funções de distribuição — não checava
   // {error} de cada update no loop, então mesmo com todos falhando o toast final
   // dizia "N lead(s) distribuídos!" sem nenhum ter sido realmente salvo.
-  let sucesso=0;const falhas=[];
-  for(const lead of semVend){
+  // FIX: o loop antigo fazia 1 update por lead, um de cada vez (await sequencial).
+  // Com milhares de leads sem vendedor isso trava o navegador por dezenas de minutos
+  // e pode cair por causa da cota do Realtime — parecia "não funcionar".
+  // Agora: calcula o vendedor de cada lead ANTES (mantém round-robin correto e
+  // determinístico), depois dispara os updates em lotes paralelos via runInChunks.
+  const atribuicoes=semVend.map(lead=>{
     const vendId=mode==='one'?specificVend:vends[idx%vends.length].user_id;
-    const{error}=await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',lead.id);
     if(mode==='round') idx++;
-    if(error){ falhas.push(error); continue; }
+    return{lead,vendId};
+  });
+  const btn=document.getElementById('btn-confirm-dist-all');
+  const btnTextoOriginal=btn?btn.textContent:null;
+  if(btn){btn.disabled=true;}
+  if(atribuicoes.length>50) toast(`Distribuindo ${atribuicoes.length} leads, isso pode levar alguns minutos...`,'ok');
+  let sucesso=0;const falhas=[];
+  await runInChunks(atribuicoes, async({lead,vendId})=>{
+    const{error}=await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',lead.id);
+    if(error){ falhas.push(error); return; }
     const i=allLeads.findIndex(l=>l.id===lead.id);
     if(i>-1) allLeads[i].responsavel_id=vendId;
     sucesso++;
-  }
+    if(btn) btn.textContent=`Distribuindo... ${sucesso+falhas.length}/${atribuicoes.length}`;
+  });
+  if(btn){btn.disabled=false;btn.textContent=btnTextoOriginal;}
   if(dc&&mode==='round') await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
   saveCache();populateSelects();
   closeModal('dist-all-picker');
