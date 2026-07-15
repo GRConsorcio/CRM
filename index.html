@@ -1595,6 +1595,15 @@ let _appReadyWithFallback=false;
 let _hasAtribuidoEm=false;
 let _hasPropostaQuente=false;
 let allLeads=[],allUsers=[],allHist=[],allTasks=[],allVendas=[],allDocs=[];
+// BUGFIX: o campo `role` em crm_users é digitado à mão no Supabase (cadastro de conta
+// não passa mais por tela de signup — ver histórico). Um valor como "Vendedor" (com V
+// maiúsculo) em vez de "vendedor" fazia esse usuário ficar invisível em TODOS os
+// seletores de distribuição/transferência de lead do app (25+ lugares fazem
+// role==='vendedor' com comparação exata), sem nenhum erro visível — ele só some das
+// listas. Normalizamos aqui, uma vez só, logo na entrada dos dados, em vez de corrigir
+// cada um dos 25+ lugares (frágil, fácil esquecer um).
+function _normRole(u){return u&&u.role?{...u,role:String(u.role).trim().toLowerCase()}:u;}
+function _normUsers(arr){return(arr||[]).map(_normRole);}
 // Mapa leve lead_id->responsavel_id pro supervisor (cobre leads Fechado, que não
 // ficam mais carregados em allLeads pra esse perfil) — usado em getVisibleVendas().
 let _supervisorLeadOwnerMap=new Map();
@@ -1759,7 +1768,7 @@ function _readCache(userId){
 function _applyCache(data){
   CUProfile=data.profile;
   allLeads=data.leads||[];
-  allUsers=data.users||[];
+  allUsers=_normUsers(data.users);
   allHist=data.hist||[];
   allTasks=data.tasks||[];
   allVendas=data.vendas||[];
@@ -1892,7 +1901,7 @@ async function initApp(user){
       if(emergCache){
         try{
           const ec=JSON.parse(emergCache);
-          if(ec.profile){ CUProfile=ec.profile; allLeads=ec.leads||[]; allUsers=ec.users||[];
+          if(ec.profile){ CUProfile=ec.profile; allLeads=ec.leads||[]; allUsers=_normUsers(ec.users);
             allHist=ec.hist||[]; allTasks=ec.tasks||[]; allVendas=ec.vendas||[];
             allDocs=ec.docs||[]; allEquipes=ec.equipes||[]; allMembroEquipes=ec.membros||[];
             window._allEquipes=allEquipes; window._allMembroEquipes=allMembroEquipes;
@@ -2304,7 +2313,7 @@ async function loadAll(){
     safe(sb.from('crm_documentos').select('*').order('created_at',{ascending:false}).limit(1000)),
   ]);
 
-  allUsers=lu.data||[];
+  allUsers=_normUsers(lu.data);
   allHist=lh.data||[];
   allTasks=lt.data||[];
   allVendas=lv.data||[];
@@ -6072,7 +6081,7 @@ async function refreshInBackground(){
         sb.from('crm_tarefas').select('*').or(`responsavel_id.eq.${CU.id},user_id.eq.${CU.id}`).order('prazo',{ascending:true}),
         sb.from('crm_vendas').select('*').order('created_at',{ascending:false}),
       ]);
-      if(lu.data) allUsers=lu.data;
+      if(lu.data) allUsers=_normUsers(lu.data);
       if(lh.data) allHist=lh.data;
   _hasAtribuidoEm=_hasAtribuidoEmCol===true;
   _hasPropostaQuente=_hasPropostaQuenteCol===true;
@@ -6754,7 +6763,7 @@ function setupRealtime(){
   // mantém sem filtro pra todo mundo, não vale a pena complicar por isso.
   ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_users'},async(payload)=>{
     const{data}=await sb.from('crm_users').select('*').eq('ativo',true);
-    allUsers=data||[];
+    allUsers=_normUsers(data);
     populateSelects();
     if(document.getElementById('page-equipe').classList.contains('on')) renderEquipe();
   });
