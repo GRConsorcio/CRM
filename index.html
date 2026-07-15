@@ -8915,23 +8915,58 @@ async function openEquipeDetail(id){
   if(!eq)return;
   const membros=allMembroEquipes.filter(m=>m.equipe_id===id);
   const membrosUsers=membros.map(m=>allUsers.find(u=>u.user_id===m.user_id)).filter(Boolean);
-  // Leads: pertence diretamente à equipe OU está com um membro SEM equipe definida
-  // (evita puxar leads de outras equipes apenas por o vendedor ser membro aqui)
   const membroIds=new Set(membros.map(m=>m.user_id));
-  const leads=allLeads.filter(l=>
-    l.equipe_id===id ||
-    (!l.equipe_id && l.responsavel_id && membroIds.has(l.responsavel_id))
-  );
-  // BUGFIX: fechados agora vem de vendas aprovadas (vendedor_id OU, como reforço pra
-  // vendas legadas sem esse campo, via _supervisorLeadOwnerMap), não de l.status==='Fechado'.
-  // Leads Fechado não ficam mais carregados em allLeads pro supervisor (saíram do
-  // carregamento principal pra reduzir volume), então contar pelo status de lead
-  // ficaria sempre 0 pra esse perfil. Vendas aprovadas é a fonte de verdade de
-  // "fechou" de qualquer forma, e funciona igual pra todos os perfis.
-  const fechados=allVendas.filter(v=>{
-    const ownerViaMap=_supervisorLeadOwnerMap.get(v.lead_id);
-    return (membroIds.has(ownerViaMap)||membroIds.has(v.vendedor_id))&&v.status_venda==='Aprovado';
-  }).length;
+  const memberIdsArr=[...membroIds];
+
+  // BUGFIX: "Total Leads" e "Fechamentos" vinham de allLeads/allVendas — arrays locais
+  // que cada perfil carrega com escopo e teto DIFERENTES (admin trava em ADMIN_LEADS_CAP,
+  // 12.000 leads mais recentes; coordenador só carrega leads que já viraram venda;
+  // supervisor exclui leads com status Fechado do carregamento; vendedor só carrega os
+  // próprios leads). Resultado: a MESMA equipe mostrava números bem diferentes conforme
+  // quem estava logado, porque cada um calculava em cima de um recorte distinto da
+  // mesma tabela — nenhum dos dois estava "errado" no cálculo em si, o recorte de base
+  // é que divergia. Agora os dois números vêm de contagem exata direto no banco
+  // (count:'exact', head:true), sempre o mesmo valor não importa o perfil logado.
+  nav('equipe-detail',null);
+  document.getElementById('equipe-detail-wrap').innerHTML=`<div class="panel"><div style="padding:40px;text-align:center;color:var(--muted2)">Carregando números da equipe…</div></div>`;
+
+  const orFilterLeads = memberIdsArr.length
+    ? `equipe_id.eq.${id},and(equipe_id.is.null,responsavel_id.in.(${memberIdsArr.join(',')}))`
+    : `equipe_id.eq.${id}`;
+  const LEADS_TABLE_CAP=500; // a tabela abaixo mostra só os mais recentes; o KPI "Total Leads" é sempre exato
+  let totalLeads=0,fechados=0,leads=[];
+  try{
+    const[cLeadsRes,amostraRes]=await Promise.all([
+      sb.from('crm_leads').select('id',{count:'exact',head:true}).or(orFilterLeads),
+      sb.from('crm_leads').select(getLeadListCols()).or(orFilterLeads).order('created_at',{ascending:false}).limit(LEADS_TABLE_CAP)
+    ]);
+    totalLeads=cLeadsRes.count||0;
+    leads=amostraRes.data||[];
+
+    let fechCount=0;
+    if(memberIdsArr.length){
+      const{count:c1}=await sb.from('crm_vendas').select('id',{count:'exact',head:true}).eq('status_venda','Aprovado').in('vendedor_id',memberIdsArr);
+      fechCount+=c1||0;
+    }
+    // Vendas aprovadas legadas sem vendedor_id preenchido — cruza pelo lead_id com a equipe
+    // (mesma lógica do _supervisorLeadOwnerMap, só que consultando o banco em vez do cache local)
+    const{data:legadoRows}=await sb.from('crm_vendas').select('id,lead_id').eq('status_venda','Aprovado').is('vendedor_id',null);
+    const legadoLeadIds=(legadoRows||[]).map(r=>r.lead_id).filter(Boolean);
+    if(legadoLeadIds.length){
+      const{data:legadoNaEquipe}=await sb.from('crm_leads').select('id').in('id',legadoLeadIds).or(orFilterLeads);
+      fechCount+=(legadoNaEquipe||[]).length;
+    }
+    fechados=fechCount;
+  }catch(e){
+    console.warn('[openEquipeDetail] contagem ao vivo falhou, caindo pro cache local (pode divergir do real):',e.message);
+    toast('Não consegui confirmar os números no banco agora — mostrando estimativa do cache local.','err');
+    leads=allLeads.filter(l=>l.equipe_id===id||(!l.equipe_id&&l.responsavel_id&&membroIds.has(l.responsavel_id)));
+    totalLeads=leads.length;
+    fechados=allVendas.filter(v=>{
+      const ownerViaMap=_supervisorLeadOwnerMap.get(v.lead_id);
+      return(membroIds.has(ownerViaMap)||membroIds.has(v.vendedor_id))&&v.status_venda==='Aprovado';
+    }).length;
+  }
 
   document.getElementById('equipe-detail-wrap').innerHTML=`
     <div class="panel">
@@ -8954,7 +8989,7 @@ async function openEquipeDetail(id){
         </div>
         <div style="padding:14px 20px;border-right:1px solid var(--border)">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:4px">Total Leads</div>
-          <div style="font-size:22px;font-weight:900">${leads.length}</div>
+          <div style="font-size:22px;font-weight:900">${totalLeads.toLocaleString('pt-BR')}</div>
         </div>
         <div style="padding:14px 20px">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:4px">Fechamentos</div>
@@ -9001,7 +9036,7 @@ async function openEquipeDetail(id){
     </div>
 
     <div class="panel" style="margin-top:0">
-      <div class="panel-head"><div class="panel-title">📋 Leads da Equipe</div></div>
+      <div class="panel-head"><div class="panel-title">📋 Leads da Equipe${totalLeads>leads.length?` <span style="font-size:10px;color:var(--muted2);font-weight:400">(mostrando os ${leads.length} mais recentes de ${totalLeads.toLocaleString('pt-BR')})</span>`:''}</div></div>
       <div class="tbl-wrap">
         <table><thead><tr><th>Nome</th><th>Interesse</th><th>Status</th><th>Vendedor</th></tr></thead>
         <tbody>
@@ -9020,7 +9055,6 @@ async function openEquipeDetail(id){
       </div>
     </div>
   `;
-  nav('equipe-detail',null);
 }
 
 function openAddMembro(equipeId){
