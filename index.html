@@ -123,6 +123,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .b-pend{background:#1a1505;color:var(--orange)}
 .b-aprov{background:#0a1f0a;color:var(--green)}
 .b-canc{background:#1f0a0a;color:var(--red)}
+.b-semret{background:#2a0505;color:#ff4d4d;border:1px solid rgba(255,77,77,.4)}
 
 /* ACTION BTNS */
 .act{background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:5px;padding:4px 9px;font-size:11px;cursor:pointer;font-family:inherit;transition:all .13s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;line-height:1.4}
@@ -3814,7 +3815,7 @@ async function openDetail(id,from){
   // Venda se existir
   if(venda){
     html+=`<div style="padding:16px 18px;border-bottom:1px solid var(--border)">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">🏦 Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':'b-pend'}">${venda.status_venda||'Pendente'}</span></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">🏦 Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':venda.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${venda.status_venda==='SemRetorno'?'🚫 Sem Retorno':(venda.status_venda||'Pendente')}</span></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12.5px">
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">CPF</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Nascimento</div><strong>${venda.data_nascimento?fmtDateStr(venda.data_nascimento):'—'}</strong></div>
@@ -3840,6 +3841,7 @@ async function openDetail(id,from){
         ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">✅ Aprovar</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">✅ Aprovado</span>'}
         ${venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">❌ Cancelar</button>`:'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">❌ Cancelado</span>'}
         <button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">↩ Reverter para Lead</button>
+        ${venda.status_venda!=='SemRetorno'?`<button class="act red" onclick="marcarVendaSemRetorno('${venda.id}')">🚫 Venda Sem Retorno</button>`:''}
       </div>`:''}
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">📝 Anotações da Venda</div>
@@ -3847,6 +3849,16 @@ async function openDetail(id,from){
           placeholder="Adicione anotações sobre esta venda..."
           onblur="saveVendaNotas('${venda.id}',this.value)">${venda.observacoes||''}</textarea>
         <div style="font-size:10px;color:var(--muted2);margin-top:4px">Salvo automaticamente ao sair do campo</div>
+      </div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">💬 Comentários e anexos</div>
+        <div id="venda-comentarios-list" style="margin-bottom:10px">Carregando...</div>
+        <textarea id="novo-comentario-${venda.id}" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:12.5px;font-family:inherit;outline:none;resize:vertical;min-height:56px"
+          placeholder="Escreva um comentário..."></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+          <input type="file" id="anexo-comentario-${venda.id}" style="font-size:11px;flex:1" accept="image/*,application/pdf">
+          <button class="act" onclick="addVendaComentario('${venda.id}','${lead?.id||''}',document.getElementById('novo-comentario-${venda.id}').value,document.getElementById('anexo-comentario-${venda.id}').files[0]);document.getElementById('novo-comentario-${venda.id}').value='';document.getElementById('anexo-comentario-${venda.id}').value='';">Enviar</button>
+        </div>
       </div>
     </div>`;
   }
@@ -3988,6 +4000,7 @@ async function openDetail(id,from){
 
   document.getElementById('lead-detail-wrap').innerHTML=html;
   nav('lead-detail',null);
+  if(venda) renderComentariosVenda(venda.id);
 }
 
 function goBackLeads(){
@@ -5000,6 +5013,19 @@ async function saveVenda(){
   const lead=allLeads.find(l=>l.id===vendaLeadId);
   const qtdCotas = Math.max(1, parseInt(v('v-qtd-cotas'))||1);
 
+  // ── Checagem de "Venda Sem Retorno" (só em venda NOVA, não em edição) ──
+  // Se o telefone ou nome do lead bater com algum bloqueio ativo (status
+  // 'pendente' ou 'negado'), a venda não é criada até um admin (sozinho)
+  // ou 2 coordenadores diferentes aprovarem uma justificativa.
+  if(!existingV){
+    const bloqueado = await verificarBloqueioAntesDeSalvar(lead?.nome, lead?.telefone);
+    if(bloqueado.bloqueado){
+      toast('🚫 Esse cliente está marcado como "Venda Sem Retorno" ('+bloqueado.motivo+'). É preciso justificativa + aprovação de admin ou 2 coordenadores antes de prosseguir.','err');
+      await abrirSolicitacaoDesbloqueio(vendaLeadId, lead);
+      return;
+    }
+  }
+
   // Busca responsavel_id do banco (não do cache) para evitar vendedor_id errado
   // quando admin abre venda de lead recém-atribuído que ainda não atualizou em memória
   let vendedorId = lead?.responsavel_id || null;
@@ -5044,6 +5070,16 @@ async function saveVenda(){
     if(error){toast('Erro ao salvar venda: '+error.message,'err');return;}
     vd=ins;
     if(vd) allVendas.unshift(vd);
+    // Log de criação — data/hora registrada via criado_em (default now()) do
+    // próprio crm_historico. Segue o mesmo padrão de updateVendaStatus, que
+    // já loga aprovação/cancelamento; só faltava logar a criação em si.
+    if(vd && vendaLeadId){
+      await sb.from('crm_historico').insert({
+        lead_id:vendaLeadId, user_id:CU.id,
+        tipo:'🏦 Venda registrada',
+        descricao:`Venda registrada por ${CUProfile?.name||CU.email}. Crédito: ${vd.valor_credito?'R$ '+Number(vd.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}.`
+      }).catch(e=>console.warn('[saveVenda] log criação falhou:',e.message));
+    }
   }
 
   // ── Guarda de segurança: vd deve ter id antes de qualquer upload ──
@@ -5442,6 +5478,234 @@ function checaVendaSemRetorno(telefone, nome, listaBloqueios){
   }
   return {bloqueado:false};
 }
+
+// ═══════════════════════════════════════════════════════════
+// VENDA SEM RETORNO — bloqueio, justificativa e aprovação
+// (admin aprova sozinho; coordenador precisa de 2 diferentes)
+// ═══════════════════════════════════════════════════════════
+
+// Busca sempre fresco do banco (não usa cache local) porque isso é uma
+// checagem de segurança/bloqueio — prefiro uma query a mais por venda
+// salva do que arriscar checar contra uma lista desatualizada.
+// Considera bloqueio ATIVO status 'pendente' ou 'negado'; 'aprovado'
+// significa que a exceção foi concedida e não bloqueia mais.
+async function buscarBloqueiosAtivos(){
+  const{data,error}=await sb.from('crm_venda_bloqueios')
+    .select('*').in('status',['pendente','negado']);
+  if(error){ console.warn('[buscarBloqueiosAtivos] erro:',error.message); return []; }
+  return data||[];
+}
+
+async function verificarBloqueioAntesDeSalvar(nome, telefone){
+  const ativos = await buscarBloqueiosAtivos();
+  return checaVendaSemRetorno(telefone, nome, ativos);
+}
+
+// Abre um prompt simples pedindo a justificativa e cria o registro de
+// bloqueio pendente de aprovação. Usa prompt() nativo do navegador —
+// funcional, mas é o ponto mais fácil de trocar por um modal com a
+// mesma cara do resto do sistema, se preferir depois.
+async function abrirSolicitacaoDesbloqueio(leadId, lead){
+  const justificativa = prompt('Esse cliente está bloqueado como "Venda Sem Retorno".\nDescreva a justificativa para solicitar aprovação (admin ou 2 coordenadores):');
+  if(!justificativa || !justificativa.trim()){
+    toast('Solicitação cancelada — justificativa é obrigatória.','err');
+    return;
+  }
+  const{data,error}=await sb.from('crm_venda_bloqueios').insert({
+    telefone: lead?.telefone||null,
+    nome: lead?.nome||null,
+    lead_id: leadId,
+    justificativa: justificativa.trim(),
+    status:'pendente',
+    criado_por: CU.id
+  }).select().maybeSingle();
+  if(error){ toast('Erro ao registrar solicitação: '+error.message,'err'); return; }
+  toast('Solicitação enviada. Aguardando aprovação de admin ou 2 coordenadores.','ok');
+  // Log no histórico do lead, seguindo o mesmo padrão usado em updateVendaStatus
+  await sb.from('crm_historico').insert({
+    lead_id:leadId, user_id:CU.id,
+    tipo:'🚫 Solicitação de desbloqueio',
+    descricao:`${CUProfile?.name||CU.email} solicitou desbloqueio de "Venda Sem Retorno". Justificativa: ${justificativa.trim()}`
+  }).catch(()=>{});
+}
+
+// Marca uma venda JÁ EXISTENTE como "Venda Sem Retorno" (ação manual,
+// ex: um botão na tela de detalhe da venda). Diferente do fluxo acima,
+// que é acionado automaticamente ao tentar criar uma venda NOVA pra
+// um cliente já bloqueado.
+async function marcarVendaSemRetorno(vendaId){
+  const justificativa = prompt('Motivo para marcar esta venda como "Venda Sem Retorno":');
+  if(!justificativa || !justificativa.trim()){
+    toast('Ação cancelada — motivo é obrigatório.','err');
+    return;
+  }
+  const venda = allVendas.find(vv=>vv.id===vendaId);
+  const lead = venda ? allLeads.find(l=>l.id===venda.lead_id) : null;
+
+  const{error:errBloq}=await sb.from('crm_venda_bloqueios').insert({
+    telefone: lead?.telefone||null, nome: lead?.nome||null,
+    lead_id: venda?.lead_id||null, venda_id: vendaId,
+    justificativa: justificativa.trim(), status:'pendente', criado_por: CU.id
+  });
+  if(errBloq){ toast('Erro ao registrar bloqueio: '+errBloq.message,'err'); return; }
+
+  const{error}=await sb.from('crm_vendas').update({status_venda:'SemRetorno'}).eq('id',vendaId);
+  if(error){ toast('Erro ao atualizar status da venda: '+error.message,'err'); return; }
+  const i=allVendas.findIndex(vv=>vv.id===vendaId);
+  if(i>-1) allVendas[i].status_venda='SemRetorno';
+
+  if(venda?.lead_id){
+    await sb.from('crm_historico').insert({
+      lead_id:venda.lead_id, user_id:CU.id,
+      tipo:'🚫 Venda Sem Retorno',
+      descricao:`${CUProfile?.name||CU.email} marcou esta venda como Sem Retorno. Motivo: ${justificativa.trim()}`
+    }).catch(()=>{});
+  }
+  toast('Venda marcada como Sem Retorno.','ok');
+  renderVendasPage();
+}
+
+// Aprova um bloqueio pendente. Admin aprova sozinho (1 clique resolve).
+// Coordenador precisa que 2 coordenadores DIFERENTES aprovem — a unicidade
+// (bloqueio_id, user_id) na tabela crm_venda_bloqueio_aprovacoes impede
+// que o mesmo coordenador conte duas vezes.
+async function aprovarBloqueio(bloqueioId){
+  if(!isAdmin() && !isCoordenador() && !isCEO()){
+    toast('Você não tem permissão para aprovar este desbloqueio.','err');
+    return;
+  }
+
+  if(isAdmin()||isCEO()){
+    const{error}=await sb.from('crm_venda_bloqueios')
+      .update({status:'aprovado', resolvido_em:new Date().toISOString()}).eq('id',bloqueioId);
+    if(error){ toast('Erro ao aprovar: '+error.message,'err'); return; }
+    toast('Desbloqueio aprovado.','ok');
+    renderBloqueiosPendentes();
+    return;
+  }
+
+  // Coordenador: registra o voto dele; só libera ao atingir 2 diferentes.
+  const{error:errVoto}=await sb.from('crm_venda_bloqueio_aprovacoes').insert({
+    bloqueio_id:bloqueioId, user_id:CU.id, role:'coordenador'
+  });
+  if(errVoto){
+    // Violação de UNIQUE(bloqueio_id, user_id) = esse coordenador já votou nesse bloqueio
+    if(errVoto.code==='23505'){ toast('Você já aprovou este desbloqueio — falta outro coordenador.','err'); }
+    else{ toast('Erro ao registrar aprovação: '+errVoto.message,'err'); }
+    return;
+  }
+
+  const{count}=await sb.from('crm_venda_bloqueio_aprovacoes')
+    .select('*',{count:'exact',head:true}).eq('bloqueio_id',bloqueioId);
+
+  if((count||0)>=2){
+    const{error}=await sb.from('crm_venda_bloqueios')
+      .update({status:'aprovado', resolvido_em:new Date().toISOString()}).eq('id',bloqueioId);
+    if(error){ toast('Erro ao finalizar aprovação: '+error.message,'err'); return; }
+    toast('2ª aprovação registrada — desbloqueio liberado.','ok');
+  } else {
+    toast('Sua aprovação foi registrada. Falta mais 1 coordenador diferente.','ok');
+  }
+  renderBloqueiosPendentes();
+}
+
+async function negarBloqueio(bloqueioId){
+  if(!isAdmin() && !isCoordenador() && !isCEO()){
+    toast('Você não tem permissão para negar este desbloqueio.','err');
+    return;
+  }
+  const{error}=await sb.from('crm_venda_bloqueios')
+    .update({status:'negado', resolvido_em:new Date().toISOString()}).eq('id',bloqueioId);
+  if(error){ toast('Erro ao negar: '+error.message,'err'); return; }
+  toast('Solicitação negada.','ok');
+  renderBloqueiosPendentes();
+}
+
+// Renderiza a lista de bloqueios pendentes dentro da aba "Venda Sem Retorno".
+// Assume um container com id="vp-bloqueios-list" na página de vendas — se
+// esse elemento não existir ainda no HTML, essa função não quebra nada
+// (só não desenha nada), mas o card de solicitações pendentes só aparece
+// depois de adicionar esse container no HTML da aba.
+async function renderBloqueiosPendentes(){
+  const el=document.getElementById('vp-bloqueios-list');
+  if(!el) return;
+  const{data,error}=await sb.from('crm_venda_bloqueios').select('*').eq('status','pendente').order('criado_em',{ascending:false});
+  if(error){ el.innerHTML='<div class="empty">Erro ao carregar solicitações.</div>'; return; }
+  if(!data||!data.length){ el.innerHTML='<div class="empty">Nenhuma solicitação pendente.</div>'; return; }
+
+  const aprovacoesPorBloqueio={};
+  for(const b of data){
+    const{data:votos}=await sb.from('crm_venda_bloqueio_aprovacoes').select('user_id').eq('bloqueio_id',b.id);
+    aprovacoesPorBloqueio[b.id]=(votos||[]).length;
+  }
+
+  el.innerHTML = data.map(b=>{
+    const solicitante=findUser(b.criado_por)?.name||'—';
+    const votos=aprovacoesPorBloqueio[b.id]||0;
+    return `<div class="card" style="margin-bottom:10px;padding:14px">
+      <div style="font-weight:700;color:var(--red)">🚫 ${b.nome||'Sem nome'} · ${b.telefone||'Sem telefone'}</div>
+      <div style="font-size:12px;color:var(--muted);margin:6px 0">Solicitado por ${solicitante} em ${fmtDt(b.criado_em)}</div>
+      <div style="font-size:13px;margin-bottom:10px">${(b.justificativa||'').replace(/</g,'&lt;')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Aprovações de coordenador: ${votos}/2 (admin pode aprovar sozinho)</div>
+      <div style="display:flex;gap:8px">
+        <button class="act green" onclick="aprovarBloqueio('${b.id}')">✅ Aprovar</button>
+        <button class="act red" onclick="negarBloqueio('${b.id}')">❌ Negar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// COMENTÁRIOS DA VENDA (com anexo opcional) — reaproveita o bucket
+// de storage 'crm-documentos' já existente, mas grava em tabela própria
+// (crm_venda_comentarios) porque um comentário pode ser só texto.
+// ═══════════════════════════════════════════════════════════
+
+async function addVendaComentario(vendaId, leadId, texto, file){
+  if(!texto?.trim() && !file){
+    toast('Escreva um comentário ou anexe um arquivo.','err');
+    return;
+  }
+  let anexoPath=null, anexoNome=null, anexoTipo=null;
+  if(file){
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80);
+    const uniq=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    anexoPath=`comentarios/${vendaId}/${uniq}-${safeName}`;
+    const{error:upErr}=await sb.storage.from('crm-documentos').upload(anexoPath,file,{upsert:false});
+    if(upErr){ toast('Erro ao enviar anexo: '+upErr.message,'err'); return; }
+    anexoNome=file.name;
+    anexoTipo=file.type==='application/pdf'?'pdf':'imagem';
+  }
+  const{error}=await sb.from('crm_venda_comentarios').insert({
+    venda_id:vendaId, lead_id:leadId||null, user_id:CU.id,
+    comentario:texto?.trim()||null,
+    anexo_storage_path:anexoPath, anexo_nome:anexoNome, anexo_tipo:anexoTipo
+  });
+  if(error){ toast('Erro ao salvar comentário: '+error.message,'err'); return; }
+  toast('Comentário adicionado.','ok');
+  renderComentariosVenda(vendaId);
+}
+
+async function renderComentariosVenda(vendaId){
+  const el=document.getElementById('venda-comentarios-list');
+  if(!el) return;
+  const{data,error}=await sb.from('crm_venda_comentarios').select('*').eq('venda_id',vendaId).order('criado_em',{ascending:true});
+  if(error){ el.innerHTML='<div class="empty">Erro ao carregar comentários.</div>'; return; }
+  if(!data||!data.length){ el.innerHTML='<div class="empty">Nenhum comentário ainda.</div>'; return; }
+
+  el.innerHTML = data.map(c=>{
+    const autor=findUser(c.user_id)?.name||'—';
+    const anexoHtml = c.anexo_storage_path
+      ? `<div style="margin-top:6px"><button class="act" onclick="downloadDoc('${c.anexo_storage_path}','${escJs(c.anexo_nome||'anexo')}')">⬇️ ${c.anexo_nome||'Anexo'}</button></div>`
+      : '';
+    return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
+      <div style="font-size:12px;font-weight:700;color:var(--gold2)">${autor} <span style="font-weight:400;color:var(--muted)">· ${fmtDt(c.criado_em)}</span></div>
+      ${c.comentario?`<div style="font-size:13px;margin-top:4px">${c.comentario.replace(/</g,'&lt;')}</div>`:''}
+      ${anexoHtml}
+    </div>`;
+  }).join('');
+}
+
 function fmtDt(iso){if(!iso)return'—';return new Date(iso).toLocaleDateString('pt-BR');}
 function fmtDateStr(s){if(!s)return'';const[y,m,d]=s.split('-');return`${d}/${m}/${y}`;}
 function fmtSize(b){if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
@@ -5829,7 +6093,7 @@ async function renderVendasPage(){
   tbody.innerHTML=vendas.map(v=>{
     const lead=allLeads.find(l=>l.id===v.lead_id);
     const vendedor=allUsers.find(u=>u.user_id===v.vendedor_id);
-    const badgeCls=v.status_venda==='Aprovado'?'b-aprov':v.status_venda==='Cancelado'?'b-canc':'b-pend';
+    const badgeCls=v.status_venda==='Aprovado'?'b-aprov':v.status_venda==='Cancelado'?'b-canc':v.status_venda==='SemRetorno'?'b-semret':'b-pend';
     const canManage=isAdmin()||isCoordenador();
     // Se o lead não está em allLeads (ex: coordenador vendo venda de lead fora do escopo carregado em memória),
     // NÃO mostramos o CPF como nome — buscamos o nome real on-demand (1x, com cache) e atualizamos a célula.
@@ -5848,7 +6112,7 @@ async function renderVendasPage(){
       <td style="color:var(--gold2);font-weight:700">${v.valor_credito?brl(v.valor_credito):'—'}</td>
       <td style="font-size:11.5px">${v.parcela?brl(v.parcela):'—'}</td>
       <td style="color:var(--muted2);font-size:11px">${v.grupo||'—'} / ${v.cota||'—'}</td>
-      <td><span class="badge ${badgeCls}">${v.status_venda||'Pendente'}</span></td>
+      <td><span class="badge ${badgeCls}">${v.status_venda==='SemRetorno'?'🚫 Sem Retorno':(v.status_venda||'Pendente')}</span></td>
       <td style="color:var(--muted2);font-size:11px">${fmtDt(v.created_at)}</td>
       <td>
         ${canManage?`<div style="display:flex;gap:4px">
