@@ -3840,6 +3840,7 @@ async function openDetail(id,from){
       ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">✅ Aprovar</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">✅ Aprovado</span>'}
         ${venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">❌ Cancelar</button>`:'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">❌ Cancelado</span>'}
+        ${venda.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${venda.id}','Pendente')">⏳ Voltar para Pendente</button>`:''}
         <button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">↩ Reverter para Lead</button>
         ${venda.status_venda!=='SemRetorno'?`<button class="act red" onclick="marcarVendaSemRetorno('${venda.id}')">🚫 Venda Sem Retorno</button>`:''}
       </div>`:''}
@@ -5213,13 +5214,20 @@ async function updateVendaStatus(id,status){
   const vendaAntes=allVendas[i]; // referência ao objeto para pegar lead_id etc.
   if(i>-1) allVendas[i].status_venda=status;
 
-  // Registra no histórico do lead
+  // Registra no histórico do lead — cobre QUALQUER transição de status
+  // (Aprovado, Cancelado, Pendente, SemRetorno), não só as duas originais.
   if(vendaAntes?.lead_id){
-    const emoji=status==='Aprovado'?'✅':'❌';
+    const STATUS_INFO={
+      'Aprovado':  {emoji:'✅', label:'aprovada'},
+      'Cancelado': {emoji:'❌', label:'cancelada (reprovada pós vendas)'},
+      'Pendente':  {emoji:'⏳', label:'revertida para pendente'},
+      'SemRetorno':{emoji:'🚫', label:'marcada como Sem Retorno'},
+    };
+    const info = STATUS_INFO[status] || {emoji:'ℹ️', label:status};
     await sb.from('crm_historico').insert({
       lead_id:vendaAntes.lead_id,user_id:CU.id,
-      tipo:`${emoji} Venda ${status}`,
-      descricao:`Venda ${status==='Aprovado'?'aprovada':'cancelada'} por ${CUProfile?.name||CU.email}. Crédito: ${vendaAntes.valor_credito?'R$ '+Number(vendaAntes.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}.`,
+      tipo:`${info.emoji} Venda ${status}`,
+      descricao:`Venda ${info.label} por ${CUProfile?.name||CU.email}. Crédito: ${vendaAntes.valor_credito?'R$ '+Number(vendaAntes.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}. Status anterior: ${statusAnterior||'Pendente'}.`,
       created_at:new Date().toISOString()
     });
     const{data:hVs}=await sb.from('crm_historico').select('*').eq('lead_id',vendaAntes.lead_id).order('created_at',{ascending:false});
@@ -6118,6 +6126,7 @@ async function renderVendasPage(){
         ${canManage?`<div style="display:flex;gap:4px">
           ${v.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${v.id}','Aprovado')">✅</button>`:''}
           ${v.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${v.id}','Cancelado')">❌</button>`:''}
+          ${v.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${v.id}','Pendente')" title="Voltar para Pendente">⏳</button>`:''}
           <button class="act" onclick="revertVenda('${v.id}','${v.lead_id}')" style="border-color:var(--orange);color:var(--orange)" title="Reverter">↩</button>
         </div>`:'<button class="act" onclick="openDetail(\''+v.lead_id+'\',\'vendas\')">Ver →</button>'}
       </td>
