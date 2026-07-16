@@ -740,9 +740,10 @@ document.addEventListener('DOMContentLoaded', function(){
     <div class="filter-bar">
       <div style="display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
         <button id="vp-btn-todos" class="tab on" onclick="setVendasFilter('todos')">Todas</button>
-        <button id="vp-btn-Aprovado" class="tab" onclick="setVendasFilter('Aprovado')">✅ Aprovadas</button>
+        <button id="vp-btn-Aprovado" class="tab" onclick="setVendasFilter('Aprovado')">✅ Aprovado Pós Vendas</button>
         <button id="vp-btn-Pendente" class="tab" onclick="setVendasFilter('Pendente')">⏳ Pendentes</button>
-        <button id="vp-btn-Cancelado" class="tab" onclick="setVendasFilter('Cancelado')">❌ Canceladas</button>
+        <button id="vp-btn-Cancelado" class="tab" onclick="setVendasFilter('Cancelado')">❌ Reprovado Pós Vendas</button>
+        <button id="vp-btn-SemRetorno" class="tab" onclick="setVendasFilter('SemRetorno')" style="display:none;color:var(--red)">🚫 Venda Sem Retorno</button>
       </div>
       <select id="vp-f-tipo" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
         <option value="">Novo + Remalho</option>
@@ -5356,6 +5357,91 @@ function sv(id,val){const e=document.getElementById(id);if(e)e.value=val;}
 // quebra o atributo inline e gera "Uncaught SyntaxError: missing ) after argument list",
 // travando a página inteira silenciosamente para quem abrir aquele card/lead.
 function escJs(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+
+// ── Normalização de telefone e nome para detecção de duplicata ──
+// Usado para checar se um número/nome já está bloqueado como "Venda Sem
+// Retorno", cobrindo variações de formatação (DDI, DDD, zeros à esquerda,
+// prefixo "p+", espaços/traços/parênteses) e de nome (maiúsculas/minúsculas,
+// emojis, acentos, nomes com números misturados, ordem de nome/sobrenome).
+//
+// IMPORTANTE — limitação conhecida: normalizar para "os últimos 8 dígitos"
+// é a forma prática de casar variações de DDI/DDD, mas isso também pode gerar
+// falso-positivo se dois clientes diferentes, em cidades diferentes, tiverem
+// os últimos 8 dígitos do celular iguais por coincidência (raro, mas possível
+// matematicamente). O comparador de nome (Jaro-Winkler simplificado abaixo)
+// é ainda mais sujeito a falso-positivo com nomes curtos/comuns. Por isso o
+// desbloqueio via justificativa + aprovação dupla (Parte 3) é o que evita que
+// isso vire um bloqueio permanente errado.
+function normalizarTelefone(raw){
+  if(!raw) return '';
+  // Remove tudo que não é dígito (isso já elimina "p+", espaços, traços, parênteses)
+  let digits=String(raw).replace(/\D/g,'');
+  // Remove DDI 55 (Brasil) do início, se vier com ele
+  if(digits.length>=12 && digits.startsWith('55')) digits=digits.slice(2);
+  // Remove zero de discagem à esquerda, se houver (ex: 031982523132)
+  digits=digits.replace(/^0+/,'');
+  // Fica só com os últimos 8 dígitos (número local, sem DDD e sem o 9º dígito)
+  // como chave de comparação. Usar 8 em vez de 9 é o que faz "31982523132",
+  // "3182523132" (sem o 9) e "982523132" (sem DDD) caírem na mesma chave.
+  return digits.slice(-8);
+}
+
+function normalizarNome(raw){
+  if(!raw) return '';
+  const CONECTIVOS=new Set(['de','da','do','dos','das','e']);
+  return String(raw)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove acentos
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu,'') // remove emojis
+    .replace(/[^a-zA-Z\s]/g,' ') // remove números e símbolos misturados no nome
+    .toLowerCase()
+    .split(/\s+/).filter(Boolean)
+    .filter(w=>!CONECTIVOS.has(w)) // ignora "da", "de", "dos" etc — evita falso-negativo
+    .sort() // ordena as palavras — casa "João Silva" com "Silva João"
+    .join(' ')
+    .trim();
+}
+
+// Compara dois nomes já normalizados com tolerância a pequenas diferenças
+// (plural, erro de digitação leve). Retorna true se forem "parecidos o
+// suficiente" pra considerar o mesmo cliente.
+function nomesSaoParecidos(nomeA,nomeB){
+  const a=normalizarNome(nomeA), b=normalizarNome(nomeB);
+  if(!a||!b) return false;
+  if(a===b) return true;
+  // Distância de Levenshtein simples — tolera diferença de até ~15% do tamanho
+  const dist=levenshtein(a,b);
+  const maxLen=Math.max(a.length,b.length);
+  return dist<=Math.ceil(maxLen*0.15);
+}
+
+function levenshtein(a,b){
+  const m=a.length,n=b.length;
+  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=0;i<=m;i++) dp[i][0]=i;
+  for(let j=0;j<=n;j++) dp[0][j]=j;
+  for(let i=1;i<=m;i++){
+    for(let j=1;j<=n;j++){
+      dp[i][j]=a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j-1],dp[i-1][j],dp[i][j-1]);
+    }
+  }
+  return dp[m][n];
+}
+
+// Verifica se um telefone e/ou nome batem com algum registro já marcado como
+// "Venda Sem Retorno". listaBloqueios é um array de objetos {telefone, nome}
+// vindo da tabela ainda a ser criada (ver proposta de migração — Parte 3).
+function checaVendaSemRetorno(telefone, nome, listaBloqueios){
+  const telNorm=normalizarTelefone(telefone);
+  for(const b of (listaBloqueios||[])){
+    const bTelNorm=normalizarTelefone(b.telefone);
+    const telBate = telNorm && bTelNorm && telNorm===bTelNorm;
+    const nomeBate = nomesSaoParecidos(nome,b.nome);
+    if(telBate || nomeBate){
+      return {bloqueado:true, motivo: telBate?'telefone':'nome', registro:b};
+    }
+  }
+  return {bloqueado:false};
+}
 function fmtDt(iso){if(!iso)return'—';return new Date(iso).toLocaleDateString('pt-BR');}
 function fmtDateStr(s){if(!s)return'';const[y,m,d]=s.split('-');return`${d}/${m}/${y}`;}
 function fmtSize(b){if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
@@ -5605,13 +5691,17 @@ function openVendasPage(status){
   _vendasFilter=status||'todos';
   nav('vendas',null);
   renderNav();
+  // A aba "Venda Sem Retorno" só aparece pra quem pode aprovar o desbloqueio
+  // (admin, CEO ou coordenador). Vendedor e supervisor não veem essa aba.
+  const btnSemRetorno=document.getElementById('vp-btn-SemRetorno');
+  if(btnSemRetorno) btnSemRetorno.style.display=(isAdmin()||isCEO()||isCoordenador())?'inline-flex':'none';
   renderVendasPage();
 }
 
 function setVendasFilter(status){
   _vendasFilter=status;
   // Update tab buttons
-  ['todos','Aprovado','Pendente','Cancelado'].forEach(s=>{
+  ['todos','Aprovado','Pendente','Cancelado','SemRetorno'].forEach(s=>{
     const btn=document.getElementById('vp-btn-'+s);
     if(btn) btn.classList.toggle('on',s===status);
   });
@@ -5724,7 +5814,7 @@ async function renderVendasPage(){
   });
 
   const scopeLabel=isAdmin()||isCoordenador()?'— Todos os Vendedores':isSupervisor()?'— Minha Equipe':'— Minhas Vendas';
-  const title=_vendasFilter==='todos'?`Todas as Vendas`:_vendasFilter==='Aprovado'?'Vendas Aprovadas':_vendasFilter==='Cancelado'?'Cancelamentos':'Vendas Pendentes';
+  const title=_vendasFilter==='todos'?`Todas as Vendas`:_vendasFilter==='Aprovado'?'Aprovado Pós Vendas':_vendasFilter==='Cancelado'?'Reprovado Pós Vendas':_vendasFilter==='SemRetorno'?'Venda Sem Retorno':'Vendas Pendentes';
   const el=document.getElementById('vp-title');
   if(el) el.textContent=`${title} ${scopeLabel} — ${vendas.length}`;
 
@@ -5732,7 +5822,7 @@ async function renderVendasPage(){
   if(!tbody) return;
 
   if(vendas.length===0){
-    tbody.innerHTML=`<tr><td colspan="8"><div class="empty"><div class="ei">${_vendasFilter==='Aprovado'?'✅':_vendasFilter==='Cancelado'?'❌':'🏦'}</div>Nenhuma venda encontrada</div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="8"><div class="empty"><div class="ei">${_vendasFilter==='Aprovado'?'✅':_vendasFilter==='Cancelado'?'❌':_vendasFilter==='SemRetorno'?'🚫':'🏦'}</div>Nenhuma venda encontrada</div></td></tr>`;
     return;
   }
 
