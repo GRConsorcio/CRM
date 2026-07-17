@@ -2881,7 +2881,15 @@ function populateSelects(){
   // usuário ser perdido sozinho, mesmo com a página filtrada (ex: Perdidos + vendedor).
   const respFilter='<option value="">Todos os vendedores</option>'+vendOpts;
   const lf=document.getElementById('l-f-resp');
-  if(lf){ const curResp=lf.value; lf.innerHTML=respFilter; if(curResp) lf.value=curResp; }
+  if(lf){
+    const curResp=lf.value;
+    // Opção extra "Sem vendedor" só nesse filtro — não usa respFilter puro
+    // porque essa mesma string é reaproveitada no filtro de vendedor da aba
+    // Vendas (vp-f-vendedor), onde "sem vendedor" não faz sentido (toda
+    // venda sempre tem um vendedor_id, com fallback pro usuário logado).
+    lf.innerHTML='<option value="">Todos os vendedores</option><option value="__sem__">🚫 Sem vendedor</option>'+vendOpts;
+    if(curResp) lf.value=curResp;
+  }
   // Filtro de vendedor na aba de Vendas — mesma lista, preserva seleção
   const vpResp=document.getElementById('vp-f-vendedor');
   if(vpResp){ const curV=vpResp.value; vpResp.innerHTML=respFilter; if(curV) vpResp.value=curV; }
@@ -3349,7 +3357,8 @@ function renderLeads(resetPage){
   const f=allLeads.filter(l=>{
     if(q){const qd=q.replace(/[^0-9]/g,'');const match=l.nome.toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q)||(l.email||'').toLowerCase().includes(q)||(l.observacoes||'').toLowerCase().includes(q)||(qd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(qd));if(!match)return false;}
     if(fs&&l.status!==fs)return false;
-    if(fr&&l.responsavel_id!==fr)return false;
+    if(fr==='__sem__'&&l.responsavel_id!=null)return false;
+    if(fr&&fr!=='__sem__'&&l.responsavel_id!==fr)return false;
     if(fo==='__sem__'&&l.responsavel_id!=null)return false;
     if(fo&&fo!=='__sem__'&&l.responsavel_id!==fo)return false;
     if(fd&&extractDDD(l.telefone)!==fd)return false;
@@ -8724,7 +8733,7 @@ function _popularFiltrosLeadsCeo(){
   const selVend=document.getElementById('lceo-vendedor');
   if(selVend){
     const vendedores=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-    selVend.innerHTML='<option value="">Todos os vendedores</option>'+
+    selVend.innerHTML='<option value="">Todos os vendedores</option><option value="__sem__">🚫 Sem vendedor</option>'+
       vendedores.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
   }
   const selEq=document.getElementById('lceo-equipe');
@@ -8747,7 +8756,8 @@ function renderLeadsCeo(){
   const fData=document.getElementById('lceo-data')?.value||''; // yyyy-mm-dd
   let leads=ceoLeads.filter(l=>{
     if(fStatus&&l.status!==fStatus) return false;
-    if(fVend&&l.responsavel_id!==fVend) return false;
+    if(fVend==='__sem__'&&l.responsavel_id!=null) return false;
+    if(fVend&&fVend!=='__sem__'&&l.responsavel_id!==fVend) return false;
     if(fEquipe&&equipeIdParaLeadCeo(l)!==fEquipe) return false;
     if(fData&&(l.created_at||'').slice(0,10)!==fData) return false;
     return true;
