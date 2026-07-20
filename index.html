@@ -904,7 +904,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
 
       <!-- CSV Import -->
-      <div class="panel">
+      <div class="panel" id="import-csv-panel">
         <div class="panel-head"><div class="panel-title">📊 Importar via CSV</div></div>
         <div class="panel-body">
           <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.7">
@@ -944,6 +944,24 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="panel">
         <div class="panel-head"><div class="panel-title">✏️ Importar via Texto</div></div>
         <div class="panel-body">
+          <!-- Vendedor: campos fixos e obrigatórios, sem escrita livre -->
+          <div id="bulk-structured-block" style="display:none">
+            <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.7">
+              Adicione os contatos um por um — nome e telefone são obrigatórios.
+            </div>
+            <div id="bulk-rows"></div>
+            <button class="btn-sm" style="margin-top:6px" onclick="addBulkRow()">+ Adicionar outro contato</button>
+            <div class="fld" style="margin-top:14px">
+              <label>Origem <span style="color:var(--red)">*</span></label>
+              <input class="inp" id="bulk-origem-vend" placeholder="Ex: Instagram, Indicação, Feirão...">
+            </div>
+            <div id="bulk-structured-status" style="font-size:12px;margin-top:6px"></div>
+            <button class="btn-primary" style="width:100%;margin-top:8px" onclick="importBulkStructured()">
+              ⬆️ Importar lista
+            </button>
+          </div>
+          <!-- Admin/coordenador/supervisor: texto livre, como já era -->
+          <div id="bulk-textarea-block">
           <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.7">
             Cole uma lista de contatos, um por linha:<br>
             <code style="font-size:10.5px;background:var(--surface2);padding:2px 6px;border-radius:4px">Nome | Telefone | Interesse</code>
@@ -968,6 +986,7 @@ document.addEventListener('DOMContentLoaded', function(){
           <button class="btn-primary" style="width:100%;margin-top:8px" onclick="importBulk()">
             ⬆️ Importar lista
           </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2944,6 +2963,42 @@ const ADMIN_LEADS_CAP=12000;
 // Teto de leads carregados/exibidos pro perfil CEO — mesma lógica do ADMIN_LEADS_CAP
 // (controla custo/memória), mas menor porque o CEO só vê Anúncio GR (volume menor).
 const CEO_LEADS_CAP=1000;
+// Contagem REAL de leads (não capada pelo ADMIN_LEADS_CAP) pro dashboard do
+// admin/coordenador. Usa head:true — pede só o número pro Postgres, não traz
+// nenhuma linha, então é bem mais barato que buscar os leads de verdade.
+// Isso resolve o "Total de Leads" mostrando no máximo 12.000 quando a base
+// tem mais que isso: o cache (allLeads) continua limitado por custo, mas o
+// KPI passa a refletir o total de verdade.
+let _leadCountsFetchTimer=null;
+async function refreshLeadCountsExact(fechadosCount){
+  try{
+    const[{count:totalReal,error:e1},{count:semVendReal,error:e2}]=await Promise.all([
+      sb.from('crm_leads').select('*',{count:'exact',head:true}),
+      sb.from('crm_leads').select('*',{count:'exact',head:true}).is('responsavel_id',null)
+    ]);
+    if(e1||e2){ console.warn('[dashboard] erro ao contar leads real:',(e1||e2).message); return; }
+    const totalEl=document.getElementById('kpi-total-leads');
+    if(totalEl&&typeof totalReal==='number') totalEl.textContent=totalReal.toLocaleString('pt-BR');
+    const semVendEl=document.getElementById('kpi-sem-vendedor');
+    if(semVendEl&&typeof semVendReal==='number') semVendEl.textContent=semVendReal.toLocaleString('pt-BR');
+    const convEl=document.getElementById('kpi-conversao');
+    if(convEl&&typeof totalReal==='number'&&typeof fechadosCount==='number'){
+      convEl.textContent=(totalReal?Math.round(fechadosCount/totalReal*100):0)+'%';
+    }
+  }catch(e){
+    console.warn('[dashboard] falha ao buscar contagem exata de leads:',e.message);
+  }
+}
+// Chamada com debounce a partir do realtime de crm_leads — evita disparar uma
+// contagem nova a cada evento quando chega um lote de leads de uma vez.
+function scheduleLeadCountsRefresh(){
+  if(!isAdminOrCoord()) return;
+  clearTimeout(_leadCountsFetchTimer);
+  _leadCountsFetchTimer=setTimeout(()=>{
+    const fechadosNow=allLeads.filter(l=>l.status==='Fechado').length;
+    refreshLeadCountsExact(fechadosNow);
+  },1500);
+}
 function _lastSyncKey(){ return 'crm_last_full_sync_'+(CU?.id||'anon'); }
 function getLastSyncTime(){ try{ return localStorage.getItem(_lastSyncKey()); }catch(e){ return null; } }
 function setLastSyncTime(iso){ try{ localStorage.setItem(_lastSyncKey(), iso||new Date().toISOString()); }catch(e){} }
@@ -3383,13 +3438,13 @@ async function renderDashboard(){
   const vencidas=myTasks.filter(t=>!t.concluida&&t.prazo&&t.prazo<hoje).length;
 
   let kpis=`
-    <div class="kpi"><div class="kpi-label">Total de Leads</div><div class="kpi-val">${total.toLocaleString('pt-BR')}</div></div>
+    <div class="kpi"><div class="kpi-label">Total de Leads</div><div class="kpi-val" id="kpi-total-leads">${total.toLocaleString('pt-BR')}</div></div>
     <div class="kpi"><div class="kpi-label">Fechamentos</div><div class="kpi-val" style="color:var(--green)">${fechados}</div></div>
-    <div class="kpi"><div class="kpi-label">Conversão</div><div class="kpi-val" style="color:var(--gold2)">${total?Math.round(fechados/total*100):0}%</div></div>
+    <div class="kpi"><div class="kpi-label">Conversão</div><div class="kpi-val" style="color:var(--gold2)" id="kpi-conversao">${total?Math.round(fechados/total*100):0}%</div></div>
     <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04);cursor:pointer" onclick="openVendasPage('Aprovado')" title="Ver vendas aprovadas"><div class="kpi-label" style="color:var(--green)">✅ Aprovado Pós Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
     <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04);cursor:pointer" onclick="openVendasPage('Cancelado')" title="Ver cancelamentos"><div class="kpi-label" style="color:var(--red)">❌ Reprovado Pós Vendas</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
     <div class="kpi"><div class="kpi-label">Tarefas Vencidas</div><div class="kpi-val" style="color:${vencidas?'var(--red)':'var(--text)'}">${vencidas}</div></div>`;
-  if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)">${semVend.toLocaleString('pt-BR')}</div></div>`;
+  if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)" id="kpi-sem-vendedor">${semVend.toLocaleString('pt-BR')}</div></div>`;
   // Ranking panel: admin e coordenador veem o painel de colunas
   document.getElementById('dash-cols').style.display=(isAdmin()||isCoordenador()||isSupervisor())?'':'none';
   const adminTools=document.getElementById('dash-admin-tools');
@@ -3404,6 +3459,11 @@ async function renderDashboard(){
     }
   }
   document.getElementById('dash-kpis').innerHTML=kpis;
+  // O "total"/"sem vendedor" acima vem de myLeads/allLeads, que tem teto de
+  // ADMIN_LEADS_CAP por custo de banda — pro admin/coordenador isso mostra um
+  // número truncado quando a base passa do teto. Substitui pelo valor real
+  // assim que a contagem exata (bem mais barata que buscar as linhas) responder.
+  if(isAdminOrCoord()) refreshLeadCountsExact(fechados);
 
   // Ranking de fechamentos — BUGFIX: antes usava allLeads + allUsers sem nenhum escopo,
   // então supervisor via o ranking de fechamentos de TODA a empresa (outras equipes incluídas).
@@ -7742,6 +7802,7 @@ function setupRealtime(){
     ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_leads'},async(payload)=>{
       await syncLead(payload); // syncLead handles INSERT render internally
       if(payload.eventType!=='INSERT') reRenderCurrent(); // UPDATE/DELETE: re-render
+      scheduleLeadCountsRefresh(); // mantém o KPI "Total de Leads" real, não só o do cache
     });
   } else if(isCoordenador()){
     // Coordenador não assina mudanças genéricas de crm_leads (reduziria pra "todo
@@ -7997,8 +8058,21 @@ function reRenderCurrent(){
 let csvParsedLeads=[];
 
 function renderImportar(){
-  // Vendedor: esconde seletor de responsável (vai para si mesmo)
   const isVend = isVendedor();
+  // Vendedor: só pode importar por texto, com Nome+Telefone fixos e Origem
+  // obrigatória — sem CSV, sem campo de escrita livre.
+  const csvPanel=document.getElementById('import-csv-panel');
+  const structBlock=document.getElementById('bulk-structured-block');
+  const textareaBlock=document.getElementById('bulk-textarea-block');
+  if(csvPanel) csvPanel.style.display=isVend?'none':'';
+  if(structBlock) structBlock.style.display=isVend?'':'none';
+  if(textareaBlock) textareaBlock.style.display=isVend?'none':'';
+  if(isVend){
+    const rowsEl=document.getElementById('bulk-rows');
+    if(rowsEl&&!rowsEl.children.length){ addBulkRow(); addBulkRow(); addBulkRow(); }
+    return; // não precisa popular os selects de responsável/tipo abaixo
+  }
+  // Vendedor: esconde seletor de responsável (vai para si mesmo)
   ['csv-resp-wrap','bulk-resp'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.closest('.fld') ? el.closest('.fld').style.display=isVend?'none':'':'';
@@ -8015,6 +8089,75 @@ function renderImportar(){
 
   const csvEl=document.getElementById('csv-resp');
   if(csvEl) csvEl.innerHTML=makeOpts(rafael?.user_id||'');
+}
+
+let _bulkRowSeq=0;
+function addBulkRow(){
+  const rowsEl=document.getElementById('bulk-rows');
+  if(!rowsEl) return;
+  const id=++_bulkRowSeq;
+  const row=document.createElement('div');
+  row.id='bulk-row-'+id;
+  row.style.cssText='display:flex;gap:8px;margin-bottom:8px;align-items:center';
+  row.innerHTML=`
+    <input class="inp" placeholder="Nome *" data-field="nome" style="flex:1.2">
+    <input class="inp" placeholder="Telefone *" data-field="telefone" style="flex:1">
+    <button class="btn-sm" style="border-color:var(--red);color:var(--red);flex-shrink:0" onclick="document.getElementById('bulk-row-${id}').remove()">✕</button>`;
+  rowsEl.appendChild(row);
+}
+
+async function importBulkStructured(){
+  if(!isVendedor()) return;
+  const statusEl=document.getElementById('bulk-structured-status');
+  const origem=document.getElementById('bulk-origem-vend').value.trim();
+  if(!origem){
+    statusEl.style.color='var(--red)';
+    statusEl.textContent='Origem é obrigatória.';
+    return;
+  }
+  const rows=[...document.querySelectorAll('#bulk-rows > div')];
+  const contatos=[];
+  const incompletos=[];
+  rows.forEach((row,i)=>{
+    const nome=row.querySelector('[data-field="nome"]').value.trim();
+    const telefone=row.querySelector('[data-field="telefone"]').value.trim();
+    if(!nome&&!telefone) return; // linha vazia, ignora
+    if(!nome||!telefone){ incompletos.push(i+1); return; }
+    contatos.push({nome,telefone});
+  });
+  if(incompletos.length){
+    statusEl.style.color='var(--red)';
+    statusEl.textContent=`Linha(s) ${incompletos.join(', ')} incompleta(s) — nome e telefone são obrigatórios nas duas.`;
+    return;
+  }
+  if(!contatos.length){
+    statusEl.style.color='var(--red)';
+    statusEl.textContent='Adicione ao menos um contato com nome e telefone.';
+    return;
+  }
+  statusEl.style.color='var(--muted2)';
+  statusEl.textContent='Importando...';
+  // Monta o mesmo formato "Nome | Telefone" que importBulk() já sabe processar,
+  // e reaproveita toda a lógica de inserção/deduplicação existente — sem
+  // duplicar código de gravação no banco.
+  const text=contatos.map(c=>`${c.nome} | ${c.telefone}`).join('\n');
+  const bulkTextEl=document.getElementById('bulk-text');
+  const bulkOrigemEl=document.getElementById('bulk-origem');
+  const bulkTipoEl=document.getElementById('bulk-tipo');
+  const bulkRespEl=document.getElementById('bulk-resp');
+  // Preenche os campos "de bastidor" do modo texto-livre (que ficam ocultos
+  // pro vendedor) só pra reaproveitar importBulk() sem reescrevê-la.
+  if(bulkTextEl) bulkTextEl.value=text;
+  if(bulkOrigemEl) bulkOrigemEl.value=origem;
+  if(bulkTipoEl) bulkTipoEl.value='Novo';
+  if(bulkRespEl) bulkRespEl.value='';
+  await importBulk();
+  // Limpa o formulário estruturado depois de importar
+  document.getElementById('bulk-rows').innerHTML='';
+  addBulkRow();addBulkRow();addBulkRow();
+  document.getElementById('bulk-origem-vend').value='';
+  statusEl.style.color='var(--green)';
+  statusEl.textContent='Importado!';
 }
 
 function handleCSV(file){
@@ -8568,13 +8711,14 @@ function renderCoordLeads(){
   const mbs=getCoordMembers();
   const vSel=document.getElementById('cl-f-vend');
   if(vSel&&vSel.options.length<=1){
-    vSel.innerHTML='<option value="">Todos os vendedores</option>'+
+    vSel.innerHTML='<option value="">Todos os vendedores</option><option value="__sem__">🚫 Sem vendedor</option>'+
       allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
   }
   let leads=getCoordLeads();
   if(q) leads=leads.filter(l=>l.nome.toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q));
   if(fs) leads=leads.filter(l=>l.status===fs);
-  if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
+  if(fv==='__sem__') leads=leads.filter(l=>!l.responsavel_id);
+  else if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
   if(ft) leads=leads.filter(l=>(l.tipo_lead||'Novo')===ft);
   if(fd) leads=leads.filter(l=>(l.created_at||'').slice(0,10)===fd);
   document.getElementById('cl-title').textContent=`Leads da Equipe — ${leads.length}`;
