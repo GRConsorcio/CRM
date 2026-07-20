@@ -4750,7 +4750,7 @@ async function renderTransmissoes(){
         <td style="font-size:12px;color:var(--muted2)">${publico}</td>
         <td style="font-size:12px;color:var(--muted2)">${dtStr}</td>
         <td style="white-space:nowrap">
-          ${podeHabilitar?`<button class="act" onclick="abrirTransmAlvo('${t.id}')">Habilitar geral</button>`:''}
+          ${podeHabilitar?`<button class="act" onclick="abrirTransmAlvo('${t.id}')">Escolher público e enviar</button>`:''}
           ${podeEncerrar?`<button class="act" style="color:var(--red)" onclick="encerrarTransmissao('${t.id}')">Encerrar</button>`:''}
         </td>
       </tr>`;
@@ -4848,7 +4848,7 @@ async function checkTransmissoesAtivas(){
     if(!data||!data.length) return;
     const{data:vistas}=await sb.from('crm_transmissao_vistas').select('transmissao_id').eq('user_id',CU.id);
     (vistas||[]).forEach(v=>_transmissoesVistas.add(v.transmissao_id));
-    const proxima=data.find(t=>!t.modo_teste&&!_transmissoesVistas.has(t.id));
+    const proxima=data.find(t=>(!t.modo_teste||t.criado_por===CU.id)&&!_transmissoesVistas.has(t.id));
     if(proxima) showTransmissaoPopup(proxima);
   }catch(e){
     console.warn('[transmissao] erro ao checar ativas:',e.message);
@@ -4864,10 +4864,26 @@ function showTransmissaoPopup(t){
   const tituloEl=document.getElementById('transmissao-popup-titulo');
   if(t.titulo){tituloEl.textContent=t.titulo;tituloEl.style.display='block';}
   else{tituloEl.style.display='none';}
+  // Navegador bloqueia autoplay COM SOM (política padrão de Chrome/Firefox/Safari) —
+  // sem isso o vídeo "não tocava" mesmo com o popup aberto e a URL certa. Solução:
+  // autoplay mudo (isso o navegador sempre permite) + botão visível pra ativar o
+  // som com um clique, que é uma interação do usuário e libera o áudio.
   body.innerHTML = t.tipo==='video'
-    ? `<video src="${url}" controls autoplay style="width:100%;max-height:70vh;border-radius:8px;display:block;background:#000"></video>`
-    : `<audio src="${url}" controls autoplay style="width:100%"></audio>`;
+    ? `<div style="position:relative">
+        <video id="transm-media-el" src="${url}" controls autoplay muted playsinline style="width:100%;max-height:70vh;border-radius:8px;display:block;background:#000"></video>
+        <button onclick="_ativarSomTransmissao()" id="transm-unmute-btn" style="position:absolute;bottom:56px;right:14px;background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:20px;padding:7px 14px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">🔇 Ativar som</button>
+      </div>`
+    : `<div>
+        <audio id="transm-media-el" src="${url}" controls autoplay muted style="width:100%"></audio>
+        <button onclick="_ativarSomTransmissao()" id="transm-unmute-btn" style="margin-top:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer">🔇 Ativar som</button>
+      </div>`;
   document.getElementById('transmissao-popup').style.display='flex';
+}
+function _ativarSomTransmissao(){
+  const el=document.getElementById('transm-media-el');
+  if(el){ el.muted=false; el.play().catch(()=>{}); }
+  const btn=document.getElementById('transm-unmute-btn');
+  if(btn) btn.remove();
 }
 
 async function fecharTransmissaoPopup(){
@@ -7535,7 +7551,8 @@ function setupRealtime(){
   // só pro público certo, e aparecer NA HORA quando o admin habilita a geral.
   ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_transmissoes'},async(payload)=>{
     const t=payload.new;
-    if(!t||!t.ativo||t.modo_teste) return;
+    if(!t||!t.ativo) return;
+    if(t.modo_teste&&t.criado_por!==CU.id) return; // teste só aparece pra quem criou
     if(_transmissoesVistas.has(t.id)) return;
     showTransmissaoPopup(t);
     if(document.getElementById('page-transmissoes')?.classList.contains('on')) renderTransmissoes();
