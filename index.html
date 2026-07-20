@@ -751,9 +751,9 @@ document.addEventListener('DOMContentLoaded', function(){
       <div style="display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
         <button id="vp-btn-todos" class="tab on" onclick="setVendasFilter('todos')">Todas</button>
         <button id="vp-btn-Aprovado" class="tab" onclick="setVendasFilter('Aprovado')">✅ Aprovado Pós Vendas</button>
-        <button id="vp-btn-Pendente" class="tab" onclick="setVendasFilter('Pendente')">⏳ Pendentes</button>
+        <button id="vp-btn-Pendente" class="tab" onclick="setVendasFilter('Pendente')">⏳ Pendente Pós Vendas</button>
         <button id="vp-btn-Cancelado" class="tab" onclick="setVendasFilter('Cancelado')">❌ Reprovado Pós Vendas</button>
-        <button id="vp-btn-SemRetorno" class="tab" onclick="setVendasFilter('SemRetorno')" style="display:none;color:var(--red)">🚫 Venda Sem Retorno</button>
+        <button id="vp-btn-SemRetorno" class="tab" onclick="setVendasFilter('SemRetorno')" style="display:none;color:var(--red)">🚫 Cancelados</button>
       </div>
       <select id="vp-f-tipo" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
         <option value="">Novo + Remalho</option>
@@ -798,7 +798,10 @@ document.addEventListener('DOMContentLoaded', function(){
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title">🔐 Histórico de Logins</div>
-        <div style="font-size:11px;color:var(--muted2)">Últimos 300 logins · localização aproximada (por IP, pode variar com VPN/rede)</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="font-size:11px;color:var(--muted2)">Últimos 300 logins · localização aproximada (por IP, pode variar com VPN/rede)</div>
+          <button class="btn-sm" style="border-color:var(--red);color:var(--red);white-space:nowrap" onclick="forceLogoutAll()" title="Força todo mundo a fazer login de novo">🔒 Deslogar Todos</button>
+        </div>
       </div>
       <div class="tbl-wrap">
         <table><thead><tr><th>Usuário</th><th>Data/Hora</th><th>Dispositivo</th><th>Localização</th><th>IP</th></tr></thead>
@@ -833,6 +836,58 @@ document.addEventListener('DOMContentLoaded', function(){
         <tbody id="transm-tbody"></tbody></table>
       </div>
     </div>
+  </div>
+
+  <!-- CAMPANHAS -->
+  <div class="page" id="page-campanhas">
+    <div class="panel" id="campanha-form-panel" style="margin-bottom:16px;display:none">
+      <div class="panel-head"><div class="panel-title">📣 Nova Campanha</div></div>
+      <div class="panel-body">
+        <div class="fld"><label>Título *</label><input class="inp" id="camp-titulo" placeholder="Ex: Campanha de Verão — bônus dobrado"></div>
+        <div class="fld"><label>Descrição</label><textarea class="inp" id="camp-desc" placeholder="Detalhes da campanha, regras, metas..." style="min-height:80px"></textarea></div>
+        <div class="fld-row">
+          <div class="fld"><label>Válida até (opcional)</label><input class="inp" type="date" id="camp-validade"></div>
+          <div class="fld"><label>Mostrar para</label>
+            <select class="inp" id="camp-alvo-modo" onchange="onCampAlvoModoChange()">
+              <option value="todos">Todo mundo</option>
+              <option value="equipes">Equipes específicas</option>
+              <option value="usuarios">Vendedores específicos</option>
+            </select>
+          </div>
+        </div>
+        <div class="fld" id="camp-alvo-equipes-wrap" style="display:none">
+          <label>Equipes</label>
+          <div id="camp-alvo-equipes-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
+        </div>
+        <div class="fld" id="camp-alvo-usuarios-wrap" style="display:none">
+          <label>Vendedores</label>
+          <input class="inp" id="camp-alvo-usuarios-srch" placeholder="🔍 Buscar..." oninput="renderCampAlvoUsuarios()" style="margin-bottom:8px">
+          <div id="camp-alvo-usuarios-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
+        </div>
+        <div class="fld">
+          <label>Arquivos (opcional)</label>
+          <div class="upload-zone" id="camp-zone">
+            <input type="file" id="camp-files" multiple onchange="handleCampanhaFiles(this.files)">
+            <div class="upload-icon">📎</div>
+            <div class="upload-txt">Clique ou arraste um ou mais arquivos</div>
+            <div class="upload-sub">Qualquer formato — imagens, PDF, planilhas etc</div>
+          </div>
+          <div id="camp-files-preview" style="font-size:12px;color:var(--muted2);margin-top:8px"></div>
+        </div>
+        <div id="camp-form-status" style="font-size:12px;margin-top:6px"></div>
+        <div class="modal-btns" style="border-top:none;padding-top:6px">
+          <button class="btn-save" onclick="criarCampanha()">📣 Publicar Campanha</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-bar" style="margin-bottom:0">
+      <div style="display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
+        <button id="camp-btn-ativas" class="tab on" onclick="setCampanhaFilter('ativas')">✅ Ativas</button>
+        <button id="camp-btn-inativas" class="tab" onclick="setCampanhaFilter('inativas')">🚫 Inativas</button>
+      </div>
+    </div>
+    <div id="campanhas-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:16px"></div>
   </div>
 
   <!-- EQUIPES -->
@@ -3156,7 +3211,8 @@ function renderNav(){
   }
 
   html+=`<div class="nav-sect">Agenda</div>
-    <div class="nav-item" onclick="nav('tarefas',this)" title="Tarefas"><span class="nav-icon">${IC.tasks}</span><span class="nav-label">Tarefas</span><span class="nav-badge" id="nav-tasks-badge" style="display:none">!</span></div>`;
+    <div class="nav-item" onclick="nav('tarefas',this)" title="Tarefas"><span class="nav-icon">${IC.tasks}</span><span class="nav-label">Tarefas</span><span class="nav-badge" id="nav-tasks-badge" style="display:none">!</span></div>
+    <div class="nav-item" onclick="nav('campanhas',this)" title="Campanhas"><span class="nav-icon">📣</span><span class="nav-label">Campanhas</span></div>`;
 
   if(admin){
     // Admin e Coordenador: seção Gestão com Equipes + Vendas (todos) + Clientes Vendidos
@@ -3178,11 +3234,6 @@ function renderNav(){
       <div class="nav-item" id="nav-solicitacoes" onclick="nav('solicitacoes',this);renderSolicitacoes()" title="Solicitações"><span class="nav-icon">📩</span><span class="nav-label">Solicitações<span id="sol-adm-badge"></span></span></div>
       <div class="nav-item" onclick="nav('login-logs',this)" title="Histórico de Logins"><span class="nav-icon">🔐</span><span class="nav-label">Logins</span></div>
       <div class="nav-item" onclick="nav('transmissoes',this)" title="Transmissões"><span class="nav-icon">📡</span><span class="nav-label">Transmissões</span></div>`;
-  } else if(isCoord){
-    // Coordenador também pode ler crm_login_logs (RLS libera admin+coordenador),
-    // então ganha o mesmo item de menu, isolado numa seção própria.
-    html+=`<div class="nav-sect">Administração</div>
-      <div class="nav-item" onclick="nav('login-logs',this)" title="Histórico de Logins"><span class="nav-icon">🔐</span><span class="nav-label">Logins</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
   const flBtn=document.getElementById('sb-force-logout');
@@ -3208,7 +3259,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões','campanhas':'Campanhas'};
 /* ═══ PERSISTÊNCIA DE PÁGINA ATUAL (item solicitado: não voltar sempre pro dashboard) ═══
    Salva a última página visitada por usuário (localStorage, sobrevive a refresh/F5 e a
    logins futuros no mesmo navegador). Páginas de "detalhe" (que dependem de um ID
@@ -3279,6 +3330,7 @@ function nav(page,el){
   if(page==='leads-ceo') renderLeadsCeo();
   if(page==='login-logs') renderLoginLogs();
   if(page==='transmissoes') renderTransmissoes();
+  if(page==='campanhas') renderCampanhas();
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 
@@ -3334,8 +3386,8 @@ async function renderDashboard(){
     <div class="kpi"><div class="kpi-label">Total de Leads</div><div class="kpi-val">${total.toLocaleString('pt-BR')}</div></div>
     <div class="kpi"><div class="kpi-label">Fechamentos</div><div class="kpi-val" style="color:var(--green)">${fechados}</div></div>
     <div class="kpi"><div class="kpi-label">Conversão</div><div class="kpi-val" style="color:var(--gold2)">${total?Math.round(fechados/total*100):0}%</div></div>
-    <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04);cursor:pointer" onclick="openVendasPage('Aprovado')" title="Ver vendas aprovadas"><div class="kpi-label" style="color:var(--green)">✅ Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
-    <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04);cursor:pointer" onclick="openVendasPage('Cancelado')" title="Ver cancelamentos"><div class="kpi-label" style="color:var(--red)">❌ Cancelados</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
+    <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04);cursor:pointer" onclick="openVendasPage('Aprovado')" title="Ver vendas aprovadas"><div class="kpi-label" style="color:var(--green)">✅ Aprovado Pós Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
+    <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04);cursor:pointer" onclick="openVendasPage('Cancelado')" title="Ver cancelamentos"><div class="kpi-label" style="color:var(--red)">❌ Reprovado Pós Vendas</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
     <div class="kpi"><div class="kpi-label">Tarefas Vencidas</div><div class="kpi-val" style="color:${vencidas?'var(--red)':'var(--text)'}">${vencidas}</div></div>`;
   if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)">${semVend.toLocaleString('pt-BR')}</div></div>`;
   // Ranking panel: admin e coordenador veem o painel de colunas
@@ -3960,7 +4012,7 @@ async function openDetail(id,from){
   // Venda se existir
   if(venda){
     html+=`<div style="padding:16px 18px;border-bottom:1px solid var(--border)">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">🏦 Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':venda.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${venda.status_venda==='SemRetorno'?'🚫 Sem Retorno':(venda.status_venda||'Pendente')}</span></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">🏦 Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':venda.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${venda.status_venda==='SemRetorno'?'🚫 Cancelados':(venda.status_venda||'Pendente')}</span></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12.5px">
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">CPF</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Nascimento</div><strong>${venda.data_nascimento?fmtDateStr(venda.data_nascimento):'—'}</strong></div>
@@ -4900,6 +4952,226 @@ async function fecharTransmissaoPopup(){
   }
   // Se havia outra transmissão pendente na fila, mostra em seguida.
   checkTransmissoesAtivas();
+}
+
+/* ═══ CAMPANHAS ═══
+   Diferente de Transmissões: não tem "modo teste" — publica direto pro
+   público escolhido. RLS decide quem enxerga cada linha (mesmo padrão:
+   criado_por vê tudo, alvo='todos'/'equipes'/'usuarios' filtra o resto).
+   "Ativa"/"Inativa" é calculado no cliente a partir de ativo + validade —
+   não existe job nenhum expirando campanha sozinho, é só filtro de exibição. */
+let allCampanhas=[];
+let _campanhaFilter='ativas';
+let campPendingFiles=[];
+
+function _campanhaEstaAtiva(c){
+  if(!c.ativo) return false;
+  if(c.validade){
+    const hoje=new Date().toISOString().slice(0,10);
+    if(c.validade<hoje) return false;
+  }
+  return true;
+}
+
+function handleCampanhaFiles(files){
+  if(!files||!files.length) return;
+  campPendingFiles.push(...Array.from(files));
+  renderCampFilesPreview();
+  document.getElementById('camp-files').value='';
+}
+function renderCampFilesPreview(){
+  const el=document.getElementById('camp-files-preview');
+  if(!el) return;
+  if(!campPendingFiles.length){ el.innerHTML=''; return; }
+  el.innerHTML=campPendingFiles.map((f,i)=>
+    `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📎 ${f.name}</span>
+      <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="removeCampPendingFile(${i})">✕</button>
+    </div>`
+  ).join('');
+}
+function removeCampPendingFile(i){
+  campPendingFiles.splice(i,1);
+  renderCampFilesPreview();
+}
+function onCampAlvoModoChange(){
+  const modo=document.getElementById('camp-alvo-modo').value;
+  document.getElementById('camp-alvo-equipes-wrap').style.display=modo==='equipes'?'block':'none';
+  document.getElementById('camp-alvo-usuarios-wrap').style.display=modo==='usuarios'?'block':'none';
+  if(modo==='equipes') renderCampAlvoEquipes();
+  if(modo==='usuarios') renderCampAlvoUsuarios();
+}
+function renderCampAlvoEquipes(){
+  const el=document.getElementById('camp-alvo-equipes-list');
+  if(!el) return;
+  if(!allEquipes.length){el.innerHTML='<div style="font-size:12px;color:var(--muted2)">Nenhuma equipe cadastrada.</div>';return;}
+  el.innerHTML=allEquipes.map(e=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;cursor:pointer">
+      <input type="checkbox" class="camp-eq-chk" value="${e.id}" style="accent-color:var(--gold);width:14px;height:14px">
+      ${e.nome||'(sem nome)'}
+    </label>`).join('');
+}
+function renderCampAlvoUsuarios(){
+  const el=document.getElementById('camp-alvo-usuarios-list');
+  if(!el) return;
+  const q=(document.getElementById('camp-alvo-usuarios-srch')?.value||'').toLowerCase();
+  const prevChecked=new Set([...el.querySelectorAll('.camp-us-chk:checked')].map(c=>c.value));
+  const list=allUsers.filter(u=>!q||(u.name||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q));
+  if(!list.length){el.innerHTML='<div style="font-size:12px;color:var(--muted2)">Nenhum usuário encontrado.</div>';return;}
+  el.innerHTML=list.map(u=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;cursor:pointer">
+      <input type="checkbox" class="camp-us-chk" value="${u.user_id}" style="accent-color:var(--gold);width:14px;height:14px" ${prevChecked.has(u.user_id)?'checked':''}>
+      ${u.name||u.email}
+    </label>`).join('');
+}
+
+async function criarCampanha(){
+  if(!isAdmin()) return;
+  const titulo=document.getElementById('camp-titulo').value.trim();
+  const desc=document.getElementById('camp-desc').value.trim();
+  const validade=document.getElementById('camp-validade').value||null;
+  const modo=document.getElementById('camp-alvo-modo').value;
+  const statusEl=document.getElementById('camp-form-status');
+  if(!titulo){ statusEl.style.color='var(--red)'; statusEl.textContent='Título é obrigatório.'; return; }
+  let equipes_alvo=[],usuarios_alvo=[];
+  if(modo==='equipes'){
+    equipes_alvo=[...document.querySelectorAll('.camp-eq-chk:checked')].map(c=>c.value);
+    if(!equipes_alvo.length){ statusEl.style.color='var(--red)'; statusEl.textContent='Selecione ao menos uma equipe.'; return; }
+  } else if(modo==='usuarios'){
+    usuarios_alvo=[...document.querySelectorAll('.camp-us-chk:checked')].map(c=>c.value);
+    if(!usuarios_alvo.length){ statusEl.style.color='var(--red)'; statusEl.textContent='Selecione ao menos um vendedor.'; return; }
+  }
+  statusEl.style.color='var(--muted2)';
+  statusEl.textContent='Publicando campanha...';
+  try{
+    const{data:camp,error:campErr}=await sb.from('crm_campanhas').insert({
+      criado_por:CU.id,titulo,descricao:desc||null,validade,
+      alvo:modo,equipes_alvo,usuarios_alvo,ativo:true
+    }).select().maybeSingle();
+    if(campErr) throw campErr;
+    // Sobe os anexos DEPOIS de a campanha existir (precisa do id pra vincular).
+    // Falha em um arquivo não derruba os outros — cada upload é isolado.
+    const falhas=[];
+    for(const file of campPendingFiles){
+      try{
+        const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80);
+        const path=`${camp.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
+        const{error:upErr}=await sb.storage.from('crm-campanhas').upload(path,file,{upsert:false});
+        if(upErr){ falhas.push(file.name); continue; }
+        await sb.from('crm_campanha_anexos').insert({
+          campanha_id:camp.id,nome_arquivo:file.name,storage_path:path,tamanho:file.size
+        });
+      }catch(fe){ falhas.push(file.name); }
+    }
+    statusEl.style.color=falhas.length?'var(--red)':'var(--green)';
+    statusEl.textContent=falhas.length
+      ? `Campanha publicada, mas falhou ao anexar: ${falhas.join(', ')}`
+      : 'Campanha publicada!';
+    document.getElementById('camp-titulo').value='';
+    document.getElementById('camp-desc').value='';
+    document.getElementById('camp-validade').value='';
+    document.getElementById('camp-alvo-modo').value='todos';
+    onCampAlvoModoChange();
+    campPendingFiles=[];
+    renderCampFilesPreview();
+    renderCampanhas();
+  }catch(e){
+    console.error('[campanha] erro ao publicar:',e.message);
+    statusEl.style.color='var(--red)';
+    statusEl.textContent='Erro ao publicar: '+(e.message||'desconhecido');
+  }
+}
+
+function setCampanhaFilter(f){
+  _campanhaFilter=f;
+  document.getElementById('camp-btn-ativas').classList.toggle('on',f==='ativas');
+  document.getElementById('camp-btn-inativas').classList.toggle('on',f==='inativas');
+  renderCampanhasGrid();
+}
+
+async function renderCampanhas(){
+  const formPanel=document.getElementById('campanha-form-panel');
+  if(formPanel) formPanel.style.display=isAdmin()?'':'none';
+  const grid=document.getElementById('campanhas-grid');
+  if(grid) grid.innerHTML='<div style="color:var(--muted2);font-size:13px;padding:20px">Carregando campanhas...</div>';
+  try{
+    const{data:camps,error}=await sb.from('crm_campanhas').select('*').order('criado_em',{ascending:false});
+    if(error) throw error;
+    allCampanhas=camps||[];
+    if(allCampanhas.length){
+      const ids=allCampanhas.map(c=>c.id);
+      const{data:anexos}=await sb.from('crm_campanha_anexos').select('*').in('campanha_id',ids);
+      const byCamp={};
+      (anexos||[]).forEach(a=>{ (byCamp[a.campanha_id]=byCamp[a.campanha_id]||[]).push(a); });
+      allCampanhas.forEach(c=>{ c._anexos=byCamp[c.id]||[]; });
+    }
+    renderCampanhasGrid();
+  }catch(e){
+    console.warn('[campanhas] erro ao carregar:',e.message);
+    if(grid) grid.innerHTML='<div style="color:var(--red);font-size:13px;padding:20px">Erro ao carregar: '+(e.message||'desconhecido')+'</div>';
+  }
+}
+
+function renderCampanhasGrid(){
+  const grid=document.getElementById('campanhas-grid');
+  if(!grid) return;
+  const list=allCampanhas.filter(c=>_campanhaFilter==='ativas'?_campanhaEstaAtiva(c):!_campanhaEstaAtiva(c));
+  if(!list.length){
+    grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:var(--muted2);padding:40px 20px">Nenhuma campanha ${_campanhaFilter==='ativas'?'ativa':'inativa'} no momento.</div>`;
+    return;
+  }
+  grid.innerHTML=list.map(c=>{
+    const ativa=_campanhaEstaAtiva(c);
+    const validadeStr=c.validade?new Date(c.validade+'T00:00:00').toLocaleDateString('pt-BR'):null;
+    const anexosHtml=(c._anexos||[]).map(a=>{
+      const{data:pub}=sb.storage.from('crm-campanhas').getPublicUrl(a.storage_path);
+      return `<a href="${pub?.publicUrl||'#'}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--gold2);text-decoration:none;padding:3px 0">📎 ${a.nome_arquivo}</a>`;
+    }).join('');
+    const adminBtns=isAdmin()?`
+      <div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        ${ativa?`<button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="encerrarCampanha('${c.id}')">Encerrar</button>`:''}
+        <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirCampanha('${c.id}')">🗑 Excluir</button>
+      </div>`:'';
+    return `<div class="panel" style="margin:0;${ativa?'':'opacity:.65'}">
+      <div class="panel-body" style="padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+          <div style="font-weight:700;font-size:14px;color:var(--gold2)">${c.titulo}</div>
+          <span class="badge ${ativa?'b-aprov':'b-canc'}" style="flex-shrink:0">${ativa?'Ativa':'Inativa'}</span>
+        </div>
+        ${c.descricao?`<div style="font-size:12.5px;color:var(--muted2);line-height:1.6;margin-bottom:10px;white-space:pre-wrap">${c.descricao}</div>`:''}
+        ${validadeStr?`<div style="font-size:11px;color:var(--muted2);margin-bottom:8px">📅 Válida até ${validadeStr}</div>`:''}
+        ${anexosHtml?`<div style="margin-top:8px">${anexosHtml}</div>`:''}
+        ${adminBtns}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function encerrarCampanha(id){
+  if(!confirm('Encerrar esta campanha? Ela some da aba Ativas pra todo mundo.')) return;
+  try{
+    const{error}=await sb.from('crm_campanhas').update({ativo:false}).eq('id',id);
+    if(error) throw error;
+    toast('Campanha encerrada.','ok');
+    renderCampanhas();
+  }catch(e){
+    alert('Erro ao encerrar: '+(e.message||'desconhecido'));
+  }
+}
+async function excluirCampanha(id){
+  if(!confirm('Excluir esta campanha e os anexos dela? Irreversível.')) return;
+  try{
+    const camp=allCampanhas.find(c=>c.id===id);
+    for(const a of (camp?._anexos||[])){
+      await sb.storage.from('crm-campanhas').remove([a.storage_path]).catch(()=>{});
+    }
+    const{error}=await sb.from('crm_campanhas').delete().eq('id',id);
+    if(error) throw error;
+    toast('Campanha excluída.','ok');
+    renderCampanhas();
+  }catch(e){
+    alert('Erro ao excluir: '+(e.message||'desconhecido'));
+  }
 }
 
 /* ═══ MODALS ═══ */
@@ -6496,7 +6768,7 @@ async function renderVendasPage(){
   });
 
   const scopeLabel=isAdmin()||isCoordenador()?'— Todos os Vendedores':isSupervisor()?'— Minha Equipe':'— Minhas Vendas';
-  const title=_vendasFilter==='todos'?`Todas as Vendas`:_vendasFilter==='Aprovado'?'Aprovado Pós Vendas':_vendasFilter==='Cancelado'?'Reprovado Pós Vendas':_vendasFilter==='SemRetorno'?'Venda Sem Retorno':'Vendas Pendentes';
+  const title=_vendasFilter==='todos'?`Todas as Vendas`:_vendasFilter==='Aprovado'?'Aprovado Pós Vendas':_vendasFilter==='Cancelado'?'Reprovado Pós Vendas':_vendasFilter==='SemRetorno'?'Cancelados':'Pendente Pós Vendas';
   const el=document.getElementById('vp-title');
   if(el) el.textContent=`${title} ${scopeLabel} — ${vendas.length}`;
 
@@ -6530,7 +6802,7 @@ async function renderVendasPage(){
       <td style="color:var(--gold2);font-weight:700">${v.valor_credito?brl(v.valor_credito):'—'}</td>
       <td style="font-size:11.5px">${v.parcela?brl(v.parcela):'—'}</td>
       <td style="color:var(--muted2);font-size:11px">${v.grupo||'—'} / ${v.cota||'—'}</td>
-      <td><span class="badge ${badgeCls}">${v.status_venda==='SemRetorno'?'🚫 Sem Retorno':(v.status_venda||'Pendente')}</span></td>
+      <td><span class="badge ${badgeCls}">${v.status_venda==='SemRetorno'?'🚫 Cancelados':(v.status_venda||'Pendente')}</span></td>
       <td style="color:var(--muted2);font-size:11px">${fmtDt(v.created_at)}</td>
       <td>
         ${canManage?`<div style="display:flex;gap:4px">
