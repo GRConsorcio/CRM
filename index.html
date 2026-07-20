@@ -784,6 +784,19 @@ document.addEventListener('DOMContentLoaded', function(){
       </div>
     </div>
   </div>
+  <!-- LOGINS -->
+  <div class="page" id="page-login-logs">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">🔐 Histórico de Logins</div>
+        <div style="font-size:11px;color:var(--muted2)">Últimos 300 logins · localização aproximada (por IP, pode variar com VPN/rede)</div>
+      </div>
+      <div class="tbl-wrap">
+        <table><thead><tr><th>Usuário</th><th>Data/Hora</th><th>Dispositivo</th><th>Localização</th><th>IP</th></tr></thead>
+        <tbody id="login-logs-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
   <!-- EQUIPES -->
   <div class="page" id="page-equipes">
     <div class="filter-bar">
@@ -1654,10 +1667,55 @@ async function doAuth(){
     } else {
       sessionStorage.removeItem('crm_no_persist');
     }
+    // Registra o login (device + localização aproximada por IP) — fire-and-forget,
+    // não bloqueia a entrada no app nem falha o login se der erro.
+    if(data?.user) _registrarLoginLog(data.user);
     // initApp handles deduplication via CU+CUProfile check
     if(data?.user) await initApp(data.user);
   }
 }
+/* ═══ LOG DE LOGIN (device + localização aproximada) ═══
+   Roda só em login explícito (senha digitada aqui em doAuth), não em refresh de
+   página nem token refresh — evita poluir a tabela com entradas repetidas.
+   Localização vem de um serviço externo de IP lookup chamado pelo NAVEGADOR do
+   usuário: é aproximada, pode ser bloqueada por ad-blocker/VPN e é spoofável por
+   quem quiser burlar. Serve pra controle administrativo informal, não como prova
+   de segurança forte — pra isso seria necessário capturar o IP no servidor
+   (Edge Function), o que este projeto não usa hoje. */
+async function _registrarLoginLog(user){
+  try{
+    const ua=navigator.userAgent||'';
+    const so=/Windows/.test(ua)?'Windows':/Android/.test(ua)?'Android':/iPhone|iPad|iOS/.test(ua)?'iOS':/Mac OS/.test(ua)?'macOS':/Linux/.test(ua)?'Linux':'Desconhecido';
+    const browser=/Edg\//.test(ua)?'Edge':/OPR\//.test(ua)?'Opera':/Chrome\//.test(ua)?'Chrome':/Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)&&!/Chrome/.test(ua)?'Safari':'Desconhecido';
+    const tipo=/Mobile|Android|iPhone/.test(ua)?'Celular':/iPad|Tablet/.test(ua)?'Tablet':'Desktop';
+    const device=`${tipo} · ${so} · ${browser}`;
+    let geo={};
+    try{
+      const r=await Promise.race([
+        fetch('https://ipapi.co/json/'),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),4000))
+      ]);
+      if(r.ok) geo=await r.json();
+    }catch(geoErr){
+      console.warn('[login-log] geolocalização indisponível:',geoErr.message);
+    }
+    const{error}=await sb.from('crm_login_logs').insert({
+      user_id:user.id,
+      email:user.email,
+      nome:user.user_metadata?.full_name||null,
+      device,
+      user_agent:ua,
+      ip:geo.ip||null,
+      cidade:geo.city||null,
+      regiao:geo.region||null,
+      pais:geo.country_name||null
+    });
+    if(error) console.warn('[login-log] erro ao gravar:',error.message);
+  }catch(e){
+    console.warn('[login-log] falha geral ao registrar login:',e.message);
+  }
+}
+
 async function doLogout(){
   try{
     if(realtimeChannel) sb.removeChannel(realtimeChannel);
@@ -3048,7 +3106,13 @@ function renderNav(){
   if(isAdm){
     html+=`<div class="nav-sect">Administração</div>
       <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">${IC.users}</span><span class="nav-label">Usuários</span></div>
-      <div class="nav-item" id="nav-solicitacoes" onclick="nav('solicitacoes',this);renderSolicitacoes()" title="Solicitações"><span class="nav-icon">📩</span><span class="nav-label">Solicitações<span id="sol-adm-badge"></span></span></div>`;
+      <div class="nav-item" id="nav-solicitacoes" onclick="nav('solicitacoes',this);renderSolicitacoes()" title="Solicitações"><span class="nav-icon">📩</span><span class="nav-label">Solicitações<span id="sol-adm-badge"></span></span></div>
+      <div class="nav-item" onclick="nav('login-logs',this)" title="Histórico de Logins"><span class="nav-icon">🔐</span><span class="nav-label">Logins</span></div>`;
+  } else if(isCoord){
+    // Coordenador também pode ler crm_login_logs (RLS libera admin+coordenador),
+    // então ganha o mesmo item de menu, isolado numa seção própria.
+    html+=`<div class="nav-sect">Administração</div>
+      <div class="nav-item" onclick="nav('login-logs',this)" title="Histórico de Logins"><span class="nav-icon">🔐</span><span class="nav-label">Logins</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
   const flBtn=document.getElementById('sb-force-logout');
@@ -3074,7 +3138,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins'};
 /* ═══ PERSISTÊNCIA DE PÁGINA ATUAL (item solicitado: não voltar sempre pro dashboard) ═══
    Salva a última página visitada por usuário (localStorage, sobrevive a refresh/F5 e a
    logins futuros no mesmo navegador). Páginas de "detalhe" (que dependem de um ID
@@ -3143,6 +3207,7 @@ function nav(page,el){
   if(page==='funil-vendedor') {/* rendered by openFunilVendedor */}
   if(page==='funil-ceo') renderFunilCeo();
   if(page==='leads-ceo') renderLeadsCeo();
+  if(page==='login-logs') renderLoginLogs();
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 
@@ -4499,6 +4564,37 @@ function renderEquipe(){
       <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button>`:'—'}</td>
     </tr>`;
   }).join('');
+}
+
+async function renderLoginLogs(){
+  const tbody=document.getElementById('login-logs-tbody');
+  if(!tbody) return;
+  tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted2);padding:20px">Carregando...</td></tr>';
+  try{
+    const{data,error}=await sb.from('crm_login_logs')
+      .select('*')
+      .order('criado_em',{ascending:false})
+      .limit(300);
+    if(error) throw error;
+    if(!data||!data.length){
+      tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted2);padding:20px">Nenhum login registrado ainda.</td></tr>';
+      return;
+    }
+    tbody.innerHTML=data.map(l=>{
+      const dtStr=new Date(l.criado_em).toLocaleString('pt-BR');
+      const loc=[l.cidade,l.regiao,l.pais].filter(Boolean).join(', ')||'—';
+      return`<tr>
+        <td style="font-weight:700">${l.nome||l.email||'—'}</td>
+        <td style="color:var(--muted2);font-size:12px">${dtStr}</td>
+        <td style="font-size:12px">${l.device||'—'}</td>
+        <td style="font-size:12px">${loc}</td>
+        <td style="color:var(--muted2);font-size:12px">${l.ip||'—'}</td>
+      </tr>`;
+    }).join('');
+  }catch(e){
+    console.warn('[login-logs] erro ao carregar:',e.message);
+    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--red)">Erro ao carregar: '+(e.message||'desconhecido')+'</td></tr>';
+  }
 }
 
 /* ═══ MODALS ═══ */
