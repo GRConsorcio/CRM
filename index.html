@@ -747,6 +747,20 @@ document.addEventListener('DOMContentLoaded', function(){
 
   <!-- VENDAS & CANCELAMENTOS -->
   <div class="page" id="page-vendas">
+    <!-- BUGFIX: este painel de solicitações de desbloqueio ("Venda Sem Retorno")
+         era só referenciado no JS (renderBloqueiosPendentes procura por
+         #vp-bloqueios-list) mas o container nunca existiu aqui no HTML — a
+         função sempre rodava e sempre saía sem fazer nada (if(!el) return).
+         Resultado: os pedidos de desbloqueio eram salvos certinho no banco
+         (crm_venda_bloqueios), mas não existia NENHUM lugar na tela pra ver
+         ou aprovar/negar isso. Só admin/CEO/coordenador vê este painel,
+         que são os únicos que podem aprovar. -->
+    <div class="panel" id="vp-bloqueios-panel" style="display:none;margin-bottom:16px">
+      <div class="panel-head">
+        <div class="panel-title">🚫 Solicitações de Desbloqueio Pendentes</div>
+      </div>
+      <div class="panel-body" id="vp-bloqueios-list"></div>
+    </div>
     <div class="filter-bar">
       <div style="display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
         <button id="vp-btn-todos" class="tab on" onclick="setVendasFilter('todos')">Todas</button>
@@ -3365,7 +3379,15 @@ function nav(page,el){
   if(page==='funil') renderFunil();
   if(page==='distribuicao') renderDistribuicao();
   if(page==='tarefas') renderTarefas();
-  if(page==='vendas') renderVendasPage();
+  if(page==='vendas'){
+    renderVendasPage();
+    const bloqueiosPanel=document.getElementById('vp-bloqueios-panel');
+    const podeAprovarBloqueio=isAdmin()||isCEO()||isCoordenador();
+    if(bloqueiosPanel){
+      bloqueiosPanel.style.display=podeAprovarBloqueio?'':'none';
+      if(podeAprovarBloqueio) renderBloqueiosPendentes();
+    }
+  }
   if(page==='equipe') renderEquipe();
   if(page==='equipes') renderEquipes();
   if(page==='importar') renderImportar();
@@ -5721,7 +5743,30 @@ function alterarQtdCotas(delta){
   el.value=Math.max(1,atual+delta);
 }
 
+// BUGFIX: saveVenda() fazia upload de arquivos + inserts no banco sem nenhuma
+// trava contra chamada dupla. Um segundo clique no botão "Salvar Venda"
+// enquanto o primeiro upload ainda estava em andamento (upload de 3 arquivos
+// + insert leva alguns segundos) disparava a função de novo, duplicando os
+// documentos (e, se o primeiro insert de crm_vendas ainda não tivesse
+// retornado, possivelmente até a venda). Essa trava garante que só uma
+// execução roda por vez; o finally sempre libera, mesmo em erro.
+let _savingVendaLock=false;
 async function saveVenda(){
+  if(_savingVendaLock){
+    toast('Aguarde, a venda já está sendo salva...','err');
+    return;
+  }
+  _savingVendaLock=true;
+  const _btnSalvarVenda=document.querySelector('#modal-venda .btn-save');
+  if(_btnSalvarVenda) _btnSalvarVenda.disabled=true;
+  try{
+    await _saveVendaInner();
+  } finally {
+    _savingVendaLock=false;
+    if(_btnSalvarVenda) _btnSalvarVenda.disabled=false;
+  }
+}
+async function _saveVendaInner(){
   const cpf=v('v-cpf').replace(/\D/g,'');
   if(!cpf){toast('Informe o CPF','err');return;}
   if(!v('v-nasc')){toast('Informe a Data de Nascimento','err');return;}
@@ -6725,7 +6770,13 @@ function openVendasPage(status){
   // A aba "Venda Sem Retorno" só aparece pra quem pode aprovar o desbloqueio
   // (admin, CEO ou coordenador). Vendedor e supervisor não veem essa aba.
   const btnSemRetorno=document.getElementById('vp-btn-SemRetorno');
-  if(btnSemRetorno) btnSemRetorno.style.display=(isAdmin()||isCEO()||isCoordenador())?'inline-flex':'none';
+  const podeAprovar=isAdmin()||isCEO()||isCoordenador();
+  if(btnSemRetorno) btnSemRetorno.style.display=podeAprovar?'inline-flex':'none';
+  const bloqueiosPanel=document.getElementById('vp-bloqueios-panel');
+  if(bloqueiosPanel){
+    bloqueiosPanel.style.display=podeAprovar?'':'none';
+    if(podeAprovar) renderBloqueiosPendentes();
+  }
   renderVendasPage();
 }
 
@@ -7914,6 +7965,43 @@ function setupRealtime(){
       document.getElementById('transmissao-popup').style.display='none';
       document.getElementById('transmissao-popup-body').innerHTML='';
       _transmissaoAtual=null;
+    }
+  });
+
+  // FEATURE: força logout IMEDIATO de quem já está com o app aberto na aba.
+  // Antes, forceLogoutAll() só gravava force_logout_at em crm_config, e isso
+  // só era checado uma vez no boot (ver a IIFE logo depois do <script> abrir)
+  // — então clicar em "Deslogar Todos" não tirava ninguém que já estivesse
+  // logado até a pessoa dar F5 por conta própria. Esse listener reage na hora,
+  // usando a mesma lógica de comparação (iat do token vs. force_logout_at).
+  // REQUISITO: a tabela crm_config precisa estar na publicação do Realtime
+  // (ALTER PUBLICATION supabase_realtime ADD TABLE crm_config;) e, se RLS
+  // estiver ligado nela, a policy de SELECT precisa liberar todo mundo
+  // autenticado — sem isso a mensagem simplesmente não chega em ninguém.
+  ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_config',filter:'chave=eq.force_logout_at'},async(payload)=>{
+    const logoutAtRaw=payload.new?.valor;
+    if(!logoutAtRaw) return;
+    const logoutAt=new Date(logoutAtRaw);
+    const{data:{session}}=await sb.auth.getSession();
+    if(!session) return;
+    let tokenIssuedAt=null;
+    try{
+      const tokenParts=session.access_token?.split('.');
+      if(tokenParts&&tokenParts.length===3){
+        const payloadTok=JSON.parse(atob(tokenParts[1]));
+        if(payloadTok.iat) tokenIssuedAt=new Date(payloadTok.iat*1000);
+      }
+    }catch(te){ console.warn('[force-logout] token parse error:',te.message); }
+    if(!tokenIssuedAt && session.user?.last_sign_in_at){
+      tokenIssuedAt=new Date(session.user.last_sign_in_at);
+    }
+    if(tokenIssuedAt && tokenIssuedAt < logoutAt){
+      console.log('[force-logout] recebido via Realtime — deslogando agora');
+      toast('Você foi desconectado por um administrador.','err');
+      await sb.auth.signOut({scope:'local'});
+      Object.keys(localStorage).forEach(k=>{if(k.startsWith('sb-'))localStorage.removeItem(k);});
+      Object.keys(sessionStorage).forEach(k=>{if(k.startsWith('crm_'))sessionStorage.removeItem(k);});
+      setTimeout(()=>location.reload(),800);
     }
   });
 
