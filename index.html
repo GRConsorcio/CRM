@@ -1810,50 +1810,48 @@ async function doAuth(){
     } else {
       sessionStorage.removeItem('crm_no_persist');
     }
-    // Registra o login (device + localização aproximada por IP) — fire-and-forget,
-    // não bloqueia a entrada no app nem falha o login se der erro.
-    if(data?.user) _registrarLoginLog(data.user);
+    // Registra o login (device + IP real capturado no servidor via Edge Function)
+    // — fire-and-forget, não bloqueia a entrada no app nem falha o login se der erro.
+    if(data?.user) _registrarLoginLog(data.user, data.session);
     // initApp handles deduplication via CU+CUProfile check
     if(data?.user) await initApp(data.user);
   }
 }
-/* ═══ LOG DE LOGIN (device + localização aproximada) ═══
+/* ═══ LOG DE LOGIN (device + IP real via Edge Function) ═══
    Roda só em login explícito (senha digitada aqui em doAuth), não em refresh de
    página nem token refresh — evita poluir a tabela com entradas repetidas.
-   Localização vem de um serviço externo de IP lookup chamado pelo NAVEGADOR do
-   usuário: é aproximada, pode ser bloqueada por ad-blocker/VPN e é spoofável por
-   quem quiser burlar. Serve pra controle administrativo informal, não como prova
-   de segurança forte — pra isso seria necessário capturar o IP no servidor
-   (Edge Function), o que este projeto não usa hoje. */
-async function _registrarLoginLog(user){
+   O IP não é mais autodeclarado pelo navegador (não usa mais ipapi.co direto
+   daqui): quem grava é a Edge Function 'log-login', que lê o IP real de origem
+   no header x-forwarded-for do lado do servidor e insere com a service_role key
+   (RLS não deixa mais o cliente inserir direto nessa tabela — ver migração SQL).
+   Limitação que continua existindo mesmo assim: se o usuário estiver atrás de
+   VPN, o IP visto é o da VPN. Isso é físico, nenhuma solução resolve. */
+async function _registrarLoginLog(user, session){
   try{
     const ua=navigator.userAgent||'';
     const so=/Windows/.test(ua)?'Windows':/Android/.test(ua)?'Android':/iPhone|iPad|iOS/.test(ua)?'iOS':/Mac OS/.test(ua)?'macOS':/Linux/.test(ua)?'Linux':'Desconhecido';
     const browser=/Edg\//.test(ua)?'Edge':/OPR\//.test(ua)?'Opera':/Chrome\//.test(ua)?'Chrome':/Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)&&!/Chrome/.test(ua)?'Safari':'Desconhecido';
     const tipo=/Mobile|Android|iPhone/.test(ua)?'Celular':/iPad|Tablet/.test(ua)?'Tablet':'Desktop';
     const device=`${tipo} · ${so} · ${browser}`;
-    let geo={};
-    try{
-      const r=await Promise.race([
-        fetch('https://ipapi.co/json/'),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),4000))
-      ]);
-      if(r.ok) geo=await r.json();
-    }catch(geoErr){
-      console.warn('[login-log] geolocalização indisponível:',geoErr.message);
+
+    const accessToken=session?.access_token;
+    if(!accessToken){
+      console.warn('[login-log] sem access_token na sessão, abortando registro');
+      return;
     }
-    const{error}=await sb.from('crm_login_logs').insert({
-      user_id:user.id,
-      email:user.email,
-      nome:user.user_metadata?.full_name||null,
-      device,
-      user_agent:ua,
-      ip:geo.ip||null,
-      cidade:geo.city||null,
-      regiao:geo.region||null,
-      pais:geo.country_name||null
+
+    const resp=await fetch(SUPA_URL+'/functions/v1/log-login',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer '+accessToken
+      },
+      body:JSON.stringify({device, user_agent:ua})
     });
-    if(error) console.warn('[login-log] erro ao gravar:',error.message);
+    if(!resp.ok){
+      const errBody=await resp.text().catch(()=>'');
+      console.warn('[login-log] edge function retornou erro:',resp.status,errBody);
+    }
   }catch(e){
     console.warn('[login-log] falha geral ao registrar login:',e.message);
   }
@@ -2992,7 +2990,7 @@ async function refreshLeadCountsExact(fechadosCount){
 // Chamada com debounce a partir do realtime de crm_leads — evita disparar uma
 // contagem nova a cada evento quando chega um lote de leads de uma vez.
 function scheduleLeadCountsRefresh(){
-  if(!isAdminOrCoord()) return;
+  if(!isAdmin()) return;
   clearTimeout(_leadCountsFetchTimer);
   _leadCountsFetchTimer=setTimeout(()=>{
     const fechadosNow=allLeads.filter(l=>l.status==='Fechado').length;
@@ -3432,7 +3430,7 @@ async function renderDashboard(){
   // saíram do carregamento principal dele) — usa a contagem de vendas aprovadas,
   // que é escopada corretamente e não depende da base de leads estar completa.
   const fechados=isSupervisor()?vendasAprovadas:myLeads.filter(l=>l.status==='Fechado').length;
-  const semVend=isAdminOrCoord()?allLeads.filter(l=>!l.responsavel_id).length:0;
+  const semVend=isAdmin()?allLeads.filter(l=>!l.responsavel_id).length:0;
   const hoje=new Date().toISOString().slice(0,10);
   const myTasks=allTasks; // allTasks já vem filtrado só com as tarefas do próprio usuário
   const vencidas=myTasks.filter(t=>!t.concluida&&t.prazo&&t.prazo<hoje).length;
@@ -3444,7 +3442,7 @@ async function renderDashboard(){
     <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04);cursor:pointer" onclick="openVendasPage('Aprovado')" title="Ver vendas aprovadas"><div class="kpi-label" style="color:var(--green)">✅ Aprovado Pós Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
     <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04);cursor:pointer" onclick="openVendasPage('Cancelado')" title="Ver cancelamentos"><div class="kpi-label" style="color:var(--red)">❌ Reprovado Pós Vendas</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
     <div class="kpi"><div class="kpi-label">Tarefas Vencidas</div><div class="kpi-val" style="color:${vencidas?'var(--red)':'var(--text)'}">${vencidas}</div></div>`;
-  if(isAdminOrCoord()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)" id="kpi-sem-vendedor">${semVend.toLocaleString('pt-BR')}</div></div>`;
+  if(isAdmin()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)" id="kpi-sem-vendedor">${semVend.toLocaleString('pt-BR')}</div></div>`;
   // Ranking panel: admin e coordenador veem o painel de colunas
   document.getElementById('dash-cols').style.display=(isAdmin()||isCoordenador()||isSupervisor())?'':'none';
   const adminTools=document.getElementById('dash-admin-tools');
@@ -3460,10 +3458,15 @@ async function renderDashboard(){
   }
   document.getElementById('dash-kpis').innerHTML=kpis;
   // O "total"/"sem vendedor" acima vem de myLeads/allLeads, que tem teto de
-  // ADMIN_LEADS_CAP por custo de banda — pro admin/coordenador isso mostra um
-  // número truncado quando a base passa do teto. Substitui pelo valor real
-  // assim que a contagem exata (bem mais barata que buscar as linhas) responder.
-  if(isAdminOrCoord()) refreshLeadCountsExact(fechados);
+  // ADMIN_LEADS_CAP por custo de banda — pro admin isso mostra um número
+  // truncado quando a base passa do teto. Substitui pelo valor real assim que
+  // a contagem exata (bem mais barata que buscar as linhas) responder.
+  // IMPORTANTE: essa contagem é sempre da empresa inteira (sem filtro por
+  // equipe/vendedor) — por isso é estritamente admin-only. Antes usava
+  // isAdminOrCoord(), que incluía supervisor por engano e sobrescrevia o
+  // "Total de Leads"/"Sem Vendedor" corretamente escopados do supervisor
+  // com os números da base toda (bug real, não cache).
+  if(isAdmin()) refreshLeadCountsExact(fechados);
 
   // Ranking de fechamentos — BUGFIX: antes usava allLeads + allUsers sem nenhum escopo,
   // então supervisor via o ranking de fechamentos de TODA a empresa (outras equipes incluídas).
@@ -5817,11 +5820,25 @@ async function saveVenda(){
     // próprio crm_historico. Segue o mesmo padrão de updateVendaStatus, que
     // já loga aprovação/cancelamento; só faltava logar a criação em si.
     if(vd && vendaLeadId){
-      await sb.from('crm_historico').insert({
-        lead_id:vendaLeadId, user_id:CU.id,
-        tipo:'🏦 Venda registrada',
-        descricao:`Venda registrada por ${CUProfile?.name||CU.email}. Crédito: ${vd.valor_credito?'R$ '+Number(vd.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}.`
-      }).catch(e=>console.warn('[saveVenda] log criação falhou:',e.message));
+      // BUGFIX CRÍTICO: este insert usava .catch(e=>...) encadeado direto no
+      // query builder do Supabase — mas esse builder só implementa .then(),
+      // não .catch()/.finally() (só vira Promise "de verdade" depois do
+      // .then() ou de um await). Chamar .catch() aqui lançava
+      // "TypeError: ...catch is not a function" de forma SÍNCRONA, o que
+      // interrompia saveVenda() inteira nesse ponto — e tudo que vinha
+      // depois (inclusive a sincronização com o Firebase do ranking, mais
+      // abaixo) nunca rodava. A venda chegava a ser salva em crm_vendas,
+      // mas o ranking nunca recebia o incremento. Try/catch normal resolve,
+      // porque não depende do builder ter .catch() próprio.
+      try{
+        await sb.from('crm_historico').insert({
+          lead_id:vendaLeadId, user_id:CU.id,
+          tipo:'🏦 Venda registrada',
+          descricao:`Venda registrada por ${CUProfile?.name||CU.email}. Crédito: ${vd.valor_credito?'R$ '+Number(vd.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}.`
+        });
+      }catch(e){
+        console.warn('[saveVenda] log criação falhou:',e.message);
+      }
     }
   }
 
