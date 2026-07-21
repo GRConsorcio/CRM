@@ -9861,14 +9861,20 @@ async function confirmarEnviarEquipe(){
 
 async function forceLogoutAll(){
   if(!isAdmin()) return;
-  if(!confirm('Deslogar TODOS os usuários? Eles precisarão fazer login novamente.')) return;
+  if(!confirm('Deslogar TODOS os usuários agora? Quem estiver com o CRM aberto será desconectado imediatamente e precisará fazer login de novo.')) return;
   const now=new Date().toISOString();
   // Upsert config flag
   const{error}=await sb.from('crm_config').upsert({chave:'force_logout_at',valor:now},{onConflict:'chave'});
   if(error){
     toast('Erro: '+error.message,'err');return;
   }
-  toast('Todos os usuários serão deslogados no próximo acesso!','ok');
+  // Sem isso, o PRÓPRIO admin que clicou aqui também seria derrubado pelo
+  // listener de Realtime (ver setupRealtime) — o token dele também foi
+  // emitido antes de "now". Renovando a sessão agora, o token do admin
+  // ganha um novo "iat" (issued at) DEPOIS do force_logout_at, então o
+  // listener vê que o token dele é mais novo que o corte e não o desloga.
+  try{ await sb.auth.refreshSession(); }catch(re){ console.warn('[force-logout] refresh próprio falhou:',re.message); }
+  toast('Todos os usuários conectados foram desconectados agora.','ok');
 }
 async function openRecolherTudo(){
   if(!isAdmin()){toast('Apenas admin pode recolher todos os leads','err');return;}
