@@ -1824,9 +1824,14 @@ async function doAuth(){
     } else {
       sessionStorage.removeItem('crm_no_persist');
     }
-    // Registra o login (device + IP real capturado no servidor via Edge Function)
-    // — fire-and-forget, não bloqueia a entrada no app nem falha o login se der erro.
-    if(data?.user) _registrarLoginLog(data.user, data.session);
+    // Registro de login via Edge Function 'log-login' REMOVIDO em 22/07/2026 —
+    // a função nunca estava deployada (list_edge_functions retornava vazio),
+    // então todo login gerava um 404 que o navegador reportava como erro de
+    // CORS no console. A tabela crm_login_logs (visível no admin) PARA DE
+    // CRESCER a partir de agora — não há mais nenhum caminho que grave nela,
+    // já que a RLS da tabela não permite insert direto pelo cliente (só via
+    // Edge Function com service_role, que não existe). Se quiser esse
+    // recurso de volta, a Edge Function precisa ser recriada e deployada.
     // initApp handles deduplication via CU+CUProfile check
     if(data?.user) await initApp(data.user);
   }
@@ -10208,17 +10213,18 @@ function renderEquipes(){
     grid.innerHTML='';
     return;
   }
+  // BUGFIX (22/07/2026): antes os números do card vinham de allLeads.filter(...) /
+  // allVendas.filter(...) — arrays locais cujo ESCOPO muda por perfil (admin trava
+  // em ADMIN_LEADS_CAP; supervisor exclui Fechado e depende de uma query que já
+  // vimos falhar por timeout, ficando com allLeads vazio até a próxima carga OK;
+  // coordenador só carrega leads já vendidos). Resultado: o mesmo card mostrava
+  // números bem diferentes (às vezes 0) dependendo de quem estava logado e do
+  // estado do cache local, sem relação com a quantidade real na base. Agora os
+  // dois números vêm de contagem exata direto no banco (count:'exact', head:true),
+  // igual já era feito em openEquipeDetail() — sempre o mesmo valor, correto mesmo
+  // se a carga geral de leads tiver falhado ou estiver capada.
   grid.innerHTML=f.map(eq=>{
     const membros=allMembroEquipes.filter(m=>m.equipe_id===eq.id);
-    const mIds=new Set(membros.map(m=>m.user_id));
-    const leads=allLeads.filter(l=>l.equipe_id===eq.id||(!l.equipe_id&&l.responsavel_id&&mIds.has(l.responsavel_id))).length;
-    // BUGFIX: fechados agora vem de vendas aprovadas (igual ao detalhe da equipe) —
-    // l.status==='Fechado' não é mais confiável aqui porque leads Fechado não ficam
-    // carregados em allLeads pro supervisor.
-    const fechados=allVendas.filter(v=>{
-      const ownerViaMap=_supervisorLeadOwnerMap.get(v.lead_id);
-      return (mIds.has(ownerViaMap)||mIds.has(v.vendedor_id))&&v.status_venda==='Aprovado';
-    }).length;
     return`<div class="equipe-card" onclick="openEquipeDetail('${eq.id}')">
       <div class="equipe-card-bar" style="background:${eq.cor||'var(--gold)'}"></div>
       <div class="equipe-card-body">
@@ -10226,12 +10232,53 @@ function renderEquipes(){
         <div class="equipe-card-desc">${eq.descricao||'Sem descrição'}</div>
         <div class="equipe-card-meta">
           <span>👥 ${membros.length} membro${membros.length!==1?'s':''}</span>
-          <span>📋 ${leads} lead${leads!==1?'s':''}</span>
-          <span style="color:var(--green)">✅ ${fechados}</span>
+          <span>📋 <span id="eq-leads-count-${eq.id}">…</span> lead(s)</span>
+          <span style="color:var(--green)">✅ <span id="eq-fech-count-${eq.id}">…</span></span>
         </div>
       </div>
     </div>`;
   }).join('');
+  _carregarContagensEquipes(f);
+}
+
+// Busca ao vivo, direto no banco, a contagem exata de leads e fechamentos de
+// cada equipe visível — em paralelo, uma equipe não espera a outra. Se uma
+// contagem falhar (rede instável), só aquele card fica com "—" em vez de
+// travar os outros ou mostrar um número errado.
+async function _carregarContagensEquipes(equipes){
+  await Promise.all(equipes.map(async eq=>{
+    const membros=allMembroEquipes.filter(m=>m.equipe_id===eq.id);
+    const memberIdsArr=membros.map(m=>m.user_id);
+    const orFilterLeads=memberIdsArr.length
+      ?`equipe_id.eq.${eq.id},and(equipe_id.is.null,responsavel_id.in.(${memberIdsArr.join(',')}))`
+      :`equipe_id.eq.${eq.id}`;
+    const leadsEl=document.getElementById(`eq-leads-count-${eq.id}`);
+    const fechEl=document.getElementById(`eq-fech-count-${eq.id}`);
+    try{
+      const{count}=await sb.from('crm_leads').select('id',{count:'exact',head:true}).or(orFilterLeads);
+      if(leadsEl) leadsEl.textContent=(count||0).toLocaleString('pt-BR');
+    }catch(e){
+      console.warn(`[renderEquipes] contagem de leads falhou p/ equipe ${eq.nome}:`,e.message);
+      if(leadsEl) leadsEl.textContent='—';
+    }
+    try{
+      let fechCount=0;
+      if(memberIdsArr.length){
+        const{count:c1}=await sb.from('crm_vendas').select('id',{count:'exact',head:true}).eq('status_venda','Aprovado').in('vendedor_id',memberIdsArr);
+        fechCount+=c1||0;
+      }
+      const{data:legadoRows}=await sb.from('crm_vendas').select('id,lead_id').eq('status_venda','Aprovado').is('vendedor_id',null);
+      const legadoLeadIds=(legadoRows||[]).map(r=>r.lead_id).filter(Boolean);
+      if(legadoLeadIds.length){
+        const{data:legadoNaEquipe}=await sb.from('crm_leads').select('id').in('id',legadoLeadIds).or(orFilterLeads);
+        fechCount+=(legadoNaEquipe||[]).length;
+      }
+      if(fechEl) fechEl.textContent=fechCount;
+    }catch(e){
+      console.warn(`[renderEquipes] contagem de fechamentos falhou p/ equipe ${eq.nome}:`,e.message);
+      if(fechEl) fechEl.textContent='—';
+    }
+  }));
 }
 
 async function openEquipeDetail(id){
