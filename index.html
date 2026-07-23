@@ -831,13 +831,13 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="panel-head"><div class="panel-title">📡 Nova Transmissão</div></div>
       <div class="panel-body">
         <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
-          Anexe um vídeo ou áudio. Ele entra em <strong style="color:var(--gold2)">modo teste</strong> primeiro —
+          Anexe um vídeo, áudio ou imagem. Ele entra em <strong style="color:var(--gold2)">modo teste</strong> primeiro —
           só você vê o popup, pra conferir antes de mandar pra todo mundo.
         </div>
         <div class="upload-zone" id="transm-zone" style="margin-bottom:12px">
-          <input type="file" id="transm-file" accept="video/*,audio/*" onchange="handleTransmissaoFile(this.files[0])">
+          <input type="file" id="transm-file" accept="video/*,audio/*,image/*" onchange="handleTransmissaoFile(this.files[0])">
           <div class="upload-icon">📡</div>
-          <div class="upload-txt">Clique ou arraste um vídeo ou áudio</div>
+          <div class="upload-txt">Clique ou arraste um vídeo, áudio ou imagem</div>
           <div class="upload-sub">Formatos comuns: mp4, webm, mp3, ogg</div>
         </div>
         <div class="fld"><label>Título (opcional, aparece no popup)</label><input class="inp" id="transm-titulo" placeholder="Ex: Aviso importante — reunião de sexta"></div>
@@ -4851,12 +4851,13 @@ async function handleTransmissaoFile(file){
   const statusEl=document.getElementById('transm-upload-status');
   const isVideo=file.type.startsWith('video/');
   const isAudio=file.type.startsWith('audio/');
-  if(!isVideo&&!isAudio){
+  const isImagem=file.type.startsWith('image/');
+  if(!isVideo&&!isAudio&&!isImagem){
     statusEl.style.color='var(--red)';
-    statusEl.textContent='Arquivo precisa ser vídeo ou áudio.';
+    statusEl.textContent='Arquivo precisa ser vídeo, áudio ou imagem.';
     return;
   }
-  const tipo=isVideo?'video':'audio';
+  const tipo=isVideo?'video':isAudio?'audio':'imagem';
   statusEl.style.color='var(--muted2)';
   statusEl.textContent='Enviando arquivo...';
   try{
@@ -4910,7 +4911,7 @@ async function renderTransmissoes(){
       const podeEncerrar=t.ativo;
       return`<tr>
         <td style="font-weight:700">${nomeArq}</td>
-        <td>${t.tipo==='video'?'🎥 Vídeo':'🔊 Áudio'}</td>
+        <td>${t.tipo==='video'?'🎥 Vídeo':t.tipo==='imagem'?'🖼️ Imagem':'🔊 Áudio'}</td>
         <td style="color:${statusColor};font-weight:700">${status}</td>
         <td style="font-size:12px;color:var(--muted2)">${publico}</td>
         <td style="font-size:12px;color:var(--muted2)">${dtStr}</td>
@@ -5038,6 +5039,8 @@ function showTransmissaoPopup(t){
         <video id="transm-media-el" src="${url}" controls autoplay muted playsinline style="width:100%;max-height:70vh;border-radius:8px;display:block;background:#000"></video>
         <button onclick="_ativarSomTransmissao()" id="transm-unmute-btn" style="position:absolute;bottom:56px;right:14px;background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:20px;padding:7px 14px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">🔇 Ativar som</button>
       </div>`
+    : t.tipo==='imagem'
+    ? `<div><img src="${url}" alt="${t.titulo||'Imagem'}" style="width:100%;max-height:70vh;object-fit:contain;border-radius:8px;display:block;background:#000"></div>`
     : `<div>
         <audio id="transm-media-el" src="${url}" controls autoplay muted style="width:100%"></audio>
         <button onclick="_ativarSomTransmissao()" id="transm-unmute-btn" style="margin-top:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer">🔇 Ativar som</button>
