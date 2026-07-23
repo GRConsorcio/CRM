@@ -518,6 +518,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <button class="btn-sm" onclick="document.getElementById('l-f-data-ini').value='';document.getElementById('l-f-data-fim').value='';renderLeads(true)" title="Limpar datas" style="padding:7px 10px;font-size:11px">✕ Data</button>
       <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openRecolherTudo()">↩️ Recolher tudo para mim</button>
       <button class="btn-sm" id="leads-avaliar-perdidos-btn" style="display:none;border-color:var(--red);color:var(--red)" onclick="openAvaliarPerdidos()">🔍 Avaliar Perdidos</button>
+      <button class="btn-sm" id="leads-duplicatas-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openDuplicatas()">Duplicatas</button>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
       <span id="new-lead-btn-wrap"></span>
     </div>
@@ -3637,6 +3638,8 @@ function renderLeads(resetPage){
   if(rtb) rtb.style.display=isAdmin()?'':'none';
   const apb=document.getElementById('leads-avaliar-perdidos-btn');
   if(apb) apb.style.display=isAdmin()?'':'none';
+  const dpb=document.getElementById('leads-duplicatas-btn');
+  if(dpb) dpb.style.display=isAdmin()?'':'none';
   // Populate DDD filter (admin only)
   populateDDDFilter();
   const q=(document.getElementById('l-srch')?.value||'').toLowerCase();
@@ -7833,6 +7836,77 @@ async function confirmarAvaliarPerdidos(){
   }
 }
 
+/* ═══ DUPLICATAS ═══
+   crm_relatorio_duplicatas() consulta a base INTEIRA no banco (não o cache
+   capado de 12k do front) e separa dois padrões: "identica" (mesmo nome +
+   telefone — mesclável direto) e "colisao" (mesmo telefone em nomes
+   diferentes — provável erro de importação, não mescla sozinho, só avisa). */
+async function openDuplicatas(){
+  if(!isAdmin()) return;
+  document.getElementById('modal-duplicatas').classList.add('on');
+  const loading=document.getElementById('duplicatas-loading');
+  const body=document.getElementById('duplicatas-body');
+  loading.style.display='';
+  body.innerHTML='';
+  try{
+    const{data,error}=await sb.rpc('crm_relatorio_duplicatas');
+    if(error) throw error;
+    _renderDuplicatasResult(data||[]);
+  }catch(e){
+    body.innerHTML=`<div class="empty"><div class="ei">⚠️</div>Erro ao verificar duplicatas: ${e.message}</div>`;
+  }finally{
+    loading.style.display='none';
+  }
+}
+function _renderDuplicatasResult(grupos){
+  const body=document.getElementById('duplicatas-body');
+  const identicas=grupos.filter(g=>g.tipo==='identica');
+  const colisoes=grupos.filter(g=>g.tipo==='colisao');
+  if(!grupos.length){
+    body.innerHTML='<div class="empty"><div class="ei">✅</div>Nenhuma duplicata encontrada na base.</div>';
+    return;
+  }
+  let html='';
+  if(identicas.length){
+    html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text);margin:4px 0 8px">Duplicata idêntica — ${identicas.length} grupo(s)</div>`;
+    html+=identicas.map((g,i)=>{
+      const keeperId=g.lead_ids[0];
+      const loserIds=g.lead_ids.slice(1);
+      return`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;font-weight:700;color:var(--text)">${escJs(g.nomes[0])}</div>
+          <div style="font-size:11px;color:var(--muted2)">${g.qtd} cadastros com esse nome e telefone — mantém 1 (o com mais histórico), apaga o resto</div>
+        </div>
+        <button class="act" style="border-color:var(--green);color:var(--green);flex-shrink:0" onclick="mesclarGrupoDuplicata('${keeperId}',${JSON.stringify(loserIds)},this)">Mesclar</button>
+      </div>`;
+    }).join('');
+  }
+  if(colisoes.length){
+    html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--orange);margin:16px 0 8px">Mesmo telefone, nomes diferentes — ${colisoes.length} grupo(s), revisar manualmente</div>`;
+    html+=colisoes.map(g=>`<div style="padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:8px;margin-bottom:6px">
+        <div style="font-size:11.5px;color:var(--muted2);margin-bottom:2px">Telefone ${g.tel_norm} · ${g.qtd} leads</div>
+        <div style="font-size:12px;color:var(--text)">${g.nomes.map(n=>escJs(n)).join(', ')}</div>
+      </div>`).join('');
+  }
+  body.innerHTML=html;
+}
+async function mesclarGrupoDuplicata(keeperId,loserIds,btn){
+  if(!confirm(`Mesclar ${loserIds.length+1} cadastros em 1? Histórico, tarefas e vendas dos outros são movidos pro que fica. Não dá pra desfazer.`))return;
+  btn.disabled=true; btn.textContent='Mesclando...';
+  try{
+    const{error}=await sb.rpc('crm_merge_leads',{p_keeper_id:keeperId,p_loser_ids:loserIds});
+    if(error) throw error;
+    allLeads=allLeads.filter(l=>!loserIds.includes(l.id));
+    saveCache();
+    renderLeads(true);
+    btn.closest('div').remove();
+    toast('Duplicata mesclada','ok');
+  }catch(e){
+    toast('Erro ao mesclar: '+e.message,'err');
+    btn.disabled=false; btn.textContent='Mesclar';
+  }
+}
+
 /* ═══ REALTIME SUBSCRIPTIONS ═══ */
 let realtimeChannel = null;
 let _realtimeReconnectTimer = null; // evita agendar reconexões duplicadas
@@ -8487,18 +8561,34 @@ async function importBulk(){
 async function importLeads(leads,fonte){
   let ok=0,errs=0,dups=0;
   const batch=[];
-  
+
+  // Checagem de duplicata contra o BANCO INTEIRO — antes só comparava com
+  // allLeads (cache local, capado em ~12k) e dentro do próprio arquivo, então
+  // um CSV podia reintroduzir leads que já existiam fora do cache do admin.
+  // Uma chamada só pro banco com todos os telefones do arquivo de uma vez.
+  const telsParaChecar=[...new Set(leads.map(l=>(l.telefone||'').replace(/\D/g,'')).filter(t=>t.length>=8))];
+  let dbMatches=[];
+  if(telsParaChecar.length){
+    try{
+      const{data}=await sb.rpc('crm_leads_by_phone_norm',{phones:telsParaChecar});
+      dbMatches=data||[];
+    }catch(e){ console.warn('[importLeads] checagem de duplicata no banco falhou:',e.message); }
+  }
+
   for(const lead of leads){
     // VERIFICAÇÃO DE DUPLICATA NO IMPORT
     const nomeLead = lead.nome.trim();
     const telLead = (lead.telefone || '').replace(/\D/g,'');
-    
-    const isDup = allLeads.some(l => 
-      l.nome.toLowerCase() === nomeLead.toLowerCase() && 
+
+    const isDup = allLeads.some(l =>
+      l.nome.toLowerCase() === nomeLead.toLowerCase() &&
       (l.telefone || '').replace(/\D/g,'') === telLead
-    ) || batch.some(b => 
-      b.nome.toLowerCase() === nomeLead.toLowerCase() && 
+    ) || batch.some(b =>
+      b.nome.toLowerCase() === nomeLead.toLowerCase() &&
       (b.telefone || '').replace(/\D/g,'') === telLead
+    ) || dbMatches.some(m =>
+      (m.nome||'').toLowerCase() === nomeLead.toLowerCase() &&
+      m.tel_norm === telLead
     );
 
     if(isDup){
@@ -11474,6 +11564,21 @@ function irParaLeadNotif(leadId, notifId){
       <button id="avaliar-perdidos-btn-confirmar" class="btn-save" style="background:var(--red);border-color:var(--red)" onclick="confirmarAvaliarPerdidos()">
         🔍 Avaliar e Reciclar
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ MODAL: DUPLICATAS ════ -->
+<div class="modal-bg" id="modal-duplicatas">
+  <div class="modal" style="max-width:720px;width:100%">
+    <div class="modal-title">Duplicatas na base</div>
+    <div style="font-size:12.5px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+      Verifica a base inteira (não só o que está carregado na tela). Grupos com o <strong style="color:var(--text)">mesmo nome e telefone</strong> podem ser mesclados direto — mantém o lead com mais histórico e reatribui tudo dos outros antes de apagar. Grupos com <strong style="color:var(--orange)">o mesmo telefone em nomes diferentes</strong> não são mesclados automaticamente (pode ser erro de importação, não duplicata de verdade) — revise manualmente.
+    </div>
+    <div id="duplicatas-loading" style="text-align:center;padding:20px;color:var(--muted2);font-size:12px">Analisando base completa...</div>
+    <div id="duplicatas-body" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('duplicatas')">Fechar</button>
     </div>
   </div>
 </div>
