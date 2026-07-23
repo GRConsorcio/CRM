@@ -818,7 +818,7 @@ document.addEventListener('DOMContentLoaded', function(){
         </div>
       </div>
       <div class="tbl-wrap">
-        <table><thead><tr><th>Usuário</th><th>Data/Hora</th><th>Dispositivo</th><th>Localização</th><th>IP</th></tr></thead>
+        <table><thead><tr><th>Usuário</th><th>Data/Hora</th><th>Dispositivo</th><th>Localização</th><th>IP</th><th></th></tr></thead>
         <tbody id="login-logs-tbody"></tbody></table>
       </div>
     </div>
@@ -1824,16 +1824,14 @@ async function doAuth(){
     } else {
       sessionStorage.removeItem('crm_no_persist');
     }
-    // Registro de login via Edge Function 'log-login' REMOVIDO em 22/07/2026 —
-    // a função nunca estava deployada (list_edge_functions retornava vazio),
-    // então todo login gerava um 404 que o navegador reportava como erro de
-    // CORS no console. A tabela crm_login_logs (visível no admin) PARA DE
-    // CRESCER a partir de agora — não há mais nenhum caminho que grave nela,
-    // já que a RLS da tabela não permite insert direto pelo cliente (só via
-    // Edge Function com service_role, que não existe). Se quiser esse
-    // recurso de volta, a Edge Function precisa ser recriada e deployada.
-    // initApp handles deduplication via CU+CUProfile check
-    if(data?.user) await initApp(data.user);
+    // Registro de login via Edge Function 'log-login' — recriada e deployada em
+    // 23/07/2026 (grava device/IP/geolocalização em crm_login_logs, visível só
+    // pro admin). Não bloqueia o login se falhar (fire-and-forget, com try/catch
+    // interno na própria função).
+    if(data?.user){
+      if(data.session) _registrarLoginLog(data.user,data.session).catch(e=>console.warn('[login-log] falha ao registrar:',e.message));
+      await initApp(data.user);
+    }
   }
 }
 /* ═══ LOG DE LOGIN (device + IP real via Edge Function) ═══
@@ -2191,41 +2189,58 @@ async function initApp(user){
   }
 }
 
+// Extrai o iat (issued at) do access token — usado tanto pro corte global
+// (crm_config.force_logout_at, "Deslogar Todos") quanto pro individual
+// (crm_users.force_logout_at, "Deslogar" 1 usuário). Atualiza a cada refresh de
+// token; last_sign_in_at NÃO atualiza em refreshes, então só entra como fallback.
+function _tokenIssuedAt(session){
+  try{
+    const tokenParts=session?.access_token?.split('.');
+    if(tokenParts&&tokenParts.length===3){
+      const payload=JSON.parse(atob(tokenParts[1]));
+      if(payload.iat) return new Date(payload.iat*1000);
+    }
+  }catch(te){ console.warn('Token parse error:',te.message); }
+  if(session?.user?.last_sign_in_at) return new Date(session.user.last_sign_in_at);
+  return null;
+}
+// Compara um corte de "deslogar a partir de X" (global ou individual) com o iat
+// do token atual; desloga se o token foi emitido antes do corte. reload=true é o
+// caso "app já aberto" (via Realtime — mostra toast e recarrega); reload=false é
+// o boot inicial (a página ainda nem montou o app, só volta pra tela de login).
+async function _aplicarForceLogoutSeNecessario(logoutAtRaw,{reload}={}){
+  if(!logoutAtRaw) return false;
+  const logoutAt=new Date(logoutAtRaw);
+  const{data:{session}}=await sb.auth.getSession();
+  if(!session) return false;
+  const tokenIssuedAt=_tokenIssuedAt(session);
+  if(!(tokenIssuedAt && tokenIssuedAt<logoutAt)) return false;
+  console.log('[force-logout] token emitido antes do corte — deslogando');
+  if(reload) toast('Você foi desconectado por um administrador.','err');
+  await sb.auth.signOut({scope:'local'});
+  Object.keys(localStorage).forEach(k=>{if(k.startsWith('sb-'))localStorage.removeItem(k);});
+  Object.keys(sessionStorage).forEach(k=>{if(k.startsWith('crm_'))sessionStorage.removeItem(k);});
+  if(reload) setTimeout(()=>location.reload(),800);
+  else document.getElementById('auth-screen').style.display='flex';
+  return true;
+}
+
 /* Verificação ativa de sessão no carregamento — não depende de eventos */
 (async()=>{
   try{
     sb.from('crm_users').select('id').limit(1).maybeSingle().then(()=>{}).catch(()=>{});
     const{data:{session}}=await sb.auth.getSession();
     if(session?.user){
-      // Check global force-logout flag (admin can push this to sign everyone out)
+      // Corte global (admin pode deslogar todo mundo de uma vez)
       try{
         const{data:cfg}=await sb.from('crm_config').select('valor').eq('chave','force_logout_at').maybeSingle();
-        if(cfg?.valor){
-          const logoutAt=new Date(cfg.valor);
-          // Usa o iat (issued at) do access token — atualiza a cada refresh de token
-          // last_sign_in_at NÃO atualiza em refreshes, causava logout em loop
-          let tokenIssuedAt=null;
-          try{
-            const tokenParts=session.access_token?.split('.');
-            if(tokenParts&&tokenParts.length===3){
-              const payload=JSON.parse(atob(tokenParts[1]));
-              if(payload.iat) tokenIssuedAt=new Date(payload.iat*1000);
-            }
-          }catch(te){ console.warn('Token parse error:',te.message); }
-          // Fallback: last_sign_in_at (menos confiável mas melhor que nada)
-          if(!tokenIssuedAt && session.user.last_sign_in_at){
-            tokenIssuedAt=new Date(session.user.last_sign_in_at);
-          }
-          if(tokenIssuedAt && tokenIssuedAt < logoutAt){
-            console.log('Force logout triggered — token emitido antes do force_logout_at');
-            await sb.auth.signOut({scope:'local'});
-            Object.keys(localStorage).forEach(k=>{if(k.startsWith('sb-'))localStorage.removeItem(k);});
-            Object.keys(sessionStorage).forEach(k=>{if(k.startsWith('crm_'))sessionStorage.removeItem(k);});
-            document.getElementById('auth-screen').style.display='flex';
-            return;
-          }
-        }
+        if(await _aplicarForceLogoutSeNecessario(cfg?.valor)) return;
       } catch(fe){ console.warn('Config check skipped:',fe.message); }
+      // Corte individual (admin deslogou só este usuário)
+      try{
+        const{data:meuPerfil}=await sb.from('crm_users').select('force_logout_at').eq('user_id',session.user.id).limit(1).maybeSingle();
+        if(await _aplicarForceLogoutSeNecessario(meuPerfil?.force_logout_at)) return;
+      } catch(pe){ console.warn('Individual force-logout check skipped:',pe.message); }
       await initApp(session.user);
     }
   } catch(e){ console.warn('getSession error:',e.message); }
@@ -4774,7 +4789,7 @@ function renderEquipe(){
       <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-gold':u.role==='supervisor'?'b-coord':u.role==='ceo'?'b-ceo':'b-vend'}">${u.role}</span></td>
       <td>${leads}</td>
       <td style="color:var(--green)">${fechs}</td>
-      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button> <button class="act red" onclick="delUser('${u.user_id}','${escJs(u.name)}')" title="Excluir usuário">🗑️</button>`:'—'}</td>
+      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button> <button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="deslogarUsuario('${u.user_id}','${escJs(u.name)}')" title="Deslogar agora">🔒</button> <button class="act red" onclick="delUser('${u.user_id}','${escJs(u.name)}')" title="Excluir usuário">🗑️</button>`:'—'}</td>
     </tr>`;
   }).join('');
 }
@@ -4782,7 +4797,7 @@ function renderEquipe(){
 async function renderLoginLogs(){
   const tbody=document.getElementById('login-logs-tbody');
   if(!tbody) return;
-  tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted2);padding:20px">Carregando...</td></tr>';
+  tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:20px">Carregando...</td></tr>';
   try{
     const{data,error}=await sb.from('crm_login_logs')
       .select('*')
@@ -4790,23 +4805,25 @@ async function renderLoginLogs(){
       .limit(300);
     if(error) throw error;
     if(!data||!data.length){
-      tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted2);padding:20px">Nenhum login registrado ainda.</td></tr>';
+      tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:20px">Nenhum login registrado ainda.</td></tr>';
       return;
     }
     tbody.innerHTML=data.map(l=>{
       const dtStr=new Date(l.criado_em).toLocaleString('pt-BR');
       const loc=[l.cidade,l.regiao,l.pais].filter(Boolean).join(', ')||'—';
+      const podeDeslogar=isAdmin()&&l.user_id&&l.user_id!==CU.id;
       return`<tr>
         <td style="font-weight:700">${l.nome||l.email||'—'}</td>
         <td style="color:var(--muted2);font-size:12px">${dtStr}</td>
         <td style="font-size:12px">${l.device||'—'}</td>
         <td style="font-size:12px">${loc}</td>
         <td style="color:var(--muted2);font-size:12px">${l.ip||'—'}</td>
+        <td>${podeDeslogar?`<button class="act red" onclick="deslogarUsuario('${l.user_id}','${escJs(l.nome||l.email||'')}')" title="Deslogar agora">🔒</button>`:''}</td>
       </tr>`;
     }).join('');
   }catch(e){
     console.warn('[login-logs] erro ao carregar:',e.message);
-    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--red)">Erro ao carregar: '+(e.message||'desconhecido')+'</td></tr>';
+    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--red)">Erro ao carregar: '+(e.message||'desconhecido')+'</td></tr>';
   }
 }
 
@@ -7975,6 +7992,12 @@ function setupRealtime(){
     allUsers=_normUsers(data);
     populateSelects();
     if(document.getElementById('page-equipe').classList.contains('on')) renderEquipe();
+    // Deslogar 1 usuário (deslogarUsuario()) grava force_logout_at na linha dele —
+    // mesma lógica de comparação iat-do-token do force_logout_at global (crm_config),
+    // só que checando se a linha alterada é a MINHA.
+    if(payload.new?.user_id===CU?.id && payload.new?.force_logout_at){
+      await _aplicarForceLogoutSeNecessario(payload.new.force_logout_at,{reload:true});
+    }
   });
 
   // ── crm_transmissoes ── popup de vídeo/áudio. Não tem filtro explícito aqui de
@@ -8010,30 +8033,7 @@ function setupRealtime(){
   // estiver ligado nela, a policy de SELECT precisa liberar todo mundo
   // autenticado — sem isso a mensagem simplesmente não chega em ninguém.
   ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_config',filter:'chave=eq.force_logout_at'},async(payload)=>{
-    const logoutAtRaw=payload.new?.valor;
-    if(!logoutAtRaw) return;
-    const logoutAt=new Date(logoutAtRaw);
-    const{data:{session}}=await sb.auth.getSession();
-    if(!session) return;
-    let tokenIssuedAt=null;
-    try{
-      const tokenParts=session.access_token?.split('.');
-      if(tokenParts&&tokenParts.length===3){
-        const payloadTok=JSON.parse(atob(tokenParts[1]));
-        if(payloadTok.iat) tokenIssuedAt=new Date(payloadTok.iat*1000);
-      }
-    }catch(te){ console.warn('[force-logout] token parse error:',te.message); }
-    if(!tokenIssuedAt && session.user?.last_sign_in_at){
-      tokenIssuedAt=new Date(session.user.last_sign_in_at);
-    }
-    if(tokenIssuedAt && tokenIssuedAt < logoutAt){
-      console.log('[force-logout] recebido via Realtime — deslogando agora');
-      toast('Você foi desconectado por um administrador.','err');
-      await sb.auth.signOut({scope:'local'});
-      Object.keys(localStorage).forEach(k=>{if(k.startsWith('sb-'))localStorage.removeItem(k);});
-      Object.keys(sessionStorage).forEach(k=>{if(k.startsWith('crm_'))sessionStorage.removeItem(k);});
-      setTimeout(()=>location.reload(),800);
-    }
+    await _aplicarForceLogoutSeNecessario(payload.new?.valor,{reload:true});
   });
 
   realtimeChannel = ch.subscribe((status)=>{
@@ -9906,6 +9906,18 @@ async function forceLogoutAll(){
   // listener vê que o token dele é mais novo que o corte e não o desloga.
   try{ await sb.auth.refreshSession(); }catch(re){ console.warn('[force-logout] refresh próprio falhou:',re.message); }
   toast('Todos os usuários conectados foram desconectados agora.','ok');
+}
+// Igual ao forceLogoutAll(), mas mirado num usuário só — grava force_logout_at na
+// própria linha de crm_users (em vez do flag global em crm_config). O listener de
+// Realtime já escuta mudanças em crm_users sem filtro (ver setupRealtime), então
+// só precisou ensinar ele a reconhecer esse campo — nenhuma tabela/publicação nova.
+async function deslogarUsuario(uid,name){
+  if(!isAdmin()) return;
+  if(uid===CU.id){toast('Você não pode deslogar sua própria sessão por aqui','err');return;}
+  if(!confirm(`Deslogar "${name}" agora? Se estiver com o CRM aberto, será desconectado imediatamente e precisará fazer login de novo.`))return;
+  const{error}=await sb.from('crm_users').update({force_logout_at:new Date().toISOString()}).eq('user_id',uid);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  toast(`"${name}" foi desconectado agora.`,'ok');
 }
 async function openRecolherTudo(){
   if(!isAdmin()){toast('Apenas admin pode recolher todos os leads','err');return;}
