@@ -4774,7 +4774,7 @@ function renderEquipe(){
       <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-gold':u.role==='supervisor'?'b-coord':u.role==='ceo'?'b-ceo':'b-vend'}">${u.role}</span></td>
       <td>${leads}</td>
       <td style="color:var(--green)">${fechs}</td>
-      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button>`:'—'}</td>
+      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button> <button class="act red" onclick="delUser('${u.user_id}','${escJs(u.name)}')" title="Excluir usuário">🗑️</button>`:'—'}</td>
     </tr>`;
   }).join('');
 }
@@ -6200,6 +6200,32 @@ async function saveRole(){
   const i=allUsers.findIndex(u=>u.user_id===roleUserId);
   if(i>-1) allUsers[i].role=role;
   closeModal('role');toast('Perfil atualizado!','ok');renderEquipe();
+}
+
+// Exclusão real: remove o login do usuário no Supabase Auth (não só o perfil).
+// Isso não pode ser feito com a anon key do front — só a service_role key
+// consegue chamar auth.admin.deleteUser(), por isso passa pela Edge Function
+// 'delete-user', que confere de novo (no servidor) se quem está chamando é admin.
+async function delUser(uid,name){
+  if(!isAdmin()){toast('Sem permissão','err');return;}
+  if(uid===CU.id){toast('Você não pode excluir sua própria conta','err');return;}
+  if(!confirm(`Excluir permanentemente o usuário "${name}"?\n\nIsso remove o login dele do sistema e não pode ser desfeito. Leads fechados (vendidos) por ele vão para o admin geral. Leads em aberto voltam para a base da equipe dele, sem responsável, disponíveis para transferência.`))return;
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    if(!session?.access_token){toast('Sessão expirada, faça login novamente','err');return;}
+    const resp=await fetch(SUPA_URL+'/functions/v1/delete-user',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({user_id:uid})
+    });
+    const out=await resp.json().catch(()=>({}));
+    if(!resp.ok||!out.success){toast(out.error||'Erro ao excluir usuário','err');return;}
+    allUsers=allUsers.filter(u=>u.user_id!==uid);
+    renderEquipe();
+    toast('Usuário excluído','ok');
+  }catch(e){
+    toast('Erro ao excluir usuário: '+e.message,'err');
+  }
 }
 
 /* ═══ UTILS ═══ */
