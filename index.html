@@ -781,6 +781,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <select id="vp-f-equipe" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
         <option value="">Todas as equipes</option>
       </select>
+      <input type="month" id="vp-f-mes" onchange="renderVendasPage()" title="Filtrar por mês da venda" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
       <input class="inp" id="vp-srch" placeholder="Buscar cliente ou lead..." oninput="renderVendasPage()" style="flex:1;min-width:150px">
     </div>
     <div class="panel">
@@ -1784,6 +1785,10 @@ let ceoLeads=[]; // leads visíveis pro perfil CEO (Anúncio GR, sem Remalho) �
 let _leadNomeCache={}; // cache de nomes buscados on-demand p/ vendas cujo lead não está em allLeads
 let _leadTipoCache={}; // idem, mas pro tipo_lead (Novo/Remalho) — usado no filtro da aba de Vendas
 let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
+// vendaEditId: null = registrar venda NOVA e separada (cliente comprando de novo,
+// sem precisar criar lead duplicado pra isso); id = editar essa venda específica.
+// Ver abrirVendaForm().
+let vendaEditId=null;
 let pendingFiles=[];
 let fromPage='leads';
 // Debounced render — inicializado após definição de debounce() mais abaixo
@@ -4021,7 +4026,13 @@ async function openDetail(id,from){
     }
   }catch(e){console.warn('hist fetch error',e);}
   const tasks=allTasks.filter(t=>t.lead_id===id);
-  const venda=allVendas.find(v=>v.lead_id===id);
+  // Um lead pode ter mais de uma venda (cliente que compra de novo depois de já
+  // ter uma Aprovada) — crm_vendas nunca teve unicidade por lead_id, só o front
+  // é que sempre pegava a primeira encontrada. Agora mostra a mais recente como
+  // "a venda" principal e lista as anteriores logo abaixo.
+  const vendasDoLead=allVendas.filter(v=>v.lead_id===id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const venda=vendasDoLead[0];
+  const vendasAnteriores=vendasDoLead.slice(1);
   // Busca documentos direto do Supabase — allDocs é limitado a 100 no cache
   // e documentos recém-enviados podem não estar no slice
   let docs=allDocs.filter(d=>d.lead_id===id);
@@ -4052,7 +4063,8 @@ async function openDetail(id,from){
         <div class="detail-meta">${lead.origem||'—'} · ${sBadge(lead.status,lead.tipo_lead,lead.id,lead.proposta_quente)}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
+        ${canEdit?`<button class="act green" onclick="abrirVendaForm('${id}',${venda?`'${venda.id}'`:'null'})" data-lead="${id}">${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
+        ${(canEdit&&venda?.status_venda==='Aprovado')?`<button class="act" style="border-color:var(--blue);color:var(--blue)" onclick="abrirVendaForm('${id}',null)" title="Cliente comprando de novo — registra uma venda nova e separada, sem criar outro lead">+ Nova Venda</button>`:''}
         ${canEditData?`<button class="act" onclick="editLead('${id}')">Editar</button>`:''}
         ${(isAdmin()||isSupervisor())?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >Apagar</button>`:''}
         ${(isAdminOrCoord()||isSupervisor())&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">Enviar p/ Equipe</button>`:''}
@@ -4141,6 +4153,18 @@ async function openDetail(id,from){
           <button class="act" onclick="addVendaComentario('${venda.id}','${lead?.id||''}',document.getElementById('novo-comentario-${venda.id}').value,document.getElementById('anexo-comentario-${venda.id}').files[0]);document.getElementById('novo-comentario-${venda.id}').value='';document.getElementById('anexo-comentario-${venda.id}').value='';">Enviar</button>
         </div>
       </div>
+      ${vendasAnteriores.length?`<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">Vendas Anteriores deste Cliente (${vendasAnteriores.length})</div>
+        ${vendasAnteriores.map(vp=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="badge ${vp.status_venda==='Aprovado'?'b-aprov':vp.status_venda==='Cancelado'?'b-canc':vp.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${vp.status_venda==='SemRetorno'?'Cancelados':(vp.status_venda||'Pendente')}</span>
+            <span style="color:var(--gold2);font-weight:700">${vp.valor_credito?brl(vp.valor_credito):'—'}</span>
+            <span style="color:var(--muted2)">${vp.grupo||'—'} / ${vp.cota||'—'} · ${vp.qtd_cotas||1} cota(s)</span>
+            <span style="color:var(--muted2);font-size:11px">${fmtDt(vp.created_at)}</span>
+          </div>
+          <button class="act" onclick="abrirVendaForm('${id}','${vp.id}')">Ver</button>
+        </div>`).join('')}
+      </div>`:''}
     </div>`;
   }
 
@@ -4463,7 +4487,10 @@ async function renderFunil(){
       ${ls.length===0?'<div style="font-size:11px;color:var(--muted);text-align:center;padding:10px 0">Vazio</div>':''}
       ${ls.map(l=>{
         const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
-        const vd=allVendas.find(v=>v.lead_id===l.id);
+        // Lead pode ter mais de uma venda — prioriza achar uma Aprovada antes
+        // de cair na primeira qualquer, senão um lead com 1 venda Aprovada e
+        // outra Pendente podia aparecer sem o destaque verde por azar de ordem.
+        const vd=allVendas.find(v=>v.lead_id===l.id&&v.status_venda==='Aprovado')||allVendas.find(v=>v.lead_id===l.id);
         const isAprov=vd?.status_venda==='Aprovado';
         const isCanc=vd?.status_venda==='Cancelado';
         const isSel=_massSelectedIds.has(l.id);
@@ -5291,6 +5318,12 @@ async function excluirCampanha(id){
 }
 
 /* ═══ MODALS ═══ */
+// vendaId null = registrar venda nova e separada (repetição de compra do
+// mesmo cliente); vendaId preenchido = editar aquela venda específica.
+function abrirVendaForm(leadId,vendaId){
+  vendaEditId=vendaId;
+  openModal('venda');
+}
 function openModal(type){
   if(type==='lead'){
     editLeadId=null;
@@ -5329,7 +5362,9 @@ function openModal(type){
     vendaLeadId=detailLeadId;
     const lead=allLeads.find(l=>l.id===detailLeadId);
     document.getElementById('venda-lead-nome').textContent=lead?.nome||'—';
-    const existingVenda=allVendas.find(v=>v.lead_id===detailLeadId);
+    // vendaEditId null (setado por abrirVendaForm) força modo "venda nova",
+    // mesmo que o lead já tenha uma venda Aprovada — ver abrirVendaForm().
+    const existingVenda=vendaEditId?allVendas.find(v=>v.id===vendaEditId):null;
     if(existingVenda){
       // Pre-fill with existing data
       sv('v-cpf',existingVenda.cpf||'');
@@ -5614,6 +5649,14 @@ function editLead(id){
 
 async function delLead(id){
   if(!isAdmin()&&!isSupervisor()){toast('Sem permissão para apagar leads','err');return;}
+  // BUGFIX: diferente da mesclagem de duplicatas (crm_merge_leads, que sempre
+  // move a venda pro cadastro que fica antes de apagar o resto), esse delete
+  // direto apagava a venda junto sem nenhum aviso extra — bastava clicar
+  // "Apagar" num lead com negócio fechado pra perder o registro de vez.
+  // .some() e não .find() — um lead pode ter mais de uma venda (repetição de
+  // compra), e a Aprovada pode não ser a primeira da lista.
+  const temVendaAprovada=allVendas.some(v=>v.lead_id===id&&v.status_venda==='Aprovado');
+  if(temVendaAprovada&&!confirm('Este lead tem uma VENDA APROVADA. Apagar mesmo assim? A venda será perdida permanentemente.'))return;
   if(!confirm('Remover lead e todo o histórico?'))return;
   await sb.from('crm_historico').delete().eq('lead_id',id);
   await sb.from('crm_tarefas').delete().eq('lead_id',id);
@@ -5807,7 +5850,7 @@ async function _saveVendaInner(){
   if(!v('v-credito')){toast('Informe o Valor do Crédito','err');return;}
   if(!v('v-parcela')){toast('Informe a Parcela','err');return;}
 
-  const existingV=allVendas.find(vx=>vx.lead_id===vendaLeadId);
+  const existingV=vendaEditId?allVendas.find(vx=>vx.id===vendaEditId):null;
   const totalNewFiles=Object.values(catFiles).reduce((s,a)=>s+a.length,0);
 
   // Nova venda: documentos obrigatórios
@@ -6918,6 +6961,11 @@ async function renderVendasPage(){
     vendas=vendas.filter(v=>membrosDaEquipe.has(v.vendedor_id));
   }
 
+  // Filter by mês — input type="month" retorna "AAAA-MM"; compara com o mês
+  // de created_at da venda (data em que a venda foi registrada).
+  const fMes=document.getElementById('vp-f-mes')?.value||'';
+  if(fMes) vendas=vendas.filter(v=>(v.created_at||'').slice(0,7)===fMes);
+
   // Filter by search
   // BUGFIX: para coordenador (e outros papéis com escopo parcial de allLeads), muitas
   // vendas apontam pra leads que NÃO estão carregados em memória — então lead?.nome
@@ -7454,8 +7502,17 @@ async function runAutoReturnRules(){
 
   for(const l of allLeads){
     if(!l.responsavel_id) continue;
-    const venda=allVendas.find(v=>v.lead_id===l.id);
-    if(l.status==='Fechado'&&venda?.status_venda==='Aprovado') continue;
+    // BUGFIX (visto em produção — leads Glauciane Ferreira Caetano e Rogério
+    // Pedro sumiram da base do vendedor): antes exigia l.status==='Fechado' E
+    // venda aprovada ao mesmo tempo pra pular a reciclagem. Um lead pode ter
+    // venda Aprovada em crm_vendas mas o status em crm_leads ficar "Novo" por
+    // dessincronia (status só é setado como Fechado na CRIAÇÃO da venda) — nesse
+    // caso a trava antiga não disparava e o retorno automático devolvia pro
+    // pool um lead com venda já fechada, apagando vendedor/equipe. Agora a
+    // venda aprovada sozinha já basta pra proteger o lead, não importa o que
+    // o status esteja dizendo. .some() (não .find) porque o lead pode ter mais
+    // de uma venda — a Aprovada pode não ser a primeira da lista.
+    if(allVendas.some(v=>v.lead_id===l.id&&v.status_venda==='Aprovado')) continue;
     const refDate=l.atribuido_em||l.distribuido_em;
     if(!refDate) continue; // ainda sem data (será zerado acima na próxima execução)
     const diasDesdeAtribuicao=(now-new Date(refDate))/(1000*60*60*24);
@@ -9063,7 +9120,10 @@ function renderCoordFunil(){
       ${ls.length===0?'<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">Vazio</div>':''}
       ${ls.map(l=>{
         const u=allUsers.find(u=>u.user_id===l.responsavel_id);
-        const vd=allVendas.find(v=>v.lead_id===l.id);
+        // Lead pode ter mais de uma venda — prioriza achar uma Aprovada antes
+        // de cair na primeira qualquer, senão um lead com 1 venda Aprovada e
+        // outra Pendente podia aparecer sem o destaque verde por azar de ordem.
+        const vd=allVendas.find(v=>v.lead_id===l.id&&v.status_venda==='Aprovado')||allVendas.find(v=>v.lead_id===l.id);
         const isAprov=vd?.status_venda==='Aprovado';
         const isCanc=vd?.status_venda==='Cancelado';
         const isSel=_cfSelectedIds.has(l.id);
@@ -10712,6 +10772,9 @@ function updateMesclarPreview(){
     if(tipo&&(l.tipo_lead||'Novo')!==tipo) return false;
     if(origem==='__sem__'&&l.responsavel_id!=null) return false;
     if(origem&&origem!=='__sem__'&&l.responsavel_id!==origem) return false;
+    // Nunca inclui lead com venda Aprovada — é negócio fechado, não sobra pra
+    // redistribuir (ver bugfix igual em runAutoReturnRules).
+    if(allVendas.some(v=>v.lead_id===l.id&&v.status_venda==='Aprovado')) return false;
     return true;
   });
 
@@ -10745,6 +10808,7 @@ function gerarMesclar(){
     if(tipo&&(l.tipo_lead||'Novo')!==tipo) return false;
     if(origem==='__sem__'&&l.responsavel_id!=null) return false;
     if(origem&&origem!=='__sem__'&&l.responsavel_id!==origem) return false;
+    if(allVendas.some(v=>v.lead_id===l.id&&v.status_venda==='Aprovado')) return false;
     return true;
   });
 
@@ -10863,11 +10927,23 @@ function updateMesclarSelInfo(){
 
 async function mesclarTransfer(){
   if(!isAdmin()) return;
-  const ids=[..._mesclarSelected];
+  let ids=[..._mesclarSelected];
   const respId  =document.getElementById('mesclar-mass-resp')?.value;
   const equipeVal=document.getElementById('mesclar-mass-equipe')?.value;
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!respId && !equipeVal){toast('Selecione um vendedor ou equipe de destino','err');return;}
+
+  // Trava de segurança: nunca transfere lead com venda Aprovada (negócio já
+  // fechado) — mesmo bug que fez Glauciane Ferreira Caetano e Rogério Pedro
+  // sumirem da base do vendedor. gerarMesclar já filtra isso na origem, mas
+  // fica aqui também caso a seleção venha de outro fluxo no futuro.
+  const idsAprovados=new Set(allVendas.filter(v=>v.status_venda==='Aprovado').map(v=>v.lead_id));
+  const bloqueadosVenda=ids.filter(id=>idsAprovados.has(id));
+  if(bloqueadosVenda.length){
+    ids=ids.filter(id=>!idsAprovados.has(id));
+    toast(`${bloqueadosVenda.length} lead(s) com venda aprovada não foram transferidos`,'err');
+    if(!ids.length) return;
+  }
 
   // Transferir para EQUIPE
   if(equipeVal && equipeVal.startsWith('eq:')){
