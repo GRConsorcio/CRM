@@ -5481,8 +5481,27 @@ async function saveLead(){
       }catch(e){ console.warn('Checagem remota de duplicata falhou:',e.message); }
     }
     if(duplicado){
-      // Mostra modal de confirmação para puxar/atribuir
       const respNome = allUsers.find(u=>u.user_id===duplicado.responsavel_id)?.name || 'sem vendedor';
+      // BUGFIX: cliente que já tinha venda Aprovada e voltou pra comprar de novo —
+      // o vendedor tentava cadastrar como lead novo (sem saber que ele já existia)
+      // e caía nesse fluxo de duplicata, que só reatribuía o cadastro ANTIGO (com
+      // status Fechado) sem criar nem avisar nada — parecia que "não dava pra subir
+      // o lead". O caminho certo é abrir o cadastro existente e usar "+ Nova Venda"
+      // (ver abrirVendaForm) — nunca criar um segundo cadastro pro mesmo cliente.
+      const temVendaAprovada = allVendas.some(v=>v.lead_id===duplicado.id && v.status_venda==='Aprovado');
+      if(temVendaAprovada){
+        const souEuOuGestor = duplicado.responsavel_id===CU.id || isAdminOrCoord() || isSupervisor();
+        if(!souEuOuGestor){
+          toast(`"${duplicado.nome}" já é cliente (venda aprovada com ${respNome}). Só ${respNome} ou um admin/coordenador/supervisor pode registrar uma nova venda pra ele(a) — evita repique de venda sem autorização.`,'err');
+          return;
+        }
+        if(confirm(`"${duplicado.nome}" já tem venda aprovada (com ${respNome}). Se é uma compra nova (cliente voltando), abra o cadastro existente e use "+ Nova Venda" — não cria um cadastro separado pra isso.\n\nAbrir o cadastro dele(a) agora?`)){
+          closeModal('lead');
+          openDetail(duplicado.id, fromPage||'leads');
+        }
+        return;
+      }
+      // Duplicata comum (sem venda aprovada) — mostra modal de confirmação para puxar/atribuir
       const msg = `"${duplicado.nome}" já está na base.\nResponsável atual: ${respNome}\n\nDeseja atribuir este lead a você?`;
       if(confirm(msg)){
         // Atribui ao usuário atual
