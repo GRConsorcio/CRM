@@ -334,7 +334,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
       Servidor lento ou sem conexão.<br>Se tiver o CRM aberto em outra aba, feche-a primeiro.
     </div>
     <button onclick="location.reload()" style="background:var(--gold);border:none;color:#0a0a0a;border-radius:7px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
-      ↺ Tentar novamente
+      Tentar novamente
     </button>
   </div>
 </div>
@@ -423,11 +423,11 @@ document.addEventListener('DOMContentLoaded', function(){
       <!-- Notificações (admin only) -->
       <div class="notif-bell-wrap" id="notif-bell-wrap" style="display:none">
         <button class="notif-bell" onclick="toggleNotifDropdown()" title="Notificações">
-          🔔 <span id="notif-count" class="notif-count">0</span>
+          <span id="notif-count" class="notif-count">0</span>
         </button>
         <div class="notif-dropdown" id="notif-dropdown">
           <div class="notif-header">
-            <span class="notif-header-title">🔔 Alertas de Leads</span>
+            <span class="notif-header-title">Alertas de Leads</span>
             <button class="btn-sm" style="font-size:10px;padding:3px 8px" onclick="marcarTodasLidas()">Marcar como lidas</button>
           </div>
           <div class="notif-list" id="notif-list">
@@ -453,20 +453,20 @@ document.addEventListener('DOMContentLoaded', function(){
     <div class="kpi-grid" id="dash-kpis"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="dash-cols">
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">🏆 Ranking de Fechamentos</div></div>
+        <div class="panel-head"><div class="panel-title">Ranking de Fechamentos</div></div>
         <div class="panel-body" id="dash-rank"></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">🕐 Atividade Recente</div></div>
+        <div class="panel-head"><div class="panel-title">Atividade Recente</div></div>
         <div class="panel-body" style="max-height:280px;overflow-y:auto" id="dash-act"></div>
       </div>
     </div>
     <!-- Ferramentas admin — só visível para admin -->
     <div class="panel" id="dash-admin-tools" style="margin-top:12px;display:none;">
-      <div class="panel-head"><div class="panel-title">🔧 Ferramentas do Ranking</div></div>
+      <div class="panel-head"><div class="panel-title">Ferramentas do Ranking</div></div>
       <div class="panel-body" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px;">
         <button class="btn-primary" style="font-size:11px;padding:7px 14px;" onclick="repararSnapDiaLuiz()">
-          🔄 Reparar SnapDia Luiz
+          Reparar SnapDia Luiz
         </button>
         <span style="font-size:11px;color:var(--muted);">
           Corrige o contador "Vendas do Dia" quando aparece zerado após atualização do sistema.
@@ -477,10 +477,10 @@ document.addEventListener('DOMContentLoaded', function(){
          de até 48h (sincronização incremental) e podem precisar conferir o total
          real sem esperar a janela inteira -->
     <div class="panel" id="dash-resync-tools" style="margin-top:12px;display:none;">
-      <div class="panel-head"><div class="panel-title">🔄 Sincronização da Base</div></div>
+      <div class="panel-head"><div class="panel-title">Sincronização da Base</div></div>
       <div class="panel-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px;">
         <button class="btn-primary" style="font-size:11px;padding:7px 14px;" id="btn-resync-completo" onclick="forcarResyncCompleto()">
-          🔄 Atualizar Base Completa
+          Atualizar Base Completa
         </button>
         <span style="font-size:11px;color:var(--muted);" id="dash-last-sync-label">
           Última sincronização completa: —
@@ -492,7 +492,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- LEADS (admin/coord) -->
   <div class="page" id="page-leads">
     <div class="filter-bar">
-      <input class="inp" id="l-srch" placeholder="🔍 Buscar por nome, telefone, e-mail ou interesse..." oninput="_debouncedRenderLeads()" style="min-width:260px">
+      <input class="inp" id="l-srch" placeholder="Buscar por nome, telefone, e-mail ou interesse..." oninput="_debouncedRenderLeads()" style="min-width:260px">
       <select id="l-f-status" onchange="renderLeads(true)">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
@@ -507,25 +507,25 @@ document.addEventListener('DOMContentLoaded', function(){
       <!-- Filtro tipo lead: inclui Remalho -->
       <select id="l-f-tipo" onchange="renderLeads(true)" style="display:none">
         <option value="">Todos os tipos</option>
-        <option value="Novo">🆕 Novo</option>
-        <option value="Remalho">♻️ Remalho</option>
+        <option value="Novo">Novo</option>
+        <option value="Remalho">Remalho</option>
       </select>
       <select id="l-f-quente" onchange="renderLeads(true)">
-        <option value="">🔥 Todos</option>
-        <option value="1">🔥 Proposta Quente</option>
+        <option value="">Todos</option>
+        <option value="1">Proposta Quente</option>
       </select>
       <input type="date" id="l-f-data-ini" onchange="renderLeads(true)" title="Data inicial" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark">
       <input type="date" id="l-f-data-fim" onchange="renderLeads(true)" title="Data final" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark">
       <button class="btn-sm" onclick="document.getElementById('l-f-data-ini').value='';document.getElementById('l-f-data-fim').value='';renderLeads(true)" title="Limpar datas" style="padding:7px 10px;font-size:11px">✕ Data</button>
-      <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openRecolherTudo()">↩️ Recolher tudo para mim</button>
-      <button class="btn-sm" id="leads-avaliar-perdidos-btn" style="display:none;border-color:var(--red);color:var(--red)" onclick="openAvaliarPerdidos()">🔍 Avaliar Perdidos</button>
+      <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openRecolherTudo()">Recolher tudo para mim</button>
+      <button class="btn-sm" id="leads-avaliar-perdidos-btn" style="display:none;border-color:var(--red);color:var(--red)" onclick="openAvaliarPerdidos()">Avaliar Perdidos</button>
       <button class="btn-sm" id="leads-duplicatas-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openDuplicatas()">Duplicatas</button>
-      <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Selecionar</button>
+      <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">Selecionar</button>
       <span id="new-lead-btn-wrap"></span>
     </div>
     <div id="leads-action-bar" style="display:none;background:var(--surface2);border:1px solid var(--border-gold);border-radius:10px;padding:10px 14px;margin-bottom:12px;gap:10px;align-items:center;flex-wrap:wrap">
       <span id="leads-sel-count" style="font-size:12.5px;font-weight:700;color:var(--gold2);min-width:80px">0 selecionados</span>
-      <button class="btn-sm" onclick="leadsSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Todos</button>
+      <button class="btn-sm" onclick="leadsSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">Todos</button>
       <button class="btn-sm" onclick="leadsSelectAll(false)">☐ Nenhum</button>
       <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
       <!-- Filtro de origem: de qual vendedor pegar -->
@@ -542,14 +542,14 @@ document.addEventListener('DOMContentLoaded', function(){
       <select id="leads-mass-equipe" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;flex:1;min-width:140px">
         <option value="">Enviar para equipe...</option>
       </select>
-      <button class="btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="leadsMassEnviarEquipe()">🏅 Enviar</button>
+      <button class="btn-sm" style="border-color:var(--blue);color:var(--blue)" onclick="leadsMassEnviarEquipe()">Enviar</button>
       <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
       <select id="leads-mass-tipo" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;min-width:130px">
         <option value="">Marcar tipo...</option>
-        <option value="Novo">🆕 Novo</option>
-        <option value="Remalho">♻️ Remalho</option>
+        <option value="Novo">Novo</option>
+        <option value="Remalho">Remalho</option>
       </select>
-      <button class="btn-sm" style="border-color:var(--purple);color:#c084fc" onclick="leadsMassChangeTipo()">🏷️ Aplicar tipo</button>
+      <button class="btn-sm" style="border-color:var(--purple);color:#c084fc" onclick="leadsMassChangeTipo()">Aplicar tipo</button>
       <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
       <select id="leads-mass-origem" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
         <option value="">Mudar origem para...</option>
@@ -558,17 +558,17 @@ document.addEventListener('DOMContentLoaded', function(){
         <option value="Anúncio GR">Anúncio GR</option>
         <option value="Outro">Outro</option>
       </select>
-      <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2)" onclick="leadsMassChangeOrigem()">📍 Aplicar origem</button>
+      <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2)" onclick="leadsMassChangeOrigem()">Aplicar origem</button>
       <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
       <select id="leads-mass-status" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
         <option value="">Mudar status para...</option>
-        <option value="Novo">🆕 Novo</option>
-        <option value="Sem Contato">📵 Sem Contato</option>
-        <option value="Em Negociação">🤝 Em Negociação</option>
-        <option value="Proposta">📋 Proposta</option>
-        <option value="Perdido">❌ Perdido</option>
+        <option value="Novo">Novo</option>
+        <option value="Sem Contato">Sem Contato</option>
+        <option value="Em Negociação">Em Negociação</option>
+        <option value="Proposta">Proposta</option>
+        <option value="Perdido">Perdido</option>
       </select>
-      <button class="btn-sm" style="border-color:var(--orange);color:var(--orange)" onclick="leadsMassChangeStatus()">🔄 Aplicar status</button>
+      <button class="btn-sm" style="border-color:var(--orange);color:var(--orange)" onclick="leadsMassChangeStatus()">Aplicar status</button>
       <div id="mass-delete-btn-wrap"></div>
       <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="closeLeadsMass()">✕ Fechar</button>
     </div>
@@ -579,8 +579,8 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="panel-head">
         <div class="panel-title" id="l-title">Leads</div>
         <div style="display:flex;gap:8px">
-          <button class="btn-sm" onclick="openModal('dist-auto')" title="Distribuição automática">⚡ Auto</button>
-          <button class="btn-sm" onclick="openModal('dist-manual')" title="Distribuição manual">👤 Manual</button>
+          <button class="btn-sm" onclick="openModal('dist-auto')" title="Distribuição automática">Auto</button>
+          <button class="btn-sm" onclick="openModal('dist-manual')" title="Distribuição manual">Manual</button>
         </div>
       </div>
       <div class="tbl-wrap">
@@ -598,7 +598,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- MEUS LEADS (vendedor) -->
   <div class="page" id="page-meus-leads">
     <div class="filter-bar">
-      <input class="inp" id="ml-srch" placeholder="🔍 Buscar..." oninput="renderMeusLeads()">
+      <input class="inp" id="ml-srch" placeholder="Buscar..." oninput="renderMeusLeads()">
       <select id="ml-f-status" onchange="renderMeusLeads()">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
@@ -630,7 +630,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- FUNIL CEO — somente leitura, agrupado por equipe, só leads de Anúncio GR (sem Remalho) -->
   <div class="page" id="page-funil-ceo">
     <div style="font-size:11.5px;color:var(--muted2);margin-bottom:14px;display:flex;align-items:center;gap:8px">
-      <span>👁️ Visão somente leitura — leads novos de Anúncio GR, por equipe. Atualiza automaticamente, sem precisar recarregar.</span>
+      <span>Visão somente leitura — leads novos de Anúncio GR, por equipe. Atualiza automaticamente, sem precisar recarregar.</span>
     </div>
     <div id="ceo-funil-filtro" style="display:flex;gap:6px;margin-bottom:14px"></div>
     <div id="ceo-funil-cap-aviso" style="display:none;font-size:11px;color:var(--orange);margin-bottom:10px"></div>
@@ -640,7 +640,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- TODOS OS LEADS — CEO, somente leitura, lista plana com 4 filtros -->
   <div class="page" id="page-leads-ceo">
     <div style="font-size:11.5px;color:var(--muted2);margin-bottom:14px">
-      👁️ Visão somente leitura — mesma base do funil (Anúncio GR, sem Remalho), teto de <span id="leads-ceo-cap-txt"></span> leads.
+      Visão somente leitura — mesma base do funil (Anúncio GR, sem Remalho), teto de <span id="leads-ceo-cap-txt"></span> leads.
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       <select class="inp" id="lceo-status" style="width:170px" onchange="renderLeadsCeo()">
@@ -671,13 +671,13 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- DISTRIBUIÇÃO (admin/coord) -->
   <div class="page" id="page-distribuicao">
     <div class="panel" style="margin-bottom:16px">
-      <div class="panel-head"><div class="panel-title">👥 Vendedores Ativos</div></div>
+      <div class="panel-head"><div class="panel-title">Vendedores Ativos</div></div>
       <div class="panel-body" id="dist-vendedores"></div>
     </div>
     <!-- Total geral por equipe/pessoa — admin apenas -->
     <div class="panel" id="dist-admin-totais-panel" style="margin-bottom:16px;display:none">
       <div class="panel-head">
-        <div class="panel-title">📊 Total de Leads na Base</div>
+        <div class="panel-title">Total de Leads na Base</div>
         <div style="font-size:11px;color:var(--muted2)">Todos os leads da base, atribuídos ou não</div>
       </div>
       <div class="panel-body">
@@ -690,7 +690,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <!-- Equipes panel — admin/coord only -->
     <div class="panel" id="dist-equipes-panel" style="margin-bottom:16px;display:none">
       <div class="panel-head">
-        <div class="panel-title">🏅 Distribuir para Equipe</div>
+        <div class="panel-title">Distribuir para Equipe</div>
         <div style="font-size:11px;color:var(--muted2)">Envia leads sem vendedor direto para uma equipe</div>
       </div>
       <div class="panel-body">
@@ -707,20 +707,20 @@ document.addEventListener('DOMContentLoaded', function(){
             <label>Tipo do lead</label>
             <select class="inp" id="dist-equipe-tipo" style="margin:0" onchange="updateDistEquipePreview()">
               <option value="">Todos</option>
-              <option value="Novo">🆕 Novo</option>
-              <option value="Remalho">♻️ Remalho</option>
+              <option value="Novo">Novo</option>
+              <option value="Remalho">Remalho</option>
             </select>
           </div>
-          <button class="btn-primary" onclick="distParaEquipe()" style="flex-shrink:0;align-self:flex-end">🏅 Enviar para Equipe</button>
+          <button class="btn-primary" onclick="distParaEquipe()" style="flex-shrink:0;align-self:flex-end">Enviar para Equipe</button>
         </div>
         <div id="dist-equipe-preview" style="font-size:11.5px;color:var(--muted2);margin-top:10px"></div>
       </div>
     </div>
     <div class="panel">
       <div class="panel-head">
-        <div class="panel-title">📋 Leads sem vendedor</div>
+        <div class="panel-title">Leads sem vendedor</div>
         <div style="display:flex;gap:8px">
-          <button class="btn-sm" onclick="openDistAllPicker()">⚡ Distribuir todos</button>
+          <button class="btn-sm" onclick="openDistAllPicker()">Distribuir todos</button>
         </div>
       </div>
       <div class="tbl-wrap">
@@ -758,22 +758,22 @@ document.addEventListener('DOMContentLoaded', function(){
          que são os únicos que podem aprovar. -->
     <div class="panel" id="vp-bloqueios-panel" style="display:none;margin-bottom:16px">
       <div class="panel-head">
-        <div class="panel-title">🚫 Solicitações de Desbloqueio Pendentes</div>
+        <div class="panel-title">Solicitações de Desbloqueio Pendentes</div>
       </div>
       <div class="panel-body" id="vp-bloqueios-list"></div>
     </div>
     <div class="filter-bar">
       <div style="display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
         <button id="vp-btn-todos" class="tab on" onclick="setVendasFilter('todos')">Todas</button>
-        <button id="vp-btn-Aprovado" class="tab" onclick="setVendasFilter('Aprovado')">✅ Aprovado Pós Vendas</button>
-        <button id="vp-btn-Pendente" class="tab" onclick="setVendasFilter('Pendente')">⏳ Pendente Pós Vendas</button>
-        <button id="vp-btn-Cancelado" class="tab" onclick="setVendasFilter('Cancelado')">❌ Reprovado Pós Vendas</button>
-        <button id="vp-btn-SemRetorno" class="tab" onclick="setVendasFilter('SemRetorno')" style="display:none;color:var(--red)">🚫 Cancelados</button>
+        <button id="vp-btn-Aprovado" class="tab" onclick="setVendasFilter('Aprovado')">Aprovado Pós Vendas</button>
+        <button id="vp-btn-Pendente" class="tab" onclick="setVendasFilter('Pendente')">Pendente Pós Vendas</button>
+        <button id="vp-btn-Cancelado" class="tab" onclick="setVendasFilter('Cancelado')">Reprovado Pós Vendas</button>
+        <button id="vp-btn-SemRetorno" class="tab" onclick="setVendasFilter('SemRetorno')" style="display:none;color:var(--red)">Cancelados</button>
       </div>
       <select id="vp-f-tipo" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
         <option value="">Novo + Remalho</option>
-        <option value="Novo">🆕 Só Novos</option>
-        <option value="Remalho">♻️ Só Remalho</option>
+        <option value="Novo">Só Novos</option>
+        <option value="Remalho">Só Remalho</option>
       </select>
       <select id="vp-f-vendedor" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
         <option value="">Todos os vendedores</option>
@@ -781,7 +781,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <select id="vp-f-equipe" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
         <option value="">Todas as equipes</option>
       </select>
-      <input class="inp" id="vp-srch" placeholder="🔍 Buscar cliente ou lead..." oninput="renderVendasPage()" style="flex:1;min-width:150px">
+      <input class="inp" id="vp-srch" placeholder="Buscar cliente ou lead..." oninput="renderVendasPage()" style="flex:1;min-width:150px">
     </div>
     <div class="panel">
       <div class="panel-head">
@@ -800,7 +800,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <div class="page" id="page-equipe">
     <div class="panel">
       <div class="panel-head">
-        <div class="panel-title">👥 Membros da Equipe</div>
+        <div class="panel-title">Membros da Equipe</div>
       </div>
       <div class="tbl-wrap">
         <table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Leads</th><th>Fechamentos</th><th></th></tr></thead>
@@ -812,10 +812,10 @@ document.addEventListener('DOMContentLoaded', function(){
   <div class="page" id="page-login-logs">
     <div class="panel">
       <div class="panel-head">
-        <div class="panel-title">🔐 Histórico de Logins</div>
+        <div class="panel-title">Histórico de Logins</div>
         <div style="display:flex;align-items:center;gap:12px">
           <div style="font-size:11px;color:var(--muted2)">Últimos 300 logins · localização aproximada (por IP, pode variar com VPN/rede)</div>
-          <button class="btn-sm" style="border-color:var(--red);color:var(--red);white-space:nowrap" onclick="forceLogoutAll()" title="Força todo mundo a fazer login de novo">🔒 Deslogar Todos</button>
+          <button class="btn-sm" style="border-color:var(--red);color:var(--red);white-space:nowrap" onclick="forceLogoutAll()" title="Força todo mundo a fazer login de novo">Deslogar Todos</button>
         </div>
       </div>
       <div class="tbl-wrap">
@@ -828,7 +828,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- TRANSMISSÕES -->
   <div class="page" id="page-transmissoes">
     <div class="panel" style="margin-bottom:16px">
-      <div class="panel-head"><div class="panel-title">📡 Nova Transmissão</div></div>
+      <div class="panel-head"><div class="panel-title">Nova Transmissão</div></div>
       <div class="panel-body">
         <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
           Anexe um vídeo, áudio ou imagem. Ele entra em <strong style="color:var(--gold2)">modo teste</strong> primeiro —
@@ -856,7 +856,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- CAMPANHAS -->
   <div class="page" id="page-campanhas">
     <div class="panel" id="campanha-form-panel" style="margin-bottom:16px;display:none">
-      <div class="panel-head"><div class="panel-title">📣 Nova Campanha</div></div>
+      <div class="panel-head"><div class="panel-title">Nova Campanha</div></div>
       <div class="panel-body">
         <div class="fld"><label>Título *</label><input class="inp" id="camp-titulo" placeholder="Ex: Campanha de Verão — bônus dobrado"></div>
         <div class="fld"><label>Descrição</label><textarea class="inp" id="camp-desc" placeholder="Detalhes da campanha, regras, metas..." style="min-height:80px"></textarea></div>
@@ -876,7 +876,7 @@ document.addEventListener('DOMContentLoaded', function(){
         </div>
         <div class="fld" id="camp-alvo-usuarios-wrap" style="display:none">
           <label>Vendedores</label>
-          <input class="inp" id="camp-alvo-usuarios-srch" placeholder="🔍 Buscar..." oninput="renderCampAlvoUsuarios()" style="margin-bottom:8px">
+          <input class="inp" id="camp-alvo-usuarios-srch" placeholder="Buscar..." oninput="renderCampAlvoUsuarios()" style="margin-bottom:8px">
           <div id="camp-alvo-usuarios-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
         </div>
         <div class="fld">
@@ -891,15 +891,15 @@ document.addEventListener('DOMContentLoaded', function(){
         </div>
         <div id="camp-form-status" style="font-size:12px;margin-top:6px"></div>
         <div class="modal-btns" style="border-top:none;padding-top:6px">
-          <button class="btn-save" onclick="criarCampanha()">📣 Publicar Campanha</button>
+          <button class="btn-save" onclick="criarCampanha()">Publicar Campanha</button>
         </div>
       </div>
     </div>
 
     <div class="filter-bar" style="margin-bottom:0">
       <div style="display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
-        <button id="camp-btn-ativas" class="tab on" onclick="setCampanhaFilter('ativas')">✅ Ativas</button>
-        <button id="camp-btn-inativas" class="tab" onclick="setCampanhaFilter('inativas')">🚫 Inativas</button>
+        <button id="camp-btn-ativas" class="tab on" onclick="setCampanhaFilter('ativas')">Ativas</button>
+        <button id="camp-btn-inativas" class="tab" onclick="setCampanhaFilter('inativas')">Inativas</button>
       </div>
     </div>
     <div id="campanhas-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:16px"></div>
@@ -908,7 +908,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- EQUIPES -->
   <div class="page" id="page-equipes">
     <div class="filter-bar">
-      <input class="inp" id="eq-srch" placeholder="🔍 Buscar equipe..." oninput="renderEquipes()">
+      <input class="inp" id="eq-srch" placeholder="Buscar equipe..." oninput="renderEquipes()">
       <span id="new-equipe-btn"></span>
     </div>
     <div id="equipes-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px"></div>
@@ -920,7 +920,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
       <!-- CSV Import -->
       <div class="panel" id="import-csv-panel">
-        <div class="panel-head"><div class="panel-title">📊 Importar via CSV</div></div>
+        <div class="panel-head"><div class="panel-title">Importar via CSV</div></div>
         <div class="panel-body">
           <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.7">
             O arquivo CSV deve ter as colunas:<br>
@@ -941,8 +941,8 @@ document.addEventListener('DOMContentLoaded', function(){
           <div class="fld" id="csv-tipo-wrap" style="display:none;margin-top:10px">
             <label>Tipo dos leads importados</label>
             <select class="inp" id="csv-tipo">
-              <option value="Novo">🆕 Novo — nunca abordados</option>
-              <option value="Remalho">♻️ Remalho — já abordados</option>
+              <option value="Novo">Novo — nunca abordados</option>
+              <option value="Remalho">Remalho — já abordados</option>
             </select>
           </div>
           <div class="fld" id="csv-origem-wrap" style="display:none;margin-top:10px">
@@ -950,14 +950,14 @@ document.addEventListener('DOMContentLoaded', function(){
             <input class="inp" id="csv-origem" placeholder="Deixe em branco pra manter a origem de cada linha do CSV">
           </div>
           <button class="btn-primary" id="csv-import-btn" style="width:100%;display:none;margin-top:8px" onclick="importCSV()">
-            ⬆️ Importar leads
+            Importar leads
           </button>
         </div>
       </div>
 
       <!-- Manual bulk -->
       <div class="panel">
-        <div class="panel-head"><div class="panel-title">✏️ Importar via Texto</div></div>
+        <div class="panel-head"><div class="panel-title">Importar via Texto</div></div>
         <div class="panel-body">
           <!-- Vendedor: campos fixos e obrigatórios, sem escrita livre -->
           <div id="bulk-structured-block" style="display:none">
@@ -972,7 +972,7 @@ document.addEventListener('DOMContentLoaded', function(){
             </div>
             <div id="bulk-structured-status" style="font-size:12px;margin-top:6px"></div>
             <button class="btn-primary" style="width:100%;margin-top:8px" onclick="importBulkStructured()">
-              ⬆️ Importar lista
+              Importar lista
             </button>
           </div>
           <!-- Admin/coordenador/supervisor: texto livre, como já era -->
@@ -990,8 +990,8 @@ document.addEventListener('DOMContentLoaded', function(){
           <div class="fld" style="margin-top:8px">
             <label>Tipo dos leads</label>
             <select class="inp" id="bulk-tipo">
-              <option value="Novo">🆕 Novo — nunca abordados</option>
-              <option value="Remalho">♻️ Remalho — já abordados</option>
+              <option value="Novo">Novo — nunca abordados</option>
+              <option value="Remalho">Remalho — já abordados</option>
             </select>
           </div>
           <div class="fld" style="margin-top:8px">
@@ -999,7 +999,7 @@ document.addEventListener('DOMContentLoaded', function(){
             <input class="inp" id="bulk-origem" placeholder="Ex: Instagram, Indicação, Feirão... (deixe em branco = 'Lista')">
           </div>
           <button class="btn-primary" style="width:100%;margin-top:8px" onclick="importBulk()">
-            ⬆️ Importar lista
+            Importar lista
           </button>
           </div>
         </div>
@@ -1009,7 +1009,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <!-- Import log -->
     <div class="panel">
       <div class="panel-head">
-        <div class="panel-title">📋 Histórico de Importações</div>
+        <div class="panel-title">Histórico de Importações</div>
         <button class="btn-sm" onclick="document.getElementById('import-log').innerHTML=''">Limpar</button>
       </div>
       <div class="panel-body" id="import-log">
@@ -1025,12 +1025,12 @@ document.addEventListener('DOMContentLoaded', function(){
   <div class="page" id="page-busca-base">
     <div class="panel" style="margin-bottom:16px">
       <div class="panel-head">
-        <div class="panel-title">🔍 Buscar na Base Geral</div>
+        <div class="panel-title">Buscar na Base Geral</div>
         <div style="font-size:11.5px;color:var(--muted2)">Pesquise e solicite leads ao admin</div>
       </div>
       <div class="panel-body">
         <div class="filter-bar" style="margin-bottom:0">
-          <input class="inp" id="srch-base-inp" placeholder="🔍 Nome ou telefone..." style="margin:0;flex:1"
+          <input class="inp" id="srch-base-inp" placeholder="Nome ou telefone..." style="margin:0;flex:1"
             oninput="renderBuscaBase()">
           <select id="srch-base-status" onchange="renderBuscaBase()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none">
             <option value="">Todos os status</option>
@@ -1061,7 +1061,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <div class="page" id="page-leads-por-dia">
     <div class="panel" style="margin-bottom:16px">
       <div class="panel-head">
-        <div class="panel-title">📅 Leads por Vendedor/Dia</div>
+        <div class="panel-title">Leads por Vendedor/Dia</div>
         <div style="font-size:11.5px;color:var(--muted2)">Escolha um vendedor e uma data pra ver quantos leads ele tinha naquele dia</div>
       </div>
       <div class="panel-body">
@@ -1070,7 +1070,7 @@ document.addEventListener('DOMContentLoaded', function(){
             <option value="">Selecione um vendedor...</option>
           </select>
           <input type="date" id="lpd-data" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none">
-          <button class="btn-sm" onclick="buscarLeadsPorDia()">🔍 Buscar</button>
+          <button class="btn-sm" onclick="buscarLeadsPorDia()">Buscar</button>
         </div>
         <div id="lpd-aviso" style="font-size:11px;color:var(--muted2);margin-top:10px;line-height:1.6"></div>
       </div>
@@ -1092,7 +1092,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <div class="page" id="page-solicitacoes">
     <div class="panel">
       <div class="panel-head">
-        <div class="panel-title">📩 Solicitações de Lead</div>
+        <div class="panel-title">Solicitações de Lead</div>
         <div style="font-size:11.5px;color:var(--muted2)">Pedidos de vendedores para receber leads</div>
       </div>
       <div id="sol-lista" class="panel-body">
@@ -1105,7 +1105,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <div class="page" id="page-mesclar">
     <div class="panel" style="margin-bottom:16px">
       <div class="panel-head">
-        <div class="panel-title">🔀 Mesclar Base por DDD</div>
+        <div class="panel-title">Mesclar Base por DDD</div>
         <div style="font-size:11.5px;color:var(--muted2)">Monta lista com ~100 leads de cada DDD, mesclados • somente ADM</div>
       </div>
       <div class="panel-body">
@@ -1114,8 +1114,8 @@ document.addEventListener('DOMContentLoaded', function(){
             <label>Tipo de lead</label>
             <select class="inp" id="mesclar-tipo" style="margin:0" onchange="updateMesclarPreview()">
               <option value="">Todos</option>
-              <option value="Novo">🆕 Novo</option>
-              <option value="Remalho">♻️ Remalho</option>
+              <option value="Novo">Novo</option>
+              <option value="Remalho">Remalho</option>
             </select>
           </div>
           <div class="fld" style="margin:0;flex:1;min-width:120px">
@@ -1129,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', function(){
               <option value="__sem__">Sem vendedor</option>
             </select>
           </div>
-          <button class="btn-primary" onclick="gerarMesclar()" id="mesclar-gerar-btn">⚙️ Gerar lista</button>
+          <button class="btn-primary" onclick="gerarMesclar()" id="mesclar-gerar-btn">Gerar lista</button>
         </div>
         <div id="mesclar-preview" style="font-size:11.5px;color:var(--muted2);margin-bottom:10px"></div>
         <div id="mesclar-ddd-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
@@ -1141,7 +1141,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="panel-head">
         <div class="panel-title" id="mesclar-result-title">Lista mesclada</div>
         <div style="display:flex;gap:8px">
-          <button class="btn-sm" onclick="mesclarSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Todos</button>
+          <button class="btn-sm" onclick="mesclarSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">Todos</button>
           <button class="btn-sm" onclick="mesclarSelectAll(false)">☐ Nenhum</button>
           <select id="mesclar-mass-resp" onchange="document.getElementById('mesclar-mass-equipe').value=''" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 10px;font-size:12px;font-family:inherit;outline:none;min-width:160px">
             <option value="">Vendedor...</option>
@@ -1169,7 +1169,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- COORD: LEADS DA EQUIPE -->
   <div class="page" id="page-coord-leads">
     <div class="filter-bar">
-      <input class="inp" id="cl-srch" placeholder="🔍 Buscar..." oninput="renderCoordLeads()">
+      <input class="inp" id="cl-srch" placeholder="Buscar..." oninput="renderCoordLeads()">
       <select id="cl-f-status" onchange="renderCoordLeads()">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
@@ -1180,8 +1180,8 @@ document.addEventListener('DOMContentLoaded', function(){
       </select>
       <select id="cl-f-tipo" onchange="renderCoordLeads()">
         <option value="">Novo + Remalho</option>
-        <option value="Novo">🆕 Só Novo</option>
-        <option value="Remalho">♻️ Só Remalho</option>
+        <option value="Novo">Só Novo</option>
+        <option value="Remalho">Só Remalho</option>
       </select>
       <input type="date" id="cl-f-data" onchange="renderCoordLeads()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-family:inherit;outline:none">
       <button class="btn-sm" onclick="document.getElementById('cl-f-data').value='';renderCoordLeads()" title="Limpar filtro de data">✕ Data</button>
@@ -1238,13 +1238,13 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- COORD: DISTRIBUIÇÃO DA EQUIPE -->
   <div class="page" id="page-coord-dist">
     <div class="panel" style="margin-bottom:16px">
-      <div class="panel-head"><div class="panel-title">👥 Vendedores da Equipe</div></div>
+      <div class="panel-head"><div class="panel-title">Vendedores da Equipe</div></div>
       <div class="panel-body" id="coord-dist-vendedores"></div>
     </div>
     <div class="panel">
       <div class="panel-head">
-        <div class="panel-title">📋 Leads sem vendedor</div>
-        <button class="btn-sm" onclick="openDistAllPicker()">⚡ Distribuir todos</button>
+        <div class="panel-title">Leads sem vendedor</div>
+        <button class="btn-sm" onclick="openDistAllPicker()">Distribuir todos</button>
       </div>
       <div class="tbl-wrap">
         <table><thead><tr><th>Nome</th><th>Telefone</th><th>Interesse</th><th>Data</th><th></th></tr></thead>
@@ -1266,7 +1266,7 @@ document.addEventListener('DOMContentLoaded', function(){
       </select>
       <div id="mass-action-bar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface2);border:1px solid var(--border-gold);border-radius:10px;padding:10px 14px">
         <span id="mass-count" style="font-size:12.5px;font-weight:700;color:var(--gold2);min-width:100px">0 selecionados</span>
-        <button class="btn-sm" onclick="massSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">☑ Todos</button>
+        <button class="btn-sm" onclick="massSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">Todos</button>
         <button class="btn-sm" onclick="massSelectAll(false)">☐ Nenhum</button>
         <div style="width:1px;height:20px;background:var(--border)"></div>
         <select id="mass-transfer-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;flex:1;min-width:140px">
@@ -1276,7 +1276,7 @@ document.addEventListener('DOMContentLoaded', function(){
         <div style="width:1px;height:20px;background:var(--border)"></div>
         <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="massRemove()">✕ Retirar vendedor</button>
       </div>
-      <button class="btn-sm" id="mass-toggle-btn" style="display:none" onclick="toggleMassMode()">☑ Seleção em massa</button>
+      <button class="btn-sm" id="mass-toggle-btn" style="display:none" onclick="toggleMassMode()">Seleção em massa</button>
     </div>
     <div id="funis-equipe-wrap">
       <div class="empty"><div class="ei">🔭</div>Selecione um vendedor para ver o funil dele</div>
@@ -1336,14 +1336,14 @@ document.addEventListener('DOMContentLoaded', function(){
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;transition:all .13s" id="tipo-novo-lbl">
           <input type="radio" name="ld-tipo" id="ld-tipo-novo" value="Novo" checked style="accent-color:var(--blue);width:15px;height:15px" onchange="updateTipoStyle()">
           <div>
-            <div style="font-size:12.5px;font-weight:700;color:var(--blue)">🆕 Novo</div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--blue)">Novo</div>
             <div style="font-size:10.5px;color:var(--muted2)">Lead que nunca foi abordado</div>
           </div>
         </label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;transition:all .13s" id="tipo-remalho-lbl">
           <input type="radio" name="ld-tipo" id="ld-tipo-remalho" value="Remalho" style="accent-color:#c084fc;width:15px;height:15px" onchange="updateTipoStyle()">
           <div>
-            <div style="font-size:12.5px;font-weight:700;color:#c084fc">♻️ Remalho</div>
+            <div style="font-size:12.5px;font-weight:700;color:#c084fc">Remalho</div>
             <div style="font-size:10.5px;color:var(--muted2)">Lead já abordado anteriormente</div>
           </div>
         </label>
@@ -1363,7 +1363,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Dist Manual -->
 <div class="modal-bg" id="modal-dist-manual">
   <div class="modal">
-    <div class="modal-title">👤 Distribuição Manual</div>
+    <div class="modal-title">Distribuição Manual</div>
     <div class="fld"><label>Lead</label>
       <select class="inp" id="dm-lead"></select>
     </div>
@@ -1380,7 +1380,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Dist Auto -->
 <div class="modal-bg" id="modal-dist-auto">
   <div class="modal">
-    <div class="modal-title">⚡ Distribuição Automática</div>
+    <div class="modal-title">Distribuição Automática</div>
     <div style="font-size:12.5px;color:var(--muted2);margin-bottom:18px;line-height:1.7">
       A distribuição automática vai pegar os leads sem vendedor e distribuir em <strong style="color:var(--gold2)">revezamento</strong> entre os vendedores ativos.<br><br>
       <span id="auto-count" style="color:var(--text)"></span>
@@ -1398,11 +1398,11 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Histórico -->
 <div class="modal-bg" id="modal-hist">
   <div class="modal">
-    <div class="modal-title">📋 Registrar Contato</div>
+    <div class="modal-title">Registrar Contato</div>
     <div class="fld"><label>Tipo</label>
       <select class="inp" id="h-tipo">
-        <option>📞 Ligação</option><option>💬 WhatsApp</option>
-        <option>📧 E-mail</option><option>🤝 Reunião</option><option>📝 Anotação</option>
+        <option>Ligação</option><option>WhatsApp</option>
+        <option>E-mail</option><option>Reunião</option><option>Anotação</option>
       </select>
     </div>
     <div class="fld"><label>Descrição *</label><textarea class="inp" id="h-desc" placeholder="O que foi discutido?"></textarea></div>
@@ -1416,14 +1416,14 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Tarefa -->
 <div class="modal-bg" id="modal-tarefa">
   <div class="modal">
-    <div class="modal-title" id="tarefa-modal-ttl">✅ Nova Tarefa</div>
+    <div class="modal-title" id="tarefa-modal-ttl">Nova Tarefa</div>
     <div id="tarefa-criada-em" style="font-size:10.5px;color:var(--muted2);margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);display:none">
-      🕐 Criada em: <span id="tarefa-criada-val" style="color:var(--gold2)"></span>
+      Criada em: <span id="tarefa-criada-val" style="color:var(--gold2)"></span>
     </div>
     <div class="fld"><label>Descrição *</label><input class="inp" id="ta-desc" placeholder="Ex: Ligar para o cliente amanhã"></div>
     <div class="fld">
       <label>Lead relacionado</label>
-      <input class="inp" id="ta-lead-srch" placeholder="🔍 Digite pra buscar por nome ou telefone..." oninput="filtrarTaLead()" autocomplete="off" style="margin-bottom:6px">
+      <input class="inp" id="ta-lead-srch" placeholder="Digite pra buscar por nome ou telefone..." oninput="filtrarTaLead()" autocomplete="off" style="margin-bottom:6px">
       <select class="inp" id="ta-lead"></select>
       <div id="ta-lead-hint" style="font-size:10.5px;color:var(--muted2);margin-top:4px"></div>
     </div>
@@ -1443,7 +1443,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Venda -->
 <div class="modal-bg" id="modal-venda">
   <div class="modal" style="width:600px">
-    <div class="modal-title">🏦 Registrar Venda</div>
+    <div class="modal-title">Registrar Venda</div>
     <div style="font-size:11.5px;color:var(--muted2);margin-bottom:16px">Lead: <strong id="venda-lead-nome" style="color:var(--gold2)">—</strong></div>
 
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:10px">Dados do Cliente</div>
@@ -1475,12 +1475,12 @@ document.addEventListener('DOMContentLoaded', function(){
 
     <div class="fld"><label>Observações</label><textarea class="inp" id="v-obs" placeholder="Anotações sobre a venda..."></textarea></div>
 
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin:18px 0 12px">📎 Documentos</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin:18px 0 12px">Documentos</div>
 
     <!-- Documento com Foto -->
     <div style="margin-bottom:14px">
       <div style="font-size:10.5px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:6px">
-        🪪 Documento com Foto <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
+        Documento com Foto <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
       </div>
       <div class="upload-zone" id="upload-zone" onclick="document.getElementById('v-doc-foto').click()" style="padding:16px">
         <input type="file" id="v-doc-foto" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('foto',this.files)" style="display:none">
@@ -1494,7 +1494,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <!-- Contrato -->
     <div style="margin-bottom:14px">
       <div style="font-size:10.5px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:6px">
-        📄 Contrato <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
+        Contrato <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
       </div>
       <div class="upload-zone" onclick="document.getElementById('v-contrato').click()" style="padding:16px">
         <input type="file" id="v-contrato" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('contrato',this.files)" style="display:none">
@@ -1508,7 +1508,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <!-- Boleto (opcional) -->
     <div style="margin-bottom:14px">
       <div style="font-size:10.5px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:6px">
-        🧾 Boleto <span style="font-size:9px;color:var(--muted2);background:var(--surface2);padding:1px 6px;border-radius:4px;border:1px solid var(--border)">opcional</span>
+        Boleto <span style="font-size:9px;color:var(--muted2);background:var(--surface2);padding:1px 6px;border-radius:4px;border:1px solid var(--border)">opcional</span>
       </div>
       <div class="upload-zone" onclick="document.getElementById('v-boleto').click()" style="padding:16px">
         <input type="file" id="v-boleto" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('boleto',this.files)" style="display:none">
@@ -1522,7 +1522,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <!-- Comprovante de Pagamento -->
     <div style="margin-bottom:14px">
       <div style="font-size:10.5px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:6px">
-        ✅ Comprovante de Pagamento <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
+        Comprovante de Pagamento <span style="font-size:9px;color:var(--red);background:#1f0a0a;padding:1px 6px;border-radius:4px">obrigatório</span>
       </div>
       <div class="upload-zone" onclick="document.getElementById('v-comprovante').click()" style="padding:16px">
         <input type="file" id="v-comprovante" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple onchange="handleCatFile('comprovante',this.files)" style="display:none">
@@ -1602,7 +1602,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Modal Enviar para Equipe -->
 <div class="modal-bg" id="modal-enviar-equipe">
   <div class="modal" style="max-width:400px">
-    <div class="modal-title">🏅 Enviar Lead para Equipe</div>
+    <div class="modal-title">Enviar Lead para Equipe</div>
     <div style="font-size:12px;color:var(--muted2);margin-bottom:16px">
       O lead ficará disponível para os coordenadores da equipe selecionada.
     </div>
@@ -1619,7 +1619,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Modal Recolher Leads da Equipe -->
 <div class="modal-bg" id="modal-recolher">
   <div class="modal" style="max-width:560px;width:100%">
-    <div class="modal-title">↩️ Recolher Leads</div>
+    <div class="modal-title">Recolher Leads</div>
 
     <!-- Filtros -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
@@ -1653,7 +1653,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('recolher')">Cancelar</button>
-      <button class="btn-save" onclick="confirmarRecolher()">↩️ Recolher Selecionados</button>
+      <button class="btn-save" onclick="confirmarRecolher()">Recolher Selecionados</button>
     </div>
   </div>
 </div>
@@ -1661,7 +1661,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Modal Habilitar Transmissão Geral (seleção de público) -->
 <div class="modal-bg" id="modal-transm-alvo">
   <div class="modal" style="max-width:480px">
-    <div class="modal-title">📡 Habilitar Transmissão Geral</div>
+    <div class="modal-title">Habilitar Transmissão Geral</div>
     <div style="font-size:12px;color:var(--muted2);margin-bottom:16px">
       Assim que confirmar, o popup aparece <strong style="color:var(--gold2)">imediatamente</strong> na tela de quem estiver com o CRM aberto e dentro do público escolhido.
     </div>
@@ -1679,12 +1679,12 @@ document.addEventListener('DOMContentLoaded', function(){
     </div>
     <div class="fld" id="transm-alvo-usuarios-wrap" style="display:none">
       <label>Usuários</label>
-      <input class="inp" id="transm-alvo-usuarios-srch" placeholder="🔍 Buscar..." oninput="renderTransmAlvoUsuarios()" style="margin-bottom:8px">
+      <input class="inp" id="transm-alvo-usuarios-srch" placeholder="Buscar..." oninput="renderTransmAlvoUsuarios()" style="margin-bottom:8px">
       <div id="transm-alvo-usuarios-list" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
     </div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('transm-alvo')">Cancelar</button>
-      <button class="btn-save" onclick="confirmarTransmissaoGeral()">🔴 Habilitar Agora</button>
+      <button class="btn-save" onclick="confirmarTransmissaoGeral()">Habilitar Agora</button>
     </div>
   </div>
 </div>
@@ -1692,7 +1692,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Modal Distribuição com Escolha -->
 <div class="modal-bg" id="modal-dist-picker">
   <div class="modal" style="max-width:420px">
-    <div class="modal-title" id="dist-picker-title">👤 Atribuir Lead</div>
+    <div class="modal-title" id="dist-picker-title">Atribuir Lead</div>
     <div style="font-size:12px;color:var(--muted2);margin-bottom:16px" id="dist-picker-info"></div>
     <div class="fld">
       <label>Vendedor</label>
@@ -1708,7 +1708,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Modal Distribuição em Massa com Escolha -->
 <div class="modal-bg" id="modal-dist-all-picker">
   <div class="modal" style="max-width:480px">
-    <div class="modal-title">⚡ Distribuir Leads</div>
+    <div class="modal-title">Distribuir Leads</div>
     <div style="font-size:12.5px;color:var(--muted2);margin-bottom:16px" id="dist-all-info"></div>
     <div class="fld">
       <label>Distribuir para</label>
@@ -1734,14 +1734,14 @@ document.addEventListener('DOMContentLoaded', function(){
 
 <div class="task-alert-popup" id="task-alert-popup">
   <div class="task-alert-minimized-btn" id="task-alert-min-btn" onclick="restoreTaskAlerts()">
-    🔔 <span id="task-alert-min-count">0</span> alerta(s) — clique para ver
+    <span id="task-alert-min-count">0</span> alerta(s) — clique para ver
   </div>
 </div>
 <div class="notify" id="notify"></div>
 <!-- Modal solicitar lead -->
 <div class="modal-bg" id="modal-solicitar-lead">
   <div class="modal" style="max-width:420px">
-    <div class="modal-title">📩 Solicitar Lead</div>
+    <div class="modal-title">Solicitar Lead</div>
     <div id="sol-lead-info" style="background:var(--surface2);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px"></div>
     <div class="fld">
       <label>Motivo / observação (opcional)</label>
@@ -1749,7 +1749,7 @@ document.addEventListener('DOMContentLoaded', function(){
     </div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('solicitar-lead')">Cancelar</button>
-      <button class="btn-save" onclick="confirmarSolicitacao()">📩 Enviar solicitação</button>
+      <button class="btn-save" onclick="confirmarSolicitacao()">Enviar solicitação</button>
     </div>
   </div>
 </div>
@@ -2079,10 +2079,10 @@ async function initApp(user){
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
-      toast('⚠️ Conexão lenta — carregando dados em background...','err');
+      toast('Conexão lenta — carregando dados em background...','err');
       // loadAll em background com timeout de 15s para não pendurar
       const bgTimeout=setTimeout(()=>{
-        toast('⚠️ Não foi possível carregar todos os dados. Tente recarregar.','err');
+        toast('Não foi possível carregar todos os dados. Tente recarregar.','err');
       },15000);
       loadAll().then(()=>{
         clearTimeout(bgTimeout);
@@ -2092,7 +2092,7 @@ async function initApp(user){
         renderDashboard().catch(()=>{});
         if(isVendedor()) carregarMinhasSolicitacoes();
         if(isAdmin()){ pollSolicitacoesAdmin(); setTimeout(verificarLeadsBloqueados,2000); scheduleAutoReturnRules(); }
-        toast('✅ Dados carregados!','ok');
+        toast('Dados carregados!','ok');
       }).catch(e=>{
         clearTimeout(bgTimeout);
         console.warn('[initApp fallback bg-load] erro:',e.message);
@@ -2124,12 +2124,12 @@ async function initApp(user){
             allHist=ec.hist||[]; allTasks=ec.tasks||[]; allVendas=ec.vendas||[];
             allDocs=ec.docs||[]; allEquipes=ec.equipes||[]; allMembroEquipes=ec.membros||[];
             window._allEquipes=allEquipes; window._allMembroEquipes=allMembroEquipes;
-            toast('⚠️ Sem conexão — exibindo dados salvos','err');
+            toast('Sem conexão — exibindo dados salvos','err');
           }
         }catch(ec){}
       } else {
         // Sem cache nenhum e sem internet — mostra aviso mas abre o app
-        toast('⚠️ Sem conexão com o servidor. Verifique sua internet.','err');
+        toast('Sem conexão com o servidor. Verifique sua internet.','err');
       }
     }
 
@@ -2172,7 +2172,7 @@ async function initApp(user){
           hideLoading();
           renderDashboard().catch(()=>{});
           window._appReadyWithFallback=true; // watchdog não deve reativar
-          toast('⚠️ Erro parcial ao carregar: '+(e?.message||e),'err');
+          toast('Erro parcial ao carregar: '+(e?.message||e),'err');
         } catch(re){
           // Se até o render falhou, aí sim mostra login
           document.getElementById('auth-screen').style.display='flex';
@@ -2557,7 +2557,7 @@ async function loadAll(){
   rebuildMaps();
 
   if(lu.error?.message?.includes('does not exist')){
-    toast('⚠️ Tabelas não encontradas. Execute o SQL de setup no Supabase.','err');
+    toast('Tabelas não encontradas. Execute o SQL de setup no Supabase.','err');
     throw new Error('Tabelas não criadas. Execute o crm-setup-completo.sql no Supabase.');
   }
 
@@ -2630,7 +2630,7 @@ async function loadAll(){
           invalidateDDDCache();
           saveCache();
           usouIncremental=true;
-          console.log(`✅ Sincronização incremental: ${delta.length} lead(s) novo(s)/alterado(s) — ${allLeads.length} no total em cache`);
+          console.log(`Sincronização incremental: ${delta.length} lead(s) novo(s)/alterado(s) — ${allLeads.length} no total em cache`);
         }catch(e){
           console.warn('Sincronização incremental falhou, fazendo carga completa:',e.message);
         }
@@ -3042,7 +3042,7 @@ function clearLastSyncTime(){ try{ localStorage.removeItem(_lastSyncKey()); }cat
 // chamada de loadAll(), forçando uma carga completa em vez de só incremental.
 async function forcarResyncCompleto(){
   const btn=document.getElementById('btn-resync-completo');
-  if(btn){ btn.disabled=true; btn.dataset.orig=btn.textContent; btn.textContent='⏳ Atualizando...'; }
+  if(btn){ btn.disabled=true; btn.dataset.orig=btn.textContent; btn.textContent='Atualizando...'; }
   toast('Atualizando base completa — isso pode levar alguns segundos...','ok');
   try{
     clearLastSyncTime();
@@ -3051,7 +3051,7 @@ async function forcarResyncCompleto(){
   }catch(e){
     toast('Erro ao atualizar base: '+e.message,'err');
   }finally{
-    if(btn){ btn.disabled=false; btn.textContent=btn.dataset.orig||'🔄 Atualizar Base Completa'; }
+    if(btn){ btn.disabled=false; btn.textContent=btn.dataset.orig||'Atualizar Base Completa'; }
   }
 }
 function isSupervisor(){return CUProfile?.role==='supervisor';}
@@ -3483,8 +3483,8 @@ async function renderDashboard(){
     <div class="kpi"><div class="kpi-label">Total de Leads</div><div class="kpi-val" id="kpi-total-leads">${total.toLocaleString('pt-BR')}</div></div>
     <div class="kpi"><div class="kpi-label">Fechamentos</div><div class="kpi-val" style="color:var(--green)">${fechados}</div></div>
     <div class="kpi"><div class="kpi-label">Conversão</div><div class="kpi-val" style="color:var(--gold2)" id="kpi-conversao">${total?Math.round(fechados/total*100):0}%</div></div>
-    <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04);cursor:pointer" onclick="openVendasPage('Aprovado')" title="Ver vendas aprovadas"><div class="kpi-label" style="color:var(--green)">✅ Aprovado Pós Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
-    <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04);cursor:pointer" onclick="openVendasPage('Cancelado')" title="Ver cancelamentos"><div class="kpi-label" style="color:var(--red)">❌ Reprovado Pós Vendas</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
+    <div class="kpi" style="border-color:rgba(74,222,128,0.3);background:rgba(74,222,128,0.04);cursor:pointer" onclick="openVendasPage('Aprovado')" title="Ver vendas aprovadas"><div class="kpi-label" style="color:var(--green)">Aprovado Pós Vendas</div><div class="kpi-val" style="color:var(--green)">${vendasAprovadas}</div></div>
+    <div class="kpi" style="border-color:rgba(229,85,85,0.3);background:rgba(229,85,85,0.04);cursor:pointer" onclick="openVendasPage('Cancelado')" title="Ver cancelamentos"><div class="kpi-label" style="color:var(--red)">Reprovado Pós Vendas</div><div class="kpi-val" style="color:var(--red)">${vendasCanceladas}</div></div>
     <div class="kpi"><div class="kpi-label">Tarefas Vencidas</div><div class="kpi-val" style="color:${vencidas?'var(--red)':'var(--text)'}">${vencidas}</div></div>`;
   if(isAdmin()) kpis+=`<div class="kpi"><div class="kpi-label">Sem Vendedor</div><div class="kpi-val" style="color:var(--orange)" id="kpi-sem-vendedor">${semVend.toLocaleString('pt-BR')}</div></div>`;
   // Ranking panel: admin e coordenador veem o painel de colunas
@@ -3687,7 +3687,7 @@ function renderLeads(resetPage){
             </div>
           </div>
           <button class="btn-primary" onclick="buscarNaBaseCompleta()" style="flex-shrink:0;display:flex;align-items:center;gap:6px">
-            🔍 Procurar na base completa
+            Procurar na base completa
           </button>
         </div>`;
       searchBanner.style.display='';
@@ -3793,7 +3793,7 @@ async function buscarNaBaseCompleta(){
   }
 
   body.innerHTML=`<div class="empty"><div class="ei" style="animation:spin 1s linear infinite;display:inline-block">⏳</div><div style="margin-top:10px;color:var(--muted2);font-size:13px">Buscando "<strong style="color:var(--gold2)">${q}</strong>" na base completa…</div></div>`;
-  document.getElementById('busca-base-title').textContent=`🔍 Buscando na base completa…`;
+  document.getElementById('busca-base-title').textContent=`Buscando na base completa…`;
 
   try {
     // Busca no Supabase com ilike em nome, telefone e interesse
@@ -3825,7 +3825,7 @@ function _renderBuscaCompletaResult(q,data,body){
     const remote=data.filter(l=>!localIds.has(l.id));
     const alreadyLocal=data.filter(l=>localIds.has(l.id));
 
-    document.getElementById('busca-base-title').textContent=`🔍 Resultado na base completa — "${q}"`;
+    document.getElementById('busca-base-title').textContent=`Resultado na base completa — "${q}"`;
 
     if(data.length===0){
       body.innerHTML=`<div class="empty"><div class="ei">🔭</div>Nenhum lead encontrado na base completa para "<strong>${q}</strong>".</div>`;
@@ -3836,7 +3836,7 @@ function _renderBuscaCompletaResult(q,data,body){
 
     if(alreadyLocal.length>0){
       html+=`<div style="font-size:11px;color:var(--muted2);margin-bottom:10px;padding:8px 12px;background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.15);border-radius:8px">
-        ✅ ${alreadyLocal.length} lead(s) já estão na sua base local.
+        ${alreadyLocal.length} lead(s) já estão na sua base local.
       </div>`;
     }
 
@@ -3884,7 +3884,7 @@ async function assumirLead(leadId){
     const idx=allLeads.findIndex(l=>l.id===leadId);
     if(idx>=0) allLeads[idx]=data;
     else allLeads.push(data);
-    notify(`🤝 Você assumiu o lead "${data.nome}"!`,'ok');
+    notify(`Você assumiu o lead "${data.nome}"!`,'ok');
     closeModal('busca-base');
     renderLeads(true);
   } catch(e){
@@ -3961,7 +3961,7 @@ function buildAssignPayload(vendedorId, timestamp, resetStatus=true){
 }
 
 /* ═══ PUXADOR DE REMALHO — REMOVIDO A PEDIDO DO GR ═══
-   Existia aqui um botão "🎣 Puxar 5 Remalhos" na página Meus Leads que deixava
+   Existia aqui um botão "Puxar 5 Remalhos" na página Meus Leads que deixava
    qualquer vendedor se auto-atribuir leads Remalho do pool livre, sem
    aprovação de ninguém. Removido junto com as duas funções que ele usava
    (puxarLeadsRemalho e atualizarContadorPuxador) — não sobrou nenhuma
@@ -4052,11 +4052,11 @@ async function openDetail(id,from){
         <div class="detail-meta">${lead.origem||'—'} · ${sBadge(lead.status,lead.tipo_lead,lead.id,lead.proposta_quente)}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">🏦 ${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
-        ${canEditData?`<button class="act" onclick="editLead('${id}')">✏️ Editar</button>`:''}
-        ${(isAdmin()||isSupervisor())?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >🗑️ Apagar</button>`:''}
-        ${(isAdminOrCoord()||isSupervisor())&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">🏅 Enviar p/ Equipe</button>`:''}
-        ${(isAdminOrCoord()||isSupervisor())&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">↩️ Recolher</button>`:''}
+        ${canEdit?`<button class="act green" onclick="openModal('venda')" data-lead="${id}">${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
+        ${canEditData?`<button class="act" onclick="editLead('${id}')">Editar</button>`:''}
+        ${(isAdmin()||isSupervisor())?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >Apagar</button>`:''}
+        ${(isAdminOrCoord()||isSupervisor())&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">Enviar p/ Equipe</button>`:''}
+        ${(isAdminOrCoord()||isSupervisor())&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">Recolher</button>`:''}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:16px 18px;border-bottom:1px solid var(--border)">
@@ -4095,7 +4095,7 @@ async function openDetail(id,from){
   // Venda se existir
   if(venda){
     html+=`<div style="padding:16px 18px;border-bottom:1px solid var(--border)">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">🏦 Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':venda.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${venda.status_venda==='SemRetorno'?'🚫 Cancelados':(venda.status_venda||'Pendente')}</span></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':venda.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${venda.status_venda==='SemRetorno'?'Cancelados':(venda.status_venda||'Pendente')}</span></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12.5px">
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">CPF</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Nascimento</div><strong>${venda.data_nascimento?fmtDateStr(venda.data_nascimento):'—'}</strong></div>
@@ -4106,7 +4106,7 @@ async function openDetail(id,from){
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Qtd. Cotas</div><strong style="color:var(--gold2);font-size:15px">${venda.qtd_cotas||1}</strong></div>
       </div>
       ${docs.length>0?`<div style="margin-top:14px">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">📎 Documentos (${docs.length})</div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">Documentos (${docs.length})</div>
         ${docs.map(d=>`<div class="doc-item">
           <div class="doc-icon">${d.tipo==='pdf'?'📄':'🖼️'}</div>
           <div class="doc-name">${d.nome}</div>
@@ -4118,21 +4118,21 @@ async function openDetail(id,from){
         </div>`).join('')}
       </div>`:''}
       ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-        ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">✅ Aprovar</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">✅ Aprovado</span>'}
-        ${venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">❌ Cancelar</button>`:'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">❌ Cancelado</span>'}
-        ${venda.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${venda.id}','Pendente')">⏳ Voltar para Pendente</button>`:''}
-        <button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">↩ Reverter para Lead</button>
-        ${venda.status_venda!=='SemRetorno'?`<button class="act red" onclick="marcarVendaSemRetorno('${venda.id}')">🚫 Venda Sem Retorno</button>`:''}
+        ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">Aprovado</span>'}
+        ${venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">Cancelar</button>`:'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">Cancelado</span>'}
+        ${venda.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${venda.id}','Pendente')">Voltar para Pendente</button>`:''}
+        <button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">Reverter para Lead</button>
+        ${venda.status_venda!=='SemRetorno'?`<button class="act red" onclick="marcarVendaSemRetorno('${venda.id}')">Venda Sem Retorno</button>`:''}
       </div>`:''}
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">📝 Anotações da Venda</div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">Anotações da Venda</div>
         <textarea id="venda-notas-${venda.id}" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:12.5px;font-family:inherit;outline:none;resize:vertical;min-height:80px"
           placeholder="Adicione anotações sobre esta venda..."
           onblur="saveVendaNotas('${venda.id}',this.value)">${venda.observacoes||''}</textarea>
         <div style="font-size:10px;color:var(--muted2);margin-top:4px">Salvo automaticamente ao sair do campo</div>
       </div>
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">💬 Comentários e anexos</div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">Comentários e anexos</div>
         <div id="venda-comentarios-list" style="margin-bottom:10px">Carregando...</div>
         <textarea id="novo-comentario-${venda.id}" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:12.5px;font-family:inherit;outline:none;resize:vertical;min-height:56px"
           placeholder="Escreva um comentário..."></textarea>
@@ -4151,7 +4151,7 @@ async function openDetail(id,from){
   const outrosDocs=docs.filter(d=>d.categoria!=='contrato_lead');
   html+=`<div class="panel" style="margin-top:16px">
     <div class="panel-head">
-      <div class="panel-title">📄 Contratos</div>
+      <div class="panel-title">Contratos</div>
       ${canWork?`<label style="cursor:pointer">
         <input type="file" id="contrato-lead-input-${id}" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple style="display:none" onchange="uploadContratoLead('${id}',this.files)">
         <span class="btn-sm" onclick="document.getElementById('contrato-lead-input-${id}').click()">+ Anexar</span>
@@ -4171,23 +4171,23 @@ async function openDetail(id,from){
           </div>`).join('')}
     </div>
   </div>`;
-  const histVisiveis=hist.filter(h=>isAdmin()||h.tipo!=='🔒 Interno (Adm)').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const histVisiveis=hist.filter(h=>isAdmin()||h.tipo!=='Interno (Adm)').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   // Mapeia tipo → cor e ícone da bolinha da timeline
   function tipoConfig(tipo){
-    if(tipo==='🌟 Criação') return{cor:'#c9a84c',bg:'rgba(201,168,76,0.12)'};
-    if(tipo==='🔄 Status') return{cor:'#3b9eff',bg:'rgba(59,158,255,0.10)'};
-    if(tipo==='✏️ Edição') return{cor:'#a78bfa',bg:'rgba(167,139,250,0.10)'};
-    if(tipo==='👤 Atribuição') return{cor:'#34d399',bg:'rgba(52,211,153,0.10)'};
-    if(tipo==='🔒 Interno (Adm)') return{cor:'#c9a84c',bg:'rgba(201,168,76,0.06)'};
-    if(tipo==='🔄 Retorno Automático') return{cor:'#fb923c',bg:'rgba(251,146,60,0.10)'};
-    if(tipo==='📝 Anotação') return{cor:'var(--muted2)',bg:'transparent'};
+    if(tipo==='Criação') return{cor:'#c9a84c',bg:'rgba(201,168,76,0.12)'};
+    if(tipo==='Status') return{cor:'#3b9eff',bg:'rgba(59,158,255,0.10)'};
+    if(tipo==='Edição') return{cor:'#a78bfa',bg:'rgba(167,139,250,0.10)'};
+    if(tipo==='Atribuição') return{cor:'#34d399',bg:'rgba(52,211,153,0.10)'};
+    if(tipo==='Interno (Adm)') return{cor:'#c9a84c',bg:'rgba(201,168,76,0.06)'};
+    if(tipo==='Retorno Automático') return{cor:'#fb923c',bg:'rgba(251,146,60,0.10)'};
+    if(tipo==='Anotação') return{cor:'var(--muted2)',bg:'transparent'};
     // tipos de contato manuais
     return{cor:'var(--gold2)',bg:'rgba(201,168,76,0.07)'};
   }
   html+=`<div class="panel" style="margin-top:16px">
     <div class="panel-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:10px">
-        <div class="panel-title" style="margin:0">🕐 Linha do Tempo</div>
+        <div class="panel-title" style="margin:0">Linha do Tempo</div>
         <span style="font-size:10px;color:var(--muted2);background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:2px 9px">${histVisiveis.length} evento${histVisiveis.length!==1?'s':''}</span>
       </div>
       ${canEdit?`<button class="btn-sm" onclick="openModal('hist')">+ Registrar Contato</button>`:''}
@@ -4200,7 +4200,7 @@ async function openDetail(id,from){
           <div style="position:absolute;left:33px;top:16px;bottom:8px;width:2px;background:var(--border);border-radius:2px"></div>
           ${histVisiveis.map((h,idx)=>{
             const u=allUsers.find(u=>u.user_id===h.user_id);
-            const isInternal=h.tipo==='🔒 Interno (Adm)';
+            const isInternal=h.tipo==='Interno (Adm)';
             const cfg=tipoConfig(h.tipo);
             const dt=new Date(h.created_at);
             const hoje2=new Date();
@@ -4248,7 +4248,7 @@ async function openDetail(id,from){
   // Tarefas
   html+=`<div class="panel" style="margin-top:0">
     <div class="panel-head">
-      <div class="panel-title">✅ Tarefas</div>
+      <div class="panel-title">Tarefas</div>
       ${canEdit?`<button class="btn-sm" onclick="openModal('tarefa')">+ Nova</button>`:''}
     </div>
     <div class="panel-body">
@@ -4264,7 +4264,7 @@ async function openDetail(id,from){
           <div style="flex:1;min-width:160px">
             <div class="task-txt ${t.concluida?'done':''}">${t.descricao}</div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
-              ${criadoStr?`<span style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:3px">🕐 <span style="color:var(--muted2)">${criadoStr}</span></span>`:''}
+              ${criadoStr?`<span style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:3px"><span style="color:var(--muted2)">${criadoStr}</span></span>`:''}
               <span style="font-size:10px;color:${ov?'var(--red)':'var(--muted2)'};font-weight:${ov?'700':'400'}">
                 ${ov?'⚠️':'📅'} ${agendadoStr}
               </span>
@@ -4488,8 +4488,8 @@ async function renderFunil(){
               <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
               ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="opacity:.7">📞</span>${l.telefone}</div>`:''}
               <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
-              ${resp?`<div style="font-size:9.5px;color:var(--muted)">👤 ${resp.name}</div>`:''}
-              ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">⏱ ${prazo.label}</div>`:''}
+              ${resp?`<div style="font-size:9.5px;color:var(--muted)">${resp.name}</div>`:''}
+              ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">${prazo.label}</div>`:''}
             </div>
           </div>
           ${_massMode?'':
@@ -4534,7 +4534,7 @@ async function moveStage(id,status){
   if(idx>-1){ allLeads[idx].status=status; if(payload.updated_at) allLeads[idx].updated_at=now; if(payload.stage_entered_at) allLeads[idx].stage_entered_at=now; }
   const leadAtual=allLeads.find(l=>l.id===id);
   const statusAnterior=leadAtual?.status||'?';
-  await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'🔄 Status',descricao:`Status: "${statusAnterior}" → "${status}"`,created_at:new Date().toISOString()});
+  await sb.from('crm_historico').insert({lead_id:id,user_id:CU.id,tipo:'Status',descricao:`Status: "${statusAnterior}" → "${status}"`,created_at:new Date().toISOString()});
   const{data:hMv}=await sb.from('crm_historico').select('*').eq('lead_id',id).order('created_at',{ascending:false});
   if(hMv){allHist=allHist.filter(h=>h.lead_id!==id);allHist.push(...hMv);}
   _fechadosHojeCache=null; // status mudou — garante que o funil reflita corretamente na próxima renderização
@@ -4591,7 +4591,7 @@ function renderDistribuicao(){
         <td>${l.interesse||'—'}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
         <td><div style="display:flex;gap:5px">
-          <button class="act" onclick="quickDist('${l.id}')">👤 Atribuir</button>
+          <button class="act" onclick="quickDist('${l.id}')">Atribuir</button>
         </div></td>
       </tr>`).join('');
 }
@@ -4659,7 +4659,7 @@ async function quickDist(leadId){
   await sb.from('crm_distribuicao').update({ultimo_vendedor_idx:idx+1,updated_at:new Date().toISOString()}).eq('id',dc.id);
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1){allLeads[i].responsavel_id=vend.user_id;}
-  await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'👤 Atribuição',descricao:`Lead atribuído ao vendedor: ${vend.name}`,created_at:new Date().toISOString()});
+  await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'Atribuição',descricao:`Lead atribuído ao vendedor: ${vend.name}`,created_at:new Date().toISOString()});
   toast(`Lead atribuído a ${vend.name}!`,'ok');
   renderDistribuicao();
 }
@@ -4770,7 +4770,7 @@ function renderTarefas(){
           <div class="task-txt ${t.concluida?'done':''}" style="font-size:13px">${t.descricao}</div>
           ${lead?`<div style="font-size:10.5px;color:var(--muted2);margin-top:2px">Lead: ${lead.nome}</div>`:''}
           <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:5px">
-            ${criadoStr?`<span style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:3px">🕐 Criada: <span style="color:var(--muted2)">${criadoStr}</span></span>`:''}
+            ${criadoStr?`<span style="font-size:10px;color:var(--muted);display:flex;align-items:center;gap:3px">Criada: <span style="color:var(--muted2)">${criadoStr}</span></span>`:''}
             <span style="font-size:10px;color:${ov?'var(--red)':'var(--muted2)'};display:flex;align-items:center;gap:3px;font-weight:${ov?'700':'400'}">
               ${ov?'⚠️':'📅'} Agendada: <span>${agendadoStr}</span>
             </span>
@@ -4911,7 +4911,7 @@ async function renderTransmissoes(){
       const podeEncerrar=t.ativo;
       return`<tr>
         <td style="font-weight:700">${nomeArq}</td>
-        <td>${t.tipo==='video'?'🎥 Vídeo':t.tipo==='imagem'?'🖼️ Imagem':'🔊 Áudio'}</td>
+        <td>${t.tipo==='video'?'Vídeo':t.tipo==='imagem'?'Imagem':'Áudio'}</td>
         <td style="color:${statusColor};font-weight:700">${status}</td>
         <td style="font-size:12px;color:var(--muted2)">${publico}</td>
         <td style="font-size:12px;color:var(--muted2)">${dtStr}</td>
@@ -5037,13 +5037,13 @@ function showTransmissaoPopup(t){
   body.innerHTML = t.tipo==='video'
     ? `<div style="position:relative">
         <video id="transm-media-el" src="${url}" controls autoplay muted playsinline style="width:100%;max-height:70vh;border-radius:8px;display:block;background:#000"></video>
-        <button onclick="_ativarSomTransmissao()" id="transm-unmute-btn" style="position:absolute;bottom:56px;right:14px;background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:20px;padding:7px 14px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">🔇 Ativar som</button>
+        <button onclick="_ativarSomTransmissao()" id="transm-unmute-btn" style="position:absolute;bottom:56px;right:14px;background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:20px;padding:7px 14px;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">Ativar som</button>
       </div>`
     : t.tipo==='imagem'
     ? `<div><img src="${url}" alt="${t.titulo||'Imagem'}" style="width:100%;max-height:70vh;object-fit:contain;border-radius:8px;display:block;background:#000"></div>`
     : `<div>
         <audio id="transm-media-el" src="${url}" controls autoplay muted style="width:100%"></audio>
-        <button onclick="_ativarSomTransmissao()" id="transm-unmute-btn" style="margin-top:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer">🔇 Ativar som</button>
+        <button onclick="_ativarSomTransmissao()" id="transm-unmute-btn" style="margin-top:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer">Ativar som</button>
       </div>`;
   document.getElementById('transmissao-popup').style.display='flex';
 }
@@ -5101,7 +5101,7 @@ function renderCampFilesPreview(){
   if(!campPendingFiles.length){ el.innerHTML=''; return; }
   el.innerHTML=campPendingFiles.map((f,i)=>
     `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📎 ${f.name}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</span>
       <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="removeCampPendingFile(${i})">✕</button>
     </div>`
   ).join('');
@@ -5241,12 +5241,12 @@ function renderCampanhasGrid(){
     const validadeStr=c.validade?new Date(c.validade+'T00:00:00').toLocaleDateString('pt-BR'):null;
     const anexosHtml=(c._anexos||[]).map(a=>{
       const{data:pub}=sb.storage.from('crm-campanhas').getPublicUrl(a.storage_path);
-      return `<a href="${pub?.publicUrl||'#'}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--gold2);text-decoration:none;padding:3px 0">📎 ${a.nome_arquivo}</a>`;
+      return `<a href="${pub?.publicUrl||'#'}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--gold2);text-decoration:none;padding:3px 0">${a.nome_arquivo}</a>`;
     }).join('');
     const adminBtns=isAdmin()?`
       <div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
         ${ativa?`<button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="encerrarCampanha('${c.id}')">Encerrar</button>`:''}
-        <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirCampanha('${c.id}')">🗑 Excluir</button>
+        <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirCampanha('${c.id}')">Excluir</button>
       </div>`:'';
     return `<div class="panel" style="margin:0;${ativa?'':'opacity:.65'}">
       <div class="panel-body" style="padding:16px">
@@ -5255,7 +5255,7 @@ function renderCampanhasGrid(){
           <span class="badge ${ativa?'b-aprov':'b-canc'}" style="flex-shrink:0">${ativa?'Ativa':'Inativa'}</span>
         </div>
         ${c.descricao?`<div style="font-size:12.5px;color:var(--muted2);line-height:1.6;margin-bottom:10px;white-space:pre-wrap">${c.descricao}</div>`:''}
-        ${validadeStr?`<div style="font-size:11px;color:var(--muted2);margin-bottom:8px">📅 Válida até ${validadeStr}</div>`:''}
+        ${validadeStr?`<div style="font-size:11px;color:var(--muted2);margin-bottom:8px">Válida até ${validadeStr}</div>`:''}
         ${anexosHtml?`<div style="margin-top:8px">${anexosHtml}</div>`:''}
         ${adminBtns}
       </div>
@@ -5316,7 +5316,7 @@ function openModal(type){
     document.getElementById('ta-prazo').value='';
     const taHora=document.getElementById('ta-hora');if(taHora)taHora.value='';
     document.getElementById('ta-resp').value=CU.id;
-    document.getElementById('tarefa-modal-ttl').textContent='✅ Nova Tarefa';
+    document.getElementById('tarefa-modal-ttl').textContent='Nova Tarefa';
     document.getElementById('tarefa-criada-em').style.display='none';
     document.getElementById('tarefa-edit-id').textContent='';
     document.getElementById('ta-save-btn').textContent='Salvar';
@@ -5458,7 +5458,7 @@ async function saveLead(){
         else allLeads.unshift({...duplicado, ...patchPayload}); // veio da checagem remota — ainda não estava no cache local
         await sb.from('crm_historico').insert({
           lead_id: duplicado.id, user_id: CU.id,
-          tipo: '🔄 Reatribuição',
+          tipo: 'Reatribuição',
           descricao: `Lead puxado por ${CU.name||CU.email} (já existia na base — resp. anterior: ${respNome})`,
           created_at: new Date().toISOString()
         });
@@ -5533,7 +5533,7 @@ async function saveLead(){
     if(alteracoes.length){
       await sb.from('crm_historico').insert({
         lead_id:editLeadId,user_id:CU.id,
-        tipo:'✏️ Edição',
+        tipo:'Edição',
         descricao:alteracoes.join(' | '),
         created_at:new Date().toISOString()
       });
@@ -5567,7 +5567,7 @@ async function saveLead(){
       // Registra criação no histórico
       await sb.from('crm_historico').insert({
         lead_id:data.id,user_id:CU.id,
-        tipo:'🌟 Criação',
+        tipo:'Criação',
         descricao:`Lead criado por ${CUProfile?.name||CU.email}. Origem: ${payload.origem||'não informada'}. Status inicial: ${payload.status||'Novo'}.`,
         created_at:new Date().toISOString()
       });
@@ -5687,7 +5687,7 @@ function editTask(id){
   const t=allTasks.find(t=>t.id===id);
   if(!t) return;
   // Fill modal
-  document.getElementById('tarefa-modal-ttl').textContent='✏️ Editar Tarefa';
+  document.getElementById('tarefa-modal-ttl').textContent='Editar Tarefa';
   document.getElementById('ta-desc').value=t.descricao||'';
   document.getElementById('ta-prazo').value=t.prazo||'';
   const taHora=document.getElementById('ta-hora');if(taHora)taHora.value=t.hora||'';
@@ -5827,7 +5827,7 @@ async function _saveVendaInner(){
     if(!temContrato && !catFiles.contrato.length) faltando.push('Contrato');
     if(!temComprovante && !catFiles.comprovante.length) faltando.push('Comprovante de Pagamento');
     if(faltando.length){
-      toast('⚠️ Documento(s) faltando: '+faltando.join(', ')+'. Anexe para completar a venda.','err');
+      toast('Documento(s) faltando: '+faltando.join(', ')+'. Anexe para completar a venda.','err');
       return;
     }
   }
@@ -5842,7 +5842,7 @@ async function _saveVendaInner(){
   if(!existingV){
     const bloqueado = await verificarBloqueioAntesDeSalvar(lead?.nome, lead?.telefone);
     if(bloqueado.bloqueado){
-      toast('🚫 Esse cliente está marcado como "Venda Sem Retorno" ('+bloqueado.motivo+'). É preciso justificativa + aprovação de admin ou 2 coordenadores antes de prosseguir.','err');
+      toast('Esse cliente está marcado como "Venda Sem Retorno" ('+bloqueado.motivo+'). É preciso justificativa + aprovação de admin ou 2 coordenadores antes de prosseguir.','err');
       await abrirSolicitacaoDesbloqueio(vendaLeadId, lead);
       return;
     }
@@ -5909,7 +5909,7 @@ async function _saveVendaInner(){
       try{
         await sb.from('crm_historico').insert({
           lead_id:vendaLeadId, user_id:CU.id,
-          tipo:'🏦 Venda registrada',
+          tipo:'Venda registrada',
           descricao:`Venda registrada por ${CUProfile?.name||CU.email}. Crédito: ${vd.valor_credito?'R$ '+Number(vd.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}.`
         });
       }catch(e){
@@ -5965,7 +5965,7 @@ async function _saveVendaInner(){
     }
 
     if(uploadErrors.length){
-      toast('⚠️ Falha ao enviar: '+uploadErrors.slice(0,3).join(', ')+(uploadErrors.length>3?' e mais...':''),'err');
+      toast('Falha ao enviar: '+uploadErrors.slice(0,3).join(', ')+(uploadErrors.length>3?' e mais...':''),'err');
     }
   }
 
@@ -6053,15 +6053,15 @@ async function updateVendaStatus(id,status){
   // (Aprovado, Cancelado, Pendente, SemRetorno), não só as duas originais.
   if(vendaAntes?.lead_id){
     const STATUS_INFO={
-      'Aprovado':  {emoji:'✅', label:'aprovada'},
-      'Cancelado': {emoji:'❌', label:'cancelada (reprovada pós vendas)'},
-      'Pendente':  {emoji:'⏳', label:'revertida para pendente'},
-      'SemRetorno':{emoji:'🚫', label:'marcada como Sem Retorno'},
+      'Aprovado':  {label:'aprovada'},
+      'Cancelado': {label:'cancelada (reprovada pós vendas)'},
+      'Pendente':  {label:'revertida para pendente'},
+      'SemRetorno':{label:'marcada como Sem Retorno'},
     };
-    const info = STATUS_INFO[status] || {emoji:'ℹ️', label:status};
+    const info = STATUS_INFO[status] || {label:status};
     await sb.from('crm_historico').insert({
       lead_id:vendaAntes.lead_id,user_id:CU.id,
-      tipo:`${info.emoji} Venda ${status}`,
+      tipo:`Venda ${status}`,
       descricao:`Venda ${info.label} por ${CUProfile?.name||CU.email}. Crédito: ${vendaAntes.valor_credito?'R$ '+Number(vendaAntes.valor_credito).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}. Status anterior: ${statusAnterior||'Pendente'}.`,
       created_at:new Date().toISOString()
     });
@@ -6159,7 +6159,7 @@ async function uploadContratoLead(leadId, files){
       storage_path:path,categoria:'contrato_lead'
     });
     if(dbErr){toast('Erro ao salvar: '+dbErr.message,'err');continue;}
-    toast('✅ Contrato anexado!','ok');
+    toast('Contrato anexado!','ok');
   }
   openDetail(leadId,fromPage);
 }
@@ -6393,7 +6393,7 @@ async function abrirSolicitacaoDesbloqueio(leadId, lead){
   // Log no histórico do lead, seguindo o mesmo padrão usado em updateVendaStatus
   await sb.from('crm_historico').insert({
     lead_id:leadId, user_id:CU.id,
-    tipo:'🚫 Solicitação de desbloqueio',
+    tipo:'Solicitação de desbloqueio',
     descricao:`${CUProfile?.name||CU.email} solicitou desbloqueio de "Venda Sem Retorno". Justificativa: ${justificativa.trim()}`
   }).catch(()=>{});
 }
@@ -6426,7 +6426,7 @@ async function marcarVendaSemRetorno(vendaId){
   if(venda?.lead_id){
     await sb.from('crm_historico').insert({
       lead_id:venda.lead_id, user_id:CU.id,
-      tipo:'🚫 Venda Sem Retorno',
+      tipo:'Venda Sem Retorno',
       descricao:`${CUProfile?.name||CU.email} marcou esta venda como Sem Retorno. Motivo: ${justificativa.trim()}`
     }).catch(()=>{});
   }
@@ -6512,13 +6512,13 @@ async function renderBloqueiosPendentes(){
     const solicitante=findUser(b.criado_por)?.name||'—';
     const votos=aprovacoesPorBloqueio[b.id]||0;
     return `<div class="card" style="margin-bottom:10px;padding:14px">
-      <div style="font-weight:700;color:var(--red)">🚫 ${b.nome||'Sem nome'} · ${b.telefone||'Sem telefone'}</div>
+      <div style="font-weight:700;color:var(--red)">${b.nome||'Sem nome'} · ${b.telefone||'Sem telefone'}</div>
       <div style="font-size:12px;color:var(--muted);margin:6px 0">Solicitado por ${solicitante} em ${fmtDt(b.criado_em)}</div>
       <div style="font-size:13px;margin-bottom:10px">${(b.justificativa||'').replace(/</g,'&lt;')}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Aprovações de coordenador: ${votos}/2 (admin pode aprovar sozinho)</div>
       <div style="display:flex;gap:8px">
-        <button class="act green" onclick="aprovarBloqueio('${b.id}')">✅ Aprovar</button>
-        <button class="act red" onclick="negarBloqueio('${b.id}')">❌ Negar</button>
+        <button class="act green" onclick="aprovarBloqueio('${b.id}')">Aprovar</button>
+        <button class="act red" onclick="negarBloqueio('${b.id}')">Negar</button>
       </div>
     </div>`;
   }).join('');
@@ -6565,7 +6565,7 @@ async function renderComentariosVenda(vendaId){
   el.innerHTML = data.map(c=>{
     const autor=findUser(c.user_id)?.name||'—';
     const anexoHtml = c.anexo_storage_path
-      ? `<div style="margin-top:6px"><button class="act" onclick="downloadDoc('${c.anexo_storage_path}','${escJs(c.anexo_nome||'anexo')}')">⬇️ ${c.anexo_nome||'Anexo'}</button></div>`
+      ? `<div style="margin-top:6px"><button class="act" onclick="downloadDoc('${c.anexo_storage_path}','${escJs(c.anexo_nome||'anexo')}')">${c.anexo_nome||'Anexo'}</button></div>`
       : '';
     return `<div style="border-bottom:1px solid var(--border);padding:10px 0">
       <div style="font-size:12px;font-weight:700;color:var(--gold2)">${autor} <span style="font-weight:400;color:var(--muted)">· ${fmtDt(c.criado_em)}</span></div>
@@ -6602,18 +6602,18 @@ function fmtCPF(c){if(!c)return'';const d=c.replace(/\D/g,'');return d.replace(/
 function sBadge(s,tipo,leadId,proposta_quente){
   const m={Novo:"b-novo","Em Negociação":"b-contato",Proposta:"b-proposta",Fechado:"b-fechado",Perdido:"b-perdido"};
   // Lead Novo (status) + Remalho (tipo) ao mesmo tempo mostrava os dois badges
-  // juntos ("Novo" + "♻️ Remalho"), o que é redundante/confuso — o tipo Remalho
+  // juntos ("Novo" + "Remalho"), o que é redundante/confuso — o tipo Remalho
   // já deixa claro que não é um lead novo de verdade. Nesse caso específico,
-  // omite o badge de status "Novo" e deixa só o "♻️ Remalho" abaixo.
+  // omite o badge de status "Novo" e deixa só o "Remalho" abaixo.
   const ocultaStatusNovo = (s==='Novo' && tipo==='Remalho');
   let html = ocultaStatusNovo ? '' : `<span class="badge ${m[s]||"b-novo"}">${s}</span>`;
   // Badge proposta quente — visível a todos, togglável por sup/coord/adm
   const canToggleQuente=isAdminOrCoord()||isSupervisor();
   if(proposta_quente){
     if(canToggleQuente&&leadId){
-      html+=` <span class="badge b-quente" style="cursor:pointer" title="Clique para remover Proposta Quente" onclick="event.stopPropagation();togglePropostaQuente('${leadId}',false,this)">🔥 Proposta Quente</span>`;
+      html+=` <span class="badge b-quente" style="cursor:pointer" title="Clique para remover Proposta Quente" onclick="event.stopPropagation();togglePropostaQuente('${leadId}',false,this)">Proposta Quente</span>`;
     } else {
-      html+=` <span class="badge b-quente">🔥 Proposta Quente</span>`;
+      html+=` <span class="badge b-quente">Proposta Quente</span>`;
     }
   } else {
     if(canToggleQuente&&leadId){
@@ -6624,14 +6624,14 @@ function sBadge(s,tipo,leadId,proposta_quente){
   // ou se for Novo mas o status NÃO for Novo (evita duplicar "Novo Novo")
   if(tipo==="Remalho"){
     if(isAdmin()&&leadId){
-      html+=` <span class="badge b-remalho" style="cursor:pointer" title="Clique para mudar para Novo" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Novo',this)">♻️ Remalho</span>`;
+      html+=` <span class="badge b-remalho" style="cursor:pointer" title="Clique para mudar para Novo" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Novo',this)">Remalho</span>`;
     } else {
-      html+=` <span class="badge b-remalho">♻️ Remalho</span>`;
+      html+=` <span class="badge b-remalho">Remalho</span>`;
     }
   } else if(s!=='Novo'){
-    // Só mostra badge 🆕 Novo quando o status for diferente de Novo (ex: Em Negociação mas tipo Novo)
+    // Só mostra badge Novo quando o status for diferente de Novo (ex: Em Negociação mas tipo Novo)
     if(isAdmin()&&leadId){
-      html+=` <span class="badge b-novo" style="cursor:pointer;opacity:0.55" title="Clique para marcar como Remalho" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Remalho',this)">🆕 Novo</span>`;
+      html+=` <span class="badge b-novo" style="cursor:pointer;opacity:0.55" title="Clique para marcar como Remalho" onclick="event.stopPropagation();quickTipoToggle('${leadId}','Remalho',this)">Novo</span>`;
     }
   } else {
     // Status=Novo e tipo=Novo — só mostra o toggle oculto para admin marcar como Remalho
@@ -6642,12 +6642,11 @@ function sBadge(s,tipo,leadId,proposta_quente){
   return html.trim();
 }
 async function quickTipoToggle(leadId,novoTipo,el){
-  const emoji=novoTipo==='Remalho'?'♻️':'🆕';
   el.textContent='...';
   const now=new Date().toISOString();
   const payload=hasUpdatedAtCol()?{tipo_lead:novoTipo,updated_at:now}:{tipo_lead:novoTipo};
   const{error}=await sb.from('crm_leads').update(payload).eq('id',leadId);
-  if(error){toast('Erro: '+error.message,'err');el.textContent=novoTipo==='Remalho'?'🆕 Novo':'♻️ Remalho';return;}
+  if(error){toast('Erro: '+error.message,'err');el.textContent=novoTipo==='Remalho'?'Novo':'Remalho';return;}
   const i=allLeads.findIndex(l=>l.id===leadId);
   if(i>-1){ allLeads[i].tipo_lead=novoTipo; if(payload.updated_at) allLeads[i].updated_at=now; }
   saveCacheLazy();
@@ -6680,15 +6679,15 @@ async function togglePropostaQuente(leadId,ativo,el){
   // Registra no histórico
   await sb.from('crm_historico').insert({
     lead_id:leadId,user_id:CU.id,
-    tipo:'🔒 Interno (Adm)',
-    descricao:ativo?'🔥 Lead marcado como Proposta Quente':'🔥 Tag Proposta Quente removida'
+    tipo:'Interno (Adm)',
+    descricao:ativo?'Lead marcado como Proposta Quente':'Tag Proposta Quente removida'
   });
   saveCacheLazy();
   if(document.getElementById('page-lead-detail')?.classList.contains('on')) openDetail(leadId,fromPage);
   else if(document.getElementById('page-leads')?.classList.contains('on')) renderLeads();
   else if(document.getElementById('page-coord-leads')?.classList.contains('on')) renderCoordLeads();
   else if(document.getElementById('page-meus-leads')?.classList.contains('on')) renderMeusLeads();
-  toast(ativo?'🔥 Proposta Quente ativada!':'Tag removida','ok');
+  toast(ativo?'Proposta Quente ativada!':'Tag removida','ok');
 }
 /* ═══ RESOLVER EQUIPE PARA RANKING FIREBASE ═══
    Tenta determinar a equipe correta do lead/vendedor:
@@ -6784,7 +6783,7 @@ async function resolverEquipeParaVenda(lead, vendedor){
           await sb.from('crm_historico').insert({
             lead_id: lead.id,
             user_id: CU?.id,
-            tipo: '🔁 Transferência automática',
+            tipo: 'Transferência automática',
             descricao: `Lead transferido de "${nomeAnterior}" para "${eq.nome}" automaticamente (vendedor "${vendedor.name}" pertence a essa equipe, não à anterior).`,
             created_at: new Date().toISOString()
           });
@@ -6987,7 +6986,7 @@ async function renderVendasPage(){
       <td style="color:var(--gold2);font-weight:700">${v.valor_credito?brl(v.valor_credito):'—'}</td>
       <td style="font-size:11.5px">${v.parcela?brl(v.parcela):'—'}</td>
       <td style="color:var(--muted2);font-size:11px">${v.grupo||'—'} / ${v.cota||'—'}</td>
-      <td><span class="badge ${badgeCls}">${v.status_venda==='SemRetorno'?'🚫 Cancelados':(v.status_venda||'Pendente')}</span></td>
+      <td><span class="badge ${badgeCls}">${v.status_venda==='SemRetorno'?'Cancelados':(v.status_venda||'Pendente')}</span></td>
       <td style="color:var(--muted2);font-size:11px">${fmtDt(v.created_at)}</td>
       <td>
         ${canManage?`<div style="display:flex;gap:4px">
@@ -7037,7 +7036,7 @@ async function revertVenda(vendaId, leadId){
   const li=allLeads.findIndex(l=>l.id===leadId);
   if(li>-1){ allLeads[li].status='Proposta'; if(hasStageEnteredAtCol()) allLeads[li].stage_entered_at=nowRev; }
   // Log in history
-  await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'📝 Anotação',descricao:'Venda revertida para lead normal (status: Proposta)',created_at:new Date().toISOString()});
+  await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'Anotação',descricao:'Venda revertida para lead normal (status: Proposta)',created_at:new Date().toISOString()});
   // BUGFIX: antes buscava a tabela crm_historico INTEIRA (sem filtro nem limite) — em uma
   // base com muitos leads isso baixa potencialmente centenas de MB do Supabase a cada reversão
   // de venda, contribuindo bastante para o excesso de "Saída"/egress. Agora busca só o
@@ -7076,7 +7075,7 @@ async function saveInlineEmail(leadId){
   const li=allLeads.findIndex(l=>l.id===leadId);
   if(li>-1){ allLeads[li].email=email||null; if(payload.updated_at) allLeads[li].updated_at=now; }
   if(leadAntes&&(email||'')!==(leadAntes.email||'')){
-    await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:'E-mail atualizado',created_at:new Date().toISOString()});
+    await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'Edição',descricao:'E-mail atualizado',created_at:new Date().toISOString()});
   }
   saveCacheLazy();
   toast('E-mail salvo!','ok');
@@ -7098,7 +7097,7 @@ async function saveInlineObs(leadId){
   const li=allLeads.findIndex(l=>l.id===leadId);
   if(li>-1){ allLeads[li].observacoes=obs||null; if(payload.updated_at) allLeads[li].updated_at=now; }
   if(leadAntes&&(obs||'')!==(leadAntes.observacoes||'')){
-    await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'✏️ Edição',descricao:'Observações atualizadas',created_at:new Date().toISOString()});
+    await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'Edição',descricao:'Observações atualizadas',created_at:new Date().toISOString()});
   }
   saveCacheLazy();
   toast('Observações salvas!','ok');
@@ -7141,13 +7140,13 @@ function checkTaskAlerts(){
     div.dataset.alertKey=alertKey;
     const horaDisp=t.hora?` às ${t.hora}`:'';
     const criadoEm=t.created_at?new Date(t.created_at):null;
-    const criadoStr=criadoEm?`<div style="font-size:9.5px;color:var(--muted2);margin-top:3px">🕐 Criada: ${criadoEm.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} ${criadoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>`:'';
+    const criadoStr=criadoEm?`<div style="font-size:9.5px;color:var(--muted2);margin-top:3px">Criada: ${criadoEm.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} ${criadoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>`:'';
     div.innerHTML=`
       <button class="task-alert-minimize-btn" title="Minimizar alertas" onclick="event.stopPropagation();minimizeTaskAlerts()">—</button>
       <button class="task-alert-close" onclick="dismissTaskAlert('${alertKey}',this.closest('.task-alert-item'))">✕</button>
-      <div class="task-alert-title">${isOverdue?'⚠ Tarefa Atrasada':t.hora?'⏰ Tarefa em Breve':'🔔 Tarefa para Hoje'}</div>
+      <div class="task-alert-title">${isOverdue?'Tarefa Atrasada':t.hora?'Tarefa em Breve':'Tarefa para Hoje'}</div>
       <div class="task-alert-desc">${t.descricao}</div>
-      <div class="task-alert-meta">📅 Prazo: ${t.prazo?t.prazo.split('-').reverse().join('/'):'—'}${horaDisp}</div>
+      <div class="task-alert-meta">Prazo: ${t.prazo?t.prazo.split('-').reverse().join('/'):'—'}${horaDisp}</div>
       ${criadoStr}`;
     div.addEventListener('click',e=>{
       if(e.target.classList.contains('task-alert-close')||e.target.classList.contains('task-alert-minimize-btn')) return;
@@ -7515,7 +7514,7 @@ async function runAutoReturnRules(){
   // mas em lotes — antes disparava tudo de uma vez com forEach, sem limite.
   if(bloqueados3.length){
     runInChunks(bloqueados3, b=>sb.from('crm_historico').insert({
-      lead_id:b.id, user_id:CU.id, tipo:'🔒 Interno (Adm)',
+      lead_id:b.id, user_id:CU.id, tipo:'Interno (Adm)',
       descricao:`[BLOQUEADO DE RECICLAGEM] Palavra-chave detectada: "${b.label}" — lead mantido como Perdido (retorno automático)`,
       created_at:new Date().toISOString()
     }).then(({error})=>{ if(error) console.warn('Hist bloqueio (auto) error:',error.message); }))
@@ -7562,7 +7561,7 @@ async function runAutoReturnRules(){
   const todosOk=resultadosUpdate.filter(r=>r.ok).map(r=>r.item);
   const idsTodos=todosOk.map(x=>x.id);
   if(!idsTodos.length){
-    if(falhasUpdate.length) toast(`⚠️ Falha ao reciclar ${falhasUpdate.length} lead(s) — veja o console`,'err');
+    if(falhasUpdate.length) toast(`Falha ao reciclar ${falhasUpdate.length} lead(s) — veja o console`,'err');
     return;
   }
 
@@ -7603,7 +7602,7 @@ async function runAutoReturnRules(){
     }
     const payload={
       lead_id:item.id,user_id:CU.id,
-      tipo:'🔄 Retorno Automático',
+      tipo:'Retorno Automático',
       descricao:`${motivo} (era de ${vendedorNome})`,
       created_at:new Date().toISOString()
     };
@@ -7650,8 +7649,8 @@ async function runAutoReturnRules(){
       const l=allLeads.find(x=>x.id===f.item.id);
       return l?l.nome:f.item.id;
     }).join(', ');
-    console.error(`⚠️ ${falhas.length} lead(s) reclassificado(s) SEM histórico gravado:`, nomes);
-    toast(`⚠️ ${falhas.length} lead(s) reclassificado(s) sem histórico salvo — verifique: ${nomes}`,'err');
+    console.error(`${falhas.length} lead(s) reclassificado(s) SEM histórico gravado:`, nomes);
+    toast(`${falhas.length} lead(s) reclassificado(s) sem histórico salvo — verifique: ${nomes}`,'err');
   }
 
   reRenderCurrent();
@@ -7709,13 +7708,13 @@ function getLabelBloqueioPorLead(lead){
 // Tipos de histórico gerados automaticamente pelo PRÓPRIO sistema (edição de
 // campo, troca de status, retorno automático, etc.) — nunca contam como
 // "comentário real" do vendedor pra decidir se um Perdido pode ser reciclado.
-const TIPOS_HIST_SISTEMA = new Set(['🔄 Status','✏️ Edição','🔒 Interno (Adm)','🔄 Retorno Automático','📤 Enviado p/ Equipe','🌟 Criação']);
+const TIPOS_HIST_SISTEMA = new Set(['Status','Edição','Interno (Adm)','Retorno Automático','Enviado p/ Equipe','Criação']);
 function leadTemComentarioReal(leadId){
   const hist = allHist.filter(h => h.lead_id === leadId);
   return hist.some(h => {
     const desc = (h.descricao || '').trim();
     if(TIPOS_HIST_SISTEMA.has(h.tipo)) return false;
-    // "Venda revertida" usa tipo 📝 Anotação — mesmo tipo de um comentário real
+    // "Venda revertida" usa tipo Anotação — mesmo tipo de um comentário real
     // — mas é texto fixo gerado pelo sistema, não escrito pelo vendedor.
     if(desc.startsWith('Venda revertida')) return false;
     if(desc.startsWith('[BLOQUEADO')) return false;
@@ -7759,7 +7758,7 @@ async function openAvaliarPerdidos(){
           <span style="color:var(--muted2);font-size:11px"> · ${lead.telefone||'—'}</span>
           ${resp?`<span style="color:var(--muted);font-size:11px"> · ${resp.name}</span>`:''}
         </div>
-        <span style="background:rgba(251,146,60,0.15);color:var(--orange);border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap">🚫 "${label}"</span>
+        <span style="background:rgba(251,146,60,0.15);color:var(--orange);border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap">"${label}"</span>
       </div>`;
     }).join('');
     bloqWrap.style.display='';
@@ -7806,7 +7805,7 @@ async function confirmarAvaliarPerdidos(){
           try{
             const motivo = getLabelBloqueioPorLead(l);
             await sb.from('crm_historico').insert({
-              lead_id: l.id, user_id: CU.id, tipo: '🔒 Interno (Adm)',
+              lead_id: l.id, user_id: CU.id, tipo: 'Interno (Adm)',
               descricao: `[BLOQUEADO DE RECICLAGEM] Palavra-chave detectada: "${motivo}" — lead mantido como Perdido`,
               created_at: new Date().toISOString()
             });
@@ -7866,7 +7865,7 @@ async function confirmarAvaliarPerdidos(){
         await sb.from('crm_historico').insert({
           lead_id: l.id,
           user_id: CU.id,
-          tipo: '🔒 Interno (Adm)',
+          tipo: 'Interno (Adm)',
           descricao: `[RECICLADO] Status anterior: Perdido | Vendedor: ${info.nomeVend} | Equipe: ${info.nomeEquipe} | Motivo: sem comentário explicativo`,
           created_at: new Date().toISOString()
         });
@@ -7879,7 +7878,7 @@ async function confirmarAvaliarPerdidos(){
     closeModal('avaliar-perdidos');
     reRenderCurrent();
     const msgFalha = falhasUpd.length ? ` (${falhasUpd.length} falharam)` : '';
-    toast(`✅ ${reciclados.length} lead(s) reciclado(s) para a base como Novo!${msgFalha}`, 'ok');
+    toast(`${reciclados.length} lead(s) reciclado(s) para a base como Novo!${msgFalha}`, 'ok');
   } catch(e){
     toast('Erro: ' + e.message, 'err');
   } finally {
@@ -8140,7 +8139,7 @@ function setupRealtime(){
 
   realtimeChannel = ch.subscribe((status)=>{
       if(status==='SUBSCRIBED'){
-        console.log('✅ Realtime conectado');
+        console.log('Realtime conectado');
         setRealtimeIndicator(true);
         // Cancela qualquer reconexão pendente de uma falha anterior — sem isso,
         // um timer "fantasma" de uma queda anterior derrubava a conexão que
@@ -8148,7 +8147,7 @@ function setupRealtime(){
         // infinito de conectar/desconectar visto no console.
         if(_realtimeReconnectTimer){ clearTimeout(_realtimeReconnectTimer); _realtimeReconnectTimer=null; }
       } else if(status==='CLOSED'||status==='CHANNEL_ERROR'){
-        console.warn('⚠️ Realtime desconectado, reconectando...');
+        console.warn('Realtime desconectado, reconectando...');
         setRealtimeIndicator(false);
         // O Supabase pode emitir CLOSED/CHANNEL_ERROR várias vezes em sequência
         // para a MESMA queda de conexão. Sem essa proteção, cada disparo agendava
@@ -8233,7 +8232,7 @@ async function syncLead(payload){
     } else if(isAdminOrCoord()||(n.responsavel_id===CU.id)){
       // Newly assigned to this user
       allLeads.unshift(n);
-      if(!isAdminOrCoord()) toast(`🎯 Novo lead atribuído: ${n.nome}`,'ok');
+      if(!isAdminOrCoord()) toast(`Novo lead atribuído: ${n.nome}`,'ok');
     }
   } else if(eventType==='DELETE'){
     allLeads=allLeads.filter(l=>l.id!==o.id);
@@ -8487,14 +8486,14 @@ function parseCSV(text){
     return;
   }
 
-  btn.textContent=`⬆️ Importar ${csvParsedLeads.length} lead${csvParsedLeads.length!==1?'s':''}`;
+  btn.textContent=`Importar ${csvParsedLeads.length} lead${csvParsedLeads.length!==1?'s':''}`;
   btn.style.display='block';
   document.getElementById('csv-resp-wrap').style.display='block';
   if(isAdmin()) document.getElementById('csv-tipo-wrap').style.display='block';
   document.getElementById('csv-origem-wrap').style.display='block';
 
   preview.innerHTML=`
-    <div style="font-size:11.5px;color:var(--green);margin-bottom:8px">✅ ${csvParsedLeads.length} lead${csvParsedLeads.length!==1?'s':''} encontrado${csvParsedLeads.length!==1?'s':''}${erros.length?` (${erros.length} linha${erros.length!==1?'s':''} ignorada${erros.length!==1?'s':''})`:''}</div>
+    <div style="font-size:11.5px;color:var(--green);margin-bottom:8px">${csvParsedLeads.length} lead${csvParsedLeads.length!==1?'s':''} encontrado${csvParsedLeads.length!==1?'s':''}${erros.length?` (${erros.length} linha${erros.length!==1?'s':''} ignorada${erros.length!==1?'s':''})`:''}</div>
     <div style="max-height:160px;overflow-y:auto;background:var(--surface2);border-radius:8px;padding:10px">
       ${csvParsedLeads.slice(0,5).map(l=>`<div style="font-size:11.5px;padding:3px 0;border-bottom:1px solid var(--border);color:var(--text)">${l.nome} ${l.telefone?'· '+l.telefone:''} ${l.interesse?'· '+l.interesse:''}</div>`).join('')}
       ${csvParsedLeads.length>5?`<div style="font-size:11px;color:var(--muted2);padding-top:4px">+ ${csvParsedLeads.length-5} mais...</div>`:''}
@@ -8698,9 +8697,9 @@ async function importLeads(leads,fonte){
   entry.style.cssText='padding:10px 0;border-bottom:1px solid var(--border);font-size:12.5px';
   entry.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:3px">
     <strong>${fonte}</strong><span style="color:var(--muted2);font-size:11px">${now}</span></div>
-    <div style="color:var(--green)">✅ ${ok} importado${ok!==1?'s':''}</div>
-    ${dups?`<div style="color:var(--orange)">⚠️ ${dups} duplicado${dups!==1?'s':''} ignorado${dups!==1?'s':''}</div>`:''}
-    ${errs?`<div style="color:var(--red)">❌ ${errs} erro${errs!==1?'s':''}</div>`:''}`;
+    <div style="color:var(--green)">${ok} importado${ok!==1?'s':''}</div>
+    ${dups?`<div style="color:var(--orange)">${dups} duplicado${dups!==1?'s':''} ignorado${dups!==1?'s':''}</div>`:''}
+    ${errs?`<div style="color:var(--red)">${errs} erro${errs!==1?'s':''}</div>`:''}`;
   if(log.querySelector('.empty')) log.innerHTML='';
   log.prepend(entry);
 
@@ -8749,8 +8748,8 @@ function renderMeuFunil(){
         <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
         ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${l.telefone}</div>`:''}
         <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
-        ${resp?`<div style="font-size:9.5px;color:var(--muted)">👤 ${resp.name}</div>`:''}
-        ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">⏱ ${prazo.label}</div>`:''}
+        ${resp?`<div style="font-size:9.5px;color:var(--muted)">${resp.name}</div>`:''}
+        ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">${prazo.label}</div>`:''}
         <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:8px">
           ${STAGES.filter(x=>x!==s).map(x=>`<button onclick="event.stopPropagation();moveStageAndRefreshMeuFunil('${l.id}','${x}')"
             style="background:transparent;border:1px solid var(--border);color:var(--muted2);border-radius:4px;padding:2px 5px;font-size:9px;cursor:pointer;font-family:inherit;transition:all .13s"
@@ -8804,7 +8803,7 @@ function getDistVendors(){
 function openDistPicker(leadId){
   _distPickerLeadId=leadId;
   const lead=allLeads.find(l=>l.id===leadId);
-  document.getElementById('dist-picker-title').textContent='👤 Atribuir Lead';
+  document.getElementById('dist-picker-title').textContent='Atribuir Lead';
   document.getElementById('dist-picker-info').textContent=lead?'Lead: '+lead.nome:'';
   const vends=getDistVendors();
   document.getElementById('dist-picker-vend').innerHTML=vends.map(u=>'<option value="'+u.user_id+'">'+u.name+'</option>').join('');
@@ -8965,7 +8964,7 @@ function renderCoordLeads(){
   const mbs=getCoordMembers();
   const vSel=document.getElementById('cl-f-vend');
   if(vSel&&vSel.options.length<=1){
-    vSel.innerHTML='<option value="">Todos os vendedores</option><option value="__sem__">🚫 Sem vendedor</option>'+
+    vSel.innerHTML='<option value="">Todos os vendedores</option><option value="__sem__">Sem vendedor</option>'+
       allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
   }
   let leads=getCoordLeads();
@@ -9084,9 +9083,9 @@ function renderCoordFunil(){
               onclick="event.stopPropagation()" onchange="onCfChkChange(this)">
             <div style="flex:1">
               <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
-              ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">📞 ${l.telefone}</div>`:''}
+              ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${l.telefone}</div>`:''}
               <div style="font-size:10.5px;color:var(--muted2)">${l.interesse||'—'}</div>
-              ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">👤 ${u.name}</div>`:''}
+              ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">${u.name}</div>`:''}
             </div>
           </div>
         </div>`;
@@ -9237,7 +9236,7 @@ function renderCoordDist(){
         <td style="font-weight:700">${l.nome}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
-        <td><button class="act" onclick="openDistPicker('${l.id}')">👤 Atribuir</button></td>
+        <td><button class="act" onclick="openDistPicker('${l.id}')">Atribuir</button></td>
       </tr>`).join('');
 }
 
@@ -9330,7 +9329,7 @@ function toggleMassMode(){
   const btn=document.getElementById('mass-toggle-btn');
   if(bar) bar.style.display=_massMode?'flex':'none';
   if(btn){
-    btn.textContent=_massMode?'☑ Desativar seleção':'☑ Seleção em massa';
+    btn.textContent=_massMode?'Desativar seleção':'Seleção em massa';
     btn.style.background=_massMode?'rgba(201,168,76,0.15)':'';
     btn.style.borderColor=_massMode?'var(--gold)':'';
     btn.style.color=_massMode?'var(--gold2)':'';
@@ -9448,7 +9447,7 @@ function openLeadsMass(){
   // Show delete button only for admin
   const delWrap=document.getElementById('mass-delete-btn-wrap');
   if(delWrap) delWrap.innerHTML=(isAdmin()||isSupervisor())
-    ?'<div style="width:1px;height:20px;background:var(--border);display:inline-block;margin:0 2px;vertical-align:middle"></div><button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">🗑️ Apagar</button>'
+    ?'<div style="width:1px;height:20px;background:var(--border);display:inline-block;margin:0 2px;vertical-align:middle"></div><button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">Apagar</button>'
     :'';
   // Origem (vendedor de origem para filtrar) — inclui "Sem vendedor"
   const originSel=document.getElementById('leads-f-origin-sel');
@@ -9590,8 +9589,7 @@ async function leadsMassChangeTipo(){
   const tipo=document.getElementById('leads-mass-tipo')?.value;
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
   if(!tipo){toast('Selecione o tipo: Novo ou Remalho','err');return;}
-  const emoji=tipo==='Novo'?'🆕':'♻️';
-  if(!confirm(`Marcar ${ids.length} lead${ids.length!==1?'s':''} como ${emoji} ${tipo}?`)) return;
+  if(!confirm(`Marcar ${ids.length} lead${ids.length!==1?'s':''} como ${tipo}?`)) return;
   toast(`Atualizando tipo de ${ids.length} leads, aguarde...`,'ok');
   for(let i=0;i<ids.length;i+=100){
     const batch=ids.slice(i,i+100);
@@ -9656,7 +9654,7 @@ async function leadsMassChangeStatus(){
   }
   // Registra no histórico em lote (1 entrada por lead)
   try{
-    const histRows=ids.map(id=>({lead_id:id,user_id:CU.id,tipo:'🔄 Status',descricao:'Status alterado em massa para: '+novoStatus,created_at:now}));
+    const histRows=ids.map(id=>({lead_id:id,user_id:CU.id,tipo:'Status',descricao:'Status alterado em massa para: '+novoStatus,created_at:now}));
     for(let i=0;i<histRows.length;i+=100){
       await sb.from('crm_historico').insert(histRows.slice(i,i+100));
     }
@@ -9738,7 +9736,7 @@ function renderFunilCeo(){
   if(capAviso){
     if(ceoLeads.length>=CEO_LEADS_CAP){
       capAviso.style.display='block';
-      capAviso.textContent=`⚠️ Mostrando os ${CEO_LEADS_CAP.toLocaleString('pt-BR')} leads mais recentes. Pode haver leads mais antigos fora dessa visão.`;
+      capAviso.textContent=`Mostrando os ${CEO_LEADS_CAP.toLocaleString('pt-BR')} leads mais recentes. Pode haver leads mais antigos fora dessa visão.`;
     } else {
       capAviso.style.display='none';
     }
@@ -9807,7 +9805,7 @@ function renderFunilCeo(){
                 return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
                   <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
                   <div style="font-size:10.5px;color:var(--muted2)">${l.interesse||'—'}</div>
-                  ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">👤 ${u.name}</div>`:'<div style="font-size:9.5px;color:var(--orange);margin-top:2px">Sem vendedor</div>'}
+                  ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">${u.name}</div>`:'<div style="font-size:9.5px;color:var(--orange);margin-top:2px">Sem vendedor</div>'}
                 </div>`;
               }).join('')}
             </div>`;
@@ -9830,7 +9828,7 @@ function _popularFiltrosLeadsCeo(){
   const selVend=document.getElementById('lceo-vendedor');
   if(selVend){
     const vendedores=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-    selVend.innerHTML='<option value="">Todos os vendedores</option><option value="__sem__">🚫 Sem vendedor</option>'+
+    selVend.innerHTML='<option value="">Todos os vendedores</option><option value="__sem__">Sem vendedor</option>'+
       vendedores.map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
   }
   const selEq=document.getElementById('lceo-equipe');
@@ -9949,7 +9947,7 @@ async function openFunilVendedor(userId){
               <div style="flex:1">
                 <div style="font-size:11.5px;font-weight:700;margin-bottom:2px">${l.nome}</div>
                 <div style="font-size:10px;color:var(--muted2)">${l.interesse||'—'}</div>
-                ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">⏱ ${prazo.label}</div>`:''}
+                ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">${prazo.label}</div>`:''}
               </div>
             </div>
           </div>`;
@@ -9995,7 +9993,7 @@ async function confirmarEnviarEquipe(){
   if(!r.ok){toast('Erro: '+(r.error?.message||'falha ao atualizar'),'err');return;}
   try{
     await sb.from('crm_historico').insert({
-      lead_id:_enviarLeadId, user_id:CU.id, tipo:'📤 Enviado p/ Equipe',
+      lead_id:_enviarLeadId, user_id:CU.id, tipo:'Enviado p/ Equipe',
       descricao:`Lead enviado para equipe (status anterior: ${statusAnterior}, era de: ${vendAnteriorNome})`,
       created_at:new Date().toISOString()
     });
@@ -10261,8 +10259,8 @@ function renderRecolherList(){
         const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
         const eq=allEquipes.find(e=>e.id===l.equipe_id);
         const meta=[
-          resp?'👤 '+resp.name:'',
-          eq?'🏢 '+eq.nome:'',
+          resp?''+resp.name:'',
+          eq?''+eq.nome:'',
           l.interesse?l.interesse:''
         ].filter(Boolean).join(' · ');
         return`<label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer">
@@ -10387,9 +10385,9 @@ function renderEquipes(){
         <div class="equipe-card-name" style="color:${eq.cor||'var(--gold2)'}">${eq.nome}</div>
         <div class="equipe-card-desc">${eq.descricao||'Sem descrição'}</div>
         <div class="equipe-card-meta">
-          <span>👥 ${membros.length} membro${membros.length!==1?'s':''}</span>
-          <span>📋 <span id="eq-leads-count-${eq.id}">…</span> lead(s)</span>
-          <span style="color:var(--green)">✅ <span id="eq-fech-count-${eq.id}">…</span></span>
+          <span>${membros.length} membro${membros.length!==1?'s':''}</span>
+          <span><span id="eq-leads-count-${eq.id}">…</span> lead(s)</span>
+          <span style="color:var(--green)"><span id="eq-fech-count-${eq.id}">…</span></span>
         </div>
       </div>
     </div>`;
@@ -10516,8 +10514,8 @@ async function openEquipeDetail(id){
           <div style="font-size:11.5px;color:var(--muted2);margin-top:2px">${eq.descricao||'—'}</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
-          ${isAdmin()?`<button class="act" onclick="editEquipe('${eq.id}')" style="display:inline-flex;align-items:center;gap:4px">✏️ Editar</button>`:''}
-          <button class="act" onclick="openRecolher('${eq.id}')" style="border-color:var(--orange);color:var(--orange);display:inline-flex;align-items:center;gap:4px">↩️ Recolher Leads</button>
+          ${isAdmin()?`<button class="act" onclick="editEquipe('${eq.id}')" style="display:inline-flex;align-items:center;gap:4px">Editar</button>`:''}
+          <button class="act" onclick="openRecolher('${eq.id}')" style="border-color:var(--orange);color:var(--orange);display:inline-flex;align-items:center;gap:4px">Recolher Leads</button>
           ${isAdmin()?`<button class="act red" onclick="delEquipe('${eq.id}')" style="display:inline-flex;align-items:center">🗑️</button>`:''}
         </div>
       </div>
@@ -10539,7 +10537,7 @@ async function openEquipeDetail(id){
 
     <div class="panel" style="margin-top:16px">
       <div class="panel-head">
-        <div class="panel-title">👥 Membros</div>
+        <div class="panel-title">Membros</div>
         ${isAdmin()?`<button class="btn-sm" onclick="openAddMembro('${eq.id}')">+ Adicionar</button>`:''}
       </div>
       <div class="panel-body">
@@ -10555,7 +10553,7 @@ async function openEquipeDetail(id){
             const coordCargo=isCoord?'membro':'coordenador';
             const coordStyle=isCoord?'border-color:var(--gold-dim);color:var(--gold-dim)':'';
             const coordTitle=isCoord?'Remover coordenador':'Tornar coordenador';
-            const adminBtn=isAdmin()?('<button class="act" onclick="setMemboCargo(\''+mb?.id+'\',\''+id+'\',\''+coordCargo+'\')" title="'+coordTitle+'" style="'+coordStyle+'">👑 '+coordLabel+'</button>'):'';
+            const adminBtn=isAdmin()?('<button class="act" onclick="setMemboCargo(\''+mb?.id+'\',\''+id+'\',\''+coordCargo+'\')" title="'+coordTitle+'" style="'+coordStyle+'">'+coordLabel+'</button>'):'';
             return'<div class="membro-row">'+
               '<div class="membro-av" style="background:'+(eq.cor||'var(--gold)')+'">'+u.name[0].toUpperCase()+'</div>'+
               '<div style="flex:1">'+
@@ -10575,7 +10573,7 @@ async function openEquipeDetail(id){
     </div>
 
     <div class="panel" style="margin-top:0">
-      <div class="panel-head"><div class="panel-title">📋 Leads da Equipe${totalLeads>leads.length?` <span style="font-size:10px;color:var(--muted2);font-weight:400">(mostrando os ${leads.length} mais recentes de ${totalLeads.toLocaleString('pt-BR')})</span>`:''}</div></div>
+      <div class="panel-head"><div class="panel-title">Leads da Equipe${totalLeads>leads.length?` <span style="font-size:10px;color:var(--muted2);font-weight:400">(mostrando os ${leads.length} mais recentes de ${totalLeads.toLocaleString('pt-BR')})</span>`:''}</div></div>
       <div class="tbl-wrap">
         <table><thead><tr><th>Nome</th><th>Interesse</th><th>Status</th><th>Vendedor</th></tr></thead>
         <tbody>
@@ -10811,7 +10809,7 @@ function renderMesclarTable(){
       <td style="font-weight:600">${l.nome}</td>
       <td style="color:var(--muted2);font-size:11.5px">${l.telefone||'—'}</td>
       <td><span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700">${ddd}</span></td>
-      <td>${l.tipo_lead==='Remalho'?'<span style="color:#c084fc;font-size:11px">♻️ Remalho</span>':'<span style="color:var(--blue);font-size:11px">🆕 Novo</span>'}</td>
+      <td>${l.tipo_lead==='Remalho'?'<span style="color:#c084fc;font-size:11px">Remalho</span>':'<span style="color:var(--blue);font-size:11px">Novo</span>'}</td>
       <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
       <td style="font-size:11.5px">${u?u.name:'<span style="color:var(--orange)">Sem vendedor</span>'}</td>
     </tr>`;
@@ -11240,13 +11238,13 @@ function _renderBuscaBasePage(){
       const jaeSolicitado=window._minhasSolicita&&window._minhasSolicita[l.id];
       let acao='';
       if(isMeu){
-        acao='<span style="font-size:11px;color:var(--green)">✅ Já é seu</span>';
+        acao='<span style="font-size:11px;color:var(--green)">Já é seu</span>';
       } else if(jaeSolicitado==='Pendente'){
-        acao='<span class="sol-badge sol-pend">⏳ Aguardando</span>';
+        acao='<span class="sol-badge sol-pend">Aguardando</span>';
       } else if(jaeSolicitado==='Aprovado'){
-        acao='<span class="sol-badge sol-aprov">✅ Aprovado</span>';
+        acao='<span class="sol-badge sol-aprov">Aprovado</span>';
       } else {
-        acao=`<button class="act green" onclick="abrirSolicitacao('${l.id}')">📩 Solicitar</button>`;
+        acao=`<button class="act green" onclick="abrirSolicitacao('${l.id}')">Solicitar</button>`;
       }
       return`<tr>
         <td style="font-weight:600">${l.nome}</td>
@@ -11363,19 +11361,19 @@ function _renderSolLista(){
     const respAtual=allUsers.find(u=>u.user_id===s.responsavel_atual_id);
     const badgeMap={Pendente:'sol-pend',Aprovado:'sol-aprov',Negado:'sol-neg'};
     const actions=s.status==='Pendente'?`
-      <button class="act green" onclick="responderSolicita('${s.id}','Aprovado')">✅ Aprovar</button>
-      <button class="act red" onclick="responderSolicita('${s.id}','Negado')">❌ Negar</button>`
+      <button class="act green" onclick="responderSolicita('${s.id}','Aprovado')">Aprovar</button>
+      <button class="act red" onclick="responderSolicita('${s.id}','Negado')">Negar</button>`
       :`<span class="sol-badge ${badgeMap[s.status]||''}">${s.status}</span>`;
     return`<div style="padding:14px 18px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:200px">
-          <div style="font-weight:700;font-size:13px;margin-bottom:3px">📋 ${s.lead_nome||'Lead'}</div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:3px">${s.lead_nome||'Lead'}</div>
           <div style="font-size:11.5px;color:var(--muted2);margin-bottom:3px">${s.lead_telefone||'—'}</div>
           <div style="font-size:11px;color:var(--muted)">Responsável atual: ${respAtual?respAtual.name:'Sem responsável'}</div>
           ${s.motivo?`<div style="font-size:11.5px;color:var(--text);margin-top:6px;background:var(--surface2);border-radius:6px;padding:6px 10px">"${s.motivo}"</div>`:''}
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:12.5px;font-weight:700;color:var(--gold2);margin-bottom:4px">👤 ${s.vendedor_nome}</div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--gold2);margin-bottom:4px">${s.vendedor_nome}</div>
           <div style="font-size:10.5px;color:var(--muted2);margin-bottom:8px">${fmtDt(s.created_at)}</div>
           <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">${actions}</div>
         </div>
@@ -11413,7 +11411,7 @@ async function responderSolicita(solId,novoStatus){
 
       const{error:e2}=await sb.from('crm_leads').update(payload).eq('id',sol.lead_id);
       // IMPORTANTE: antes, um erro aqui era ignorado silenciosamente e o admin via
-      // "✅ Lead transferido!" mesmo quando o lead NÃO tinha sido transferido de
+      // "Lead transferido!" mesmo quando o lead NÃO tinha sido transferido de
       // verdade (ficava "sem vendedor"). Agora qualquer falha é jogada pro catch
       // abaixo, que mostra o erro real e NÃO finge sucesso.
       if(e2) throw e2;
@@ -11421,12 +11419,12 @@ async function responderSolicita(solId,novoStatus){
       const idx=allLeads.findIndex(l=>l.id===sol.lead_id);
       if(idx>-1) Object.assign(allLeads[idx],payload);
       await sb.from('crm_historico').insert({
-        lead_id:sol.lead_id,user_id:CU.id,tipo:'📩 Solicitação',
+        lead_id:sol.lead_id,user_id:CU.id,tipo:'Solicitação',
         descricao:`Lead transferido para ${sol.vendedor_nome} via solicitação aprovada pelo admin`,
         created_at:now
       });
     }
-    toast(novoStatus==='Aprovado'?`✅ Lead transferido para ${sol.vendedor_nome}!`:'❌ Solicitação negada.','ok');
+    toast(novoStatus==='Aprovado'?`Lead transferido para ${sol.vendedor_nome}!`:'Solicitação negada.','ok');
     await renderSolicitacoes();
     saveCache();
   }catch(e){
@@ -11514,7 +11512,7 @@ function _renderNotifList(){
   const list = document.getElementById('notif-list');
   if(!list) return;
   if(!_notifItems.length){
-    list.innerHTML = '<div class="notif-empty">✅ Nenhum lead com alerta de palavra-chave</div>';
+    list.innerHTML = '<div class="notif-empty">Nenhum lead com alerta de palavra-chave</div>';
     return;
   }
   list.innerHTML = _notifItems.map(n=>`
@@ -11572,7 +11570,7 @@ function irParaLeadNotif(leadId, notifId){
 <!-- ════ MODAL: AVALIAR PERDIDOS SEM COMENTÁRIO ════ -->
 <div class="modal-bg" id="modal-avaliar-perdidos">
   <div class="modal" style="max-width:560px;width:100%">
-    <div class="modal-title">🔍 Avaliar Leads Perdidos</div>
+    <div class="modal-title">Avaliar Leads Perdidos</div>
     <div style="font-size:13px;color:var(--muted2);margin-bottom:16px;line-height:1.6">
       Esta ação irá analisar todos os leads com status <span style="color:var(--red);font-weight:700">Perdido</span>.<br>
       Leads que <strong style="color:var(--text)">não possuem nenhum comentário real</strong> (apenas mudanças de status não contam) serão:
@@ -11599,22 +11597,22 @@ function irParaLeadNotif(leadId, notifId){
     <!-- Lista de leads BLOQUEADOS -->
     <div id="av-bloqueados-wrap" style="display:none;margin-bottom:14px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--orange);margin-bottom:8px">
-        🚫 Leads bloqueados de reciclagem — palavra-chave detectada
+        Leads bloqueados de reciclagem — palavra-chave detectada
       </div>
       <div id="av-bloqueados-list" style="max-height:220px;overflow-y:auto;border:1px solid rgba(251,146,60,0.25);border-radius:8px;background:rgba(251,146,60,0.04)"></div>
     </div>
     <!-- Lista de leads para RECICLAR -->
     <div id="av-reciclar-wrap" style="display:none;margin-bottom:14px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--green);margin-bottom:8px">
-        🔄 Leads que serão reciclados
+        Leads que serão reciclados
       </div>
       <div id="av-reciclar-list" style="max-height:180px;overflow-y:auto;border:1px solid rgba(74,222,128,0.2);border-radius:8px;background:rgba(74,222,128,0.04)"></div>
     </div>
-    <div id="avaliar-perdidos-loading" style="text-align:center;padding:12px;color:var(--muted2);font-size:12px;display:none">⏳ Analisando leads...</div>
+    <div id="avaliar-perdidos-loading" style="text-align:center;padding:12px;color:var(--muted2);font-size:12px;display:none">Analisando leads...</div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('avaliar-perdidos')">Cancelar</button>
       <button id="avaliar-perdidos-btn-confirmar" class="btn-save" style="background:var(--red);border-color:var(--red)" onclick="confirmarAvaliarPerdidos()">
-        🔍 Avaliar e Reciclar
+        Avaliar e Reciclar
       </button>
     </div>
   </div>
@@ -11638,7 +11636,7 @@ function irParaLeadNotif(leadId, notifId){
 <!-- ════ MODAL: BUSCA NA BASE COMPLETA ════ -->
 <div class="modal-bg" id="modal-busca-base">
   <div class="modal" style="max-width:780px;width:100%">
-    <div class="modal-title" id="busca-base-title">🔍 Busca na base completa</div>
+    <div class="modal-title" id="busca-base-title">Busca na base completa</div>
     <div id="busca-base-body" style="min-height:120px"></div>
     <div class="modal-btns" style="margin-top:14px">
       <button class="btn-cancel" onclick="closeModal('busca-base')">Fechar</button>
@@ -11649,7 +11647,7 @@ function irParaLeadNotif(leadId, notifId){
 <!-- ════ MODAL: RECOLHER TUDO PARA MIM ════ -->
 <div class="modal-bg" id="modal-recolher-tudo">
   <div class="modal" style="max-width:500px;width:100%">
-    <div class="modal-title">↩️ Recolher Leads para Distribuição</div>
+    <div class="modal-title">Recolher Leads para Distribuição</div>
 
     <!-- Tipo de recolhimento -->
     <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted2);margin-bottom:10px">De onde recolher</div>
@@ -11709,7 +11707,7 @@ function irParaLeadNotif(leadId, notifId){
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('recolher-tudo')">Cancelar</button>
       <button id="rt-btn-confirmar" class="btn-save" style="background:var(--orange);border-color:var(--orange)" onclick="confirmarRecolherTudo()" disabled>
-        ↩️ Recolher
+        Recolher
       </button>
     </div>
   </div>
@@ -12194,7 +12192,7 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
     const ok = await incrementarCotaFirebase(fbKey, raiz, vendedor.name, semanaIdx, delta);
     if(ok){
       const n=document.getElementById('notify');
-      const msg = delta > 0 ? '📊 Ranking: +1 cota!' : '📊 Ranking: -1 cota';
+      const msg = delta > 0 ? 'Ranking: +1 cota!' : 'Ranking: -1 cota';
       if(n){n.textContent=msg;n.className='notify ok show';setTimeout(()=>n.classList.remove('show'),2500);}
     }
   }catch(e){
