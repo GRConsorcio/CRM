@@ -518,6 +518,10 @@ document.addEventListener('DOMContentLoaded', function(){
         <option value="">Todos</option>
         <option value="1">Proposta Quente</option>
       </select>
+      <select id="l-f-equipe" onchange="renderLeads(true)">
+        <option value="">Todas as equipes</option>
+        <option value="__sem__">Sem equipe</option>
+      </select>
       <input type="date" id="l-f-data-ini" onchange="renderLeads(true)" title="Data inicial" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark">
       <input type="date" id="l-f-data-fim" onchange="renderLeads(true)" title="Data final" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark">
       <button class="btn-sm" onclick="document.getElementById('l-f-data-ini').value='';document.getElementById('l-f-data-fim').value='';renderLeads(true)" title="Limpar datas" style="padding:7px 10px;font-size:11px">✕ Data</button>
@@ -3677,6 +3681,18 @@ function populateDDDFilter(){
   if(tipoSel) tipoSel.style.display='';
 }
 
+// Filtro de equipe em "Todos os Leads" — deixa ver/filtrar só os leads de uma
+// equipe (Chis, Luiz, Primme etc.) antes de usar "Selecionar" + "Enviar para
+// equipe" em massa, sem precisar caçar manualmente lead por lead.
+function populateEquipeFilterLeads(){
+  const sel=document.getElementById('l-f-equipe');
+  if(!sel||!isAdmin()) return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">Todas as equipes</option><option value="__sem__">Sem equipe</option>'+
+    [...allEquipes].sort((a,b)=>a.nome.localeCompare(b.nome)).map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+  if(cur) sel.value=cur;
+}
+
 function renderLeads(resetPage){
   if(resetPage) leadsCurrentPage=1;
   // Inject New Lead button for admin only
@@ -3690,6 +3706,7 @@ function renderLeads(resetPage){
   if(dpb) dpb.style.display=isAdmin()?'':'none';
   // Populate DDD filter (admin only)
   populateDDDFilter();
+  populateEquipeFilterLeads();
   const q=(document.getElementById('l-srch')?.value||'').toLowerCase();
   const fs=document.getElementById('l-f-status')?.value;
   const fr=document.getElementById('l-f-resp')?.value;
@@ -3697,6 +3714,7 @@ function renderLeads(resetPage){
   const fd=isAdmin()?(document.getElementById('l-f-ddd')?.value||''):'';
   const ft=isAdmin()?(document.getElementById('l-f-tipo')?.value||''):'';
   const fq=document.getElementById('l-f-quente')?.value||'';
+  const fe=document.getElementById('l-f-equipe')?.value||'';
   const fdIni=document.getElementById('l-f-data-ini')?.value||'';
   const fdFim=document.getElementById('l-f-data-fim')?.value||'';
   const f=allLeads.filter(l=>{
@@ -3710,6 +3728,8 @@ function renderLeads(resetPage){
     if(fd&&extractDDD(l.telefone)!==fd)return false;
     if(ft&&(l.tipo_lead||'Novo')!==ft)return false;
     if(fq==='1'&&!l.proposta_quente)return false;
+    if(fe==='__sem__'&&l.equipe_id!=null)return false;
+    if(fe&&fe!=='__sem__'&&l.equipe_id!==fe)return false;
     if(fdIni||fdFim){const dt=(l.created_at||'').slice(0,10);if(fdIni&&dt<fdIni)return false;if(fdFim&&dt>fdFim)return false;}
     return true;
   });
