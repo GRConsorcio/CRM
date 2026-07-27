@@ -451,6 +451,10 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- DASHBOARD -->
   <div class="page on" id="page-dashboard">
     <div class="kpi-grid" id="dash-kpis"></div>
+    <div class="panel" id="dash-vendas-mes-panel" style="margin-top:12px;border-color:rgba(201,168,76,0.35);background:rgba(201,168,76,0.05)">
+      <div class="panel-head"><div class="panel-title">Vendas do Mês Atual</div></div>
+      <div class="panel-body" id="dash-vendas-mes" style="padding:14px 16px;cursor:pointer" onclick="openVendasMesAtual()"></div>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="dash-cols">
       <div class="panel">
         <div class="panel-head"><div class="panel-title">Ranking de Fechamentos</div></div>
@@ -2844,7 +2848,20 @@ async function loadAll(){
               // ver getFechadosHoje). Isso reduz bastante o volume carregado pra equipes
               // com muito histórico acumulado.
               sb.from('crm_leads').select(getLeadListCols()).or(orParts.join(',')).neq('status','Fechado')
-                .order('created_at',{ascending:false})
+                .order('created_at',{ascending:false}),
+              // BUGFIX: com pageSize=1000 (padrão), o Postgres troca o plano de execução —
+              // em vez do Bitmap Heap Scan pelos índices de equipe/responsável (rápido,
+              // ~300ms pro total inteiro), ele passa a escanear o índice de created_at do
+              // topo pra baixo tentando achar 1000 linhas que passem no filtro (RLS +
+              // equipe/responsável), reavaliando o filtro completo linha a linha até juntar
+              // o lote. Cada página fica mais cara que a anterior (tem que pular mais linhas
+              // já vistas), e páginas mais fundo (equipes grandes, tipo a do Rafael da Silva
+              // com 26 membros) estouram o statement_timeout. Pedindo tudo numa página só,
+              // grande o bastante pra nunca ser menor que o total real de uma equipe, o
+              // Postgres mantém o plano rápido (confirmado via EXPLAIN: LIMIT 20000 volta a
+              // usar BitmapOr, ~330ms; LIMIT 1000 cai pro Index Scan lento, 600ms+ só na 1ª
+              // página, com timeout nas páginas seguintes).
+              20000
             ),
             new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_leads_supervisor')),15000))
           ]);
@@ -3245,6 +3262,12 @@ function renderNav(){
     equipes:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1.5" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9 11.5h5M11.5 9v5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
     users:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1.5 L9.5 6 L14 6 L10.5 8.8 L11.8 13.5 L8 10.8 L4.2 13.5 L5.5 8.8 L2 6 L6.5 6 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
     myteam:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+    calendar:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 6.5h12M5 1.5v3M11 1.5v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    search:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    campanhas:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M1.5 6v4a1 1 0 001 1h1.2l5.3 2.8V2.2L3.7 5H2.5a1 1 0 00-1 1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10.5 5.2a3.3 3.3 0 010 5.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    mail:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 5 6-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    lock:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 7V5a3 3 0 016 0v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    broadcast:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="12.5" r="1.3" fill="currentColor"/><path d="M5 10.3a4.2 4.2 0 016 0M3 8a7 7 0 0110 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   };
 
   // CEO — nav enxuto e isolado: só o funil de leads de Anúncio GR, nada de editar/gerir.
@@ -3252,7 +3275,7 @@ function renderNav(){
     document.getElementById('nav-body').innerHTML=`<div class="nav-sect">Visão Geral</div>
       <div class="nav-item on" onclick="nav('funil-ceo',this)" title="Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil — Anúncio GR</span></div>
       <div class="nav-item" onclick="nav('leads-ceo',this)" title="Todos os Leads"><span class="nav-icon">${IC.leads}</span><span class="nav-label">Todos os Leads</span></div>
-      <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads Atribuídos por Dia"><span class="nav-icon">📅</span><span class="nav-label">Leads Atribuídos/Dia</span></div>`;
+      <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads Atribuídos por Dia"><span class="nav-icon">${IC.calendar}</span><span class="nav-label">Leads Atribuídos/Dia</span></div>`;
     const flBtnCeo=document.getElementById('sb-force-logout');
     if(flBtnCeo) flBtnCeo.style.display='none';
     const demBtnCeo=document.getElementById('sb-demandas-btn');
@@ -3276,14 +3299,14 @@ function renderNav(){
       <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>
       <div class="nav-item" onclick="nav('mesclar',this)" title="Mesclar Base"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4h4l2 4-2 4H2" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M14 4h-4l-2 4 2 4h4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span><span class="nav-label">Mesclar Base</span></div>
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funis da Equipe</span></div>
-      <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads por Vendedor/Dia"><span class="nav-icon">📅</span><span class="nav-label">Leads por Dia</span></div>`;
+      <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads por Vendedor/Dia"><span class="nav-icon">${IC.calendar}</span><span class="nav-label">Leads por Dia</span></div>`;
   } else if(isCoord){
     // MUDANÇA: coordenador não tem mais acesso à base geral de leads (Todos os Leads,
     // Funil, Distribuição) — ele só carrega leads já vendidos. Quando precisar achar
     // um lead fora desse conjunto, usa "Buscar na Base", que consulta o Supabase
     // diretamente sob demanda, sem nunca trazer a base inteira pra memória.
     html+=`<div class="nav-sect">Leads</div>
-      <div class="nav-item" onclick="nav('busca-base',this);renderBuscaBase()" title="Buscar na Base"><span class="nav-icon">🔍</span><span class="nav-label">Buscar na Base</span></div>
+      <div class="nav-item" onclick="nav('busca-base',this);renderBuscaBase()" title="Buscar na Base"><span class="nav-icon">${IC.search}</span><span class="nav-label">Buscar na Base</span></div>
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funis da Equipe"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funis da Equipe</span></div>`;
   } else if(isSup){
     // Supervisor: acesso apenas à sua equipe
@@ -3292,13 +3315,13 @@ function renderNav(){
       <div class="nav-item" onclick="nav('coord-funil',this)" title="Funil da Equipe"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Funil da Equipe</span></div>
       <div class="nav-item" onclick="nav('coord-dist',this)" title="Distribuição"><span class="nav-icon">${IC.dist}</span><span class="nav-label">Distribuição</span></div>
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funil por Vendedor"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funil por Vendedor</span></div>
-      <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads por Vendedor/Dia"><span class="nav-icon">📅</span><span class="nav-label">Leads por Dia</span></div>`;
+      <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads por Vendedor/Dia"><span class="nav-icon">${IC.calendar}</span><span class="nav-label">Leads por Dia</span></div>`;
   } else {
     // Vendedor: apenas seus leads
     html+=`<div class="nav-sect">Meus Leads</div>
       <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">${IC.myteam}</span><span class="nav-label">Meus Leads</span></div>
       <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Meu Funil</span></div>
-      <div class="nav-item" onclick="nav('busca-base',this);renderBuscaBase()" title="Buscar na Base"><span class="nav-icon">🔍</span><span class="nav-label">Buscar na Base</span></div>
+      <div class="nav-item" onclick="nav('busca-base',this);renderBuscaBase()" title="Buscar na Base"><span class="nav-icon">${IC.search}</span><span class="nav-label">Buscar na Base</span></div>
       <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>
       <div class="nav-item" onclick="openVendasPage('todos')" title="Minhas Vendas"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Minhas Vendas</span></div>`;
     // Vendedor NÃO vê "Clientes Vendidos" — apenas a aba de Vendas acima
@@ -3306,7 +3329,7 @@ function renderNav(){
 
   html+=`<div class="nav-sect">Agenda</div>
     <div class="nav-item" onclick="nav('tarefas',this)" title="Tarefas"><span class="nav-icon">${IC.tasks}</span><span class="nav-label">Tarefas</span><span class="nav-badge" id="nav-tasks-badge" style="display:none">!</span></div>
-    <div class="nav-item" onclick="nav('campanhas',this)" title="Campanhas"><span class="nav-icon">📣</span><span class="nav-label">Campanhas</span></div>`;
+    <div class="nav-item" onclick="nav('campanhas',this)" title="Campanhas"><span class="nav-icon">${IC.campanhas}</span><span class="nav-label">Campanhas</span></div>`;
 
   if(admin){
     // Admin e Coordenador: seção Gestão com Equipes + Vendas (todos) + Clientes Vendidos
@@ -3325,9 +3348,9 @@ function renderNav(){
   if(isAdm){
     html+=`<div class="nav-sect">Administração</div>
       <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">${IC.users}</span><span class="nav-label">Usuários</span></div>
-      <div class="nav-item" id="nav-solicitacoes" onclick="nav('solicitacoes',this);renderSolicitacoes()" title="Solicitações"><span class="nav-icon">📩</span><span class="nav-label">Solicitações<span id="sol-adm-badge"></span></span></div>
-      <div class="nav-item" onclick="nav('login-logs',this)" title="Histórico de Logins"><span class="nav-icon">🔐</span><span class="nav-label">Logins</span></div>
-      <div class="nav-item" onclick="nav('transmissoes',this)" title="Transmissões"><span class="nav-icon">📡</span><span class="nav-label">Transmissões</span></div>`;
+      <div class="nav-item" id="nav-solicitacoes" onclick="nav('solicitacoes',this);renderSolicitacoes()" title="Solicitações"><span class="nav-icon">${IC.mail}</span><span class="nav-label">Solicitações<span id="sol-adm-badge"></span></span></div>
+      <div class="nav-item" onclick="nav('login-logs',this)" title="Histórico de Logins"><span class="nav-icon">${IC.lock}</span><span class="nav-label">Logins</span></div>
+      <div class="nav-item" onclick="nav('transmissoes',this)" title="Transmissões"><span class="nav-icon">${IC.broadcast}</span><span class="nav-label">Transmissões</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
   const flBtn=document.getElementById('sb-force-logout');
@@ -3475,6 +3498,27 @@ async function renderDashboard(){
   const myVendas=getVisibleVendas();
   const vendasAprovadas=myVendas.filter(v=>v.status_venda==='Aprovado').length;
   const vendasCanceladas=myVendas.filter(v=>v.status_venda==='Cancelado').length;
+  // Painel fixo "Vendas do Mês Atual" — sempre visível, escopado igual ao resto do
+  // dashboard (myVendas já vem filtrado por perfil via getVisibleVendas()). Usa
+  // created_at da venda pro mês, mesmo critério do filtro de mês da página Vendas.
+  const mesAtualStr=new Date().toISOString().slice(0,7);
+  const vendasMesAtual=myVendas.filter(v=>v.status_venda==='Aprovado'&&(v.created_at||'').slice(0,7)===mesAtualStr);
+  const valorVendasMesAtual=vendasMesAtual.reduce((s,v)=>s+(Number(v.valor_credito)||0),0);
+  const vendasMesEl=document.getElementById('dash-vendas-mes');
+  if(vendasMesEl){
+    const nomeMes=new Date(mesAtualStr+'-02').toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+    vendasMesEl.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;color:var(--muted2);text-transform:capitalize">${nomeMes}</div>
+          <div style="font-size:26px;font-weight:900;color:var(--gold2)">${vendasMesAtual.length} venda${vendasMesAtual.length!==1?'s':''} aprovada${vendasMesAtual.length!==1?'s':''}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--muted2)">Crédito total</div>
+          <div style="font-size:20px;font-weight:800;color:var(--green)">R$ ${valorVendasMesAtual.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        </div>
+      </div>`;
+  }
   // BUGFIX: pro supervisor, "fechados" não pode mais vir de myLeads (leads Fechado
   // saíram do carregamento principal dele) — usa a contagem de vendas aprovadas,
   // que é escopada corretamente e não depende da base de leads estar completa.
@@ -3656,7 +3700,7 @@ function renderLeads(resetPage){
   const fdIni=document.getElementById('l-f-data-ini')?.value||'';
   const fdFim=document.getElementById('l-f-data-fim')?.value||'';
   const f=allLeads.filter(l=>{
-    if(q){const qd=q.replace(/[^0-9]/g,'');const match=l.nome.toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q)||(l.email||'').toLowerCase().includes(q)||(l.observacoes||'').toLowerCase().includes(q)||(qd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(qd));if(!match)return false;}
+    if(q){const qd=q.replace(/[^0-9]/g,'');const match=(l.nome||'').toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q)||(l.email||'').toLowerCase().includes(q)||(l.observacoes||'').toLowerCase().includes(q)||(qd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(qd));if(!match)return false;}
     if(fs&&l.status!==fs)return false;
     if(fr==='__sem__'&&l.responsavel_id!=null)return false;
     if(fr==='__admin__'&&!isRespAdmin(l.responsavel_id))return false;
@@ -3781,7 +3825,7 @@ function goLeadsPage(p){
 const _srchCompletaCache=new Map();
 async function buscarNaBaseCompleta(){
   const q=(document.getElementById('l-srch')?.value||'').trim();
-  if(!q){notify('Digite algo para buscar','err');return;}
+  if(!q){toast('Digite algo para buscar','err');return;}
 
   // Mostra modal de loading
   const modal=document.getElementById('modal-busca-base');
@@ -3889,11 +3933,11 @@ async function assumirLead(leadId){
     const idx=allLeads.findIndex(l=>l.id===leadId);
     if(idx>=0) allLeads[idx]=data;
     else allLeads.push(data);
-    notify(`Você assumiu o lead "${data.nome}"!`,'ok');
+    toast(`Você assumiu o lead "${data.nome}"!`,'ok');
     closeModal('busca-base');
     renderLeads(true);
   } catch(e){
-    notify('Erro ao assumir: '+e.message,'err');
+    toast('Erro ao assumir: '+e.message,'err');
   }
 }
 
@@ -3915,7 +3959,7 @@ function renderMeusLeads(){
   const fs=document.getElementById('ml-f-status')?.value;
   let f=allLeads.filter(l=>{
     if(l.responsavel_id!==CU.id)return false;
-    if(q&&!l.nome.toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
+    if(q&&!(l.nome||'').toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
     if(fs&&l.status!==fs)return false;
     return true;
   });
@@ -6898,6 +6942,12 @@ function openVendasPage(status){
   renderVendasPage();
 }
 
+function openVendasMesAtual(){
+  openVendasPage('Aprovado');
+  const mesInp=document.getElementById('vp-f-mes');
+  if(mesInp){ mesInp.value=new Date().toISOString().slice(0,7); renderVendasPage(); }
+}
+
 function setVendasFilter(status){
   _vendasFilter=status;
   // Update tab buttons
@@ -9016,6 +9066,19 @@ function getCoordLeads(){
   const mbs=getCoordMembers();
   return allLeads.filter(l=>eqs.includes(l.equipe_id)||mbs.includes(l.responsavel_id));
 }
+// BUGFIX: pro supervisor, allLeads nunca tem leads "Fechado" carregados (loadAll
+// usa .neq('status','Fechado') pra economizar banda — só renderFunil() tinha o
+// contorno de buscar os fechados de hoje à parte). Isso deixava a coluna Fechado
+// do Funil da Equipe sempre vazia, o filtro de status Fechado em Leads da Equipe
+// sempre "Nenhum lead", e o contador de fechamentos da Distribuição sempre 0 —
+// mesmo com vendas fechadas no dia. Junta os fechados de hoje (já escopados por
+// equipe dentro de getFechadosHoje) com o restante de getCoordLeads().
+async function getCoordLeadsComFechados(){
+  const base=getCoordLeads();
+  const fechadosHoje=await getFechadosHoje();
+  const baseIds=new Set(base.map(l=>l.id));
+  return [...base,...fechadosHoje.filter(l=>!baseIds.has(l.id))];
+}
 
 /* ═══ COORD: LEADS DA EQUIPE ═══ */
 // BUGFIX: a seleção em massa desta página vivia só no DOM. Como a busca
@@ -9031,7 +9094,7 @@ function onCoordChkChange(chk){
   else _coordSelectedIds.delete(chk.dataset.id);
   updateCoordMassCount();
 }
-function renderCoordLeads(){
+async function renderCoordLeads(){
   const q=(document.getElementById('cl-srch')?.value||'').toLowerCase();
   const fs=document.getElementById('cl-f-status')?.value;
   const fv=document.getElementById('cl-f-vend')?.value;
@@ -9043,8 +9106,8 @@ function renderCoordLeads(){
     vSel.innerHTML='<option value="">Todos os vendedores</option><option value="__sem__">Sem vendedor</option>'+
       allUsers.filter(u=>mbs.includes(u.user_id)).map(u=>`<option value="${u.user_id}">${u.name}</option>`).join('');
   }
-  let leads=getCoordLeads();
-  if(q) leads=leads.filter(l=>l.nome.toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q));
+  let leads=await getCoordLeadsComFechados();
+  if(q) leads=leads.filter(l=>(l.nome||'').toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q));
   if(fs) leads=leads.filter(l=>l.status===fs);
   if(fv==='__sem__') leads=leads.filter(l=>!l.responsavel_id);
   else if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
@@ -9116,7 +9179,7 @@ async function coordMassRemover(){
 }
 
 /* ═══ COORD: FUNIL DA EQUIPE ═══ */
-function renderCoordFunil(){
+async function renderCoordFunil(){
   const mbs=getCoordMembers();
   const vSel=document.getElementById('cf-vend-filter');
   // Always repopulate the vendor filter so it reflects current team members
@@ -9127,7 +9190,7 @@ function renderCoordFunil(){
     if(prevVal) vSel.value=prevVal;
   }
   const fv=vSel?.value||'';
-  let leads=getCoordLeads();
+  let leads=await getCoordLeadsComFechados();
   if(fv) leads=leads.filter(l=>l.responsavel_id===fv);
   document.getElementById('coord-funil-grid').innerHTML=STAGES.map(s=>{
     const ls=ordenarFilaFunil(leads.filter(l=>l.status===s));
@@ -9284,14 +9347,18 @@ async function cfMassTransfer(){
 }
 
 /* ═══ COORD: DISTRIBUIÇÃO DA EQUIPE ═══ */
-function renderCoordDist(){
+async function renderCoordDist(){
   const mbs=getCoordMembers();
   const vends=allUsers.filter(u=>mbs.includes(u.user_id));
+  // BUGFIX: "fechs" vinha só de allLeads, que pro supervisor nunca tem leads
+  // Fechado carregados — contador de fechamentos ficava sempre 0. Junta com
+  // os fechados de hoje (getFechadosHoje), igual ao Funil e Leads da Equipe.
+  const leadsComFechados=await getCoordLeadsComFechados();
   document.getElementById('coord-dist-vendedores').innerHTML=vends.length===0
     ?'<div class="empty"><div class="ei">👥</div>Sem membros</div>'
     :vends.map(u=>{
       const count=allLeads.filter(l=>l.responsavel_id===u.user_id).length;
-      const fechs=allLeads.filter(l=>l.responsavel_id===u.user_id&&l.status==='Fechado').length;
+      const fechs=leadsComFechados.filter(l=>l.responsavel_id===u.user_id&&l.status==='Fechado').length;
       return`<div class="dist-card">
         <div class="dist-av">${u.name[0].toUpperCase()}</div>
         <div class="dist-info">
@@ -9756,9 +9823,15 @@ function renderFunisEquipe(){
     // Admin + Coordenador: see all users
     vends=allUsers.filter(u=>u.role==='vendedor'||u.role==='supervisor');
   } else {
-    // Supervisor sees only members of their equipes
-    const coordEquipes=allMembroEquipes.filter(m=>m.user_id===CU.id&&m.cargo==='coordenador').map(m=>m.equipe_id);
-    const memberIds=[...new Set(allMembroEquipes.filter(m=>coordEquipes.includes(m.equipe_id)).map(m=>m.user_id))];
+    // Supervisor sees only members of their equipes.
+    // BUGFIX: essa tela calculava o escopo na mão, sem o fallback que existe em
+    // getCoordMembers()/getCoordEquipes() — se o supervisor não tivesse cargo=
+    // 'coordenador' marcado na própria linha de crm_equipe_membros (algo que só
+    // acontece manualmente, via "Tornar Coord" na tela de Equipe), a lista de
+    // vendedores vinha vazia aqui mesmo com a equipe funcionando normalmente em
+    // todas as outras telas (Leads da Equipe, Funil da Equipe, Distribuição).
+    // Reaproveita o helper já correto em vez de duplicar a lógica.
+    const memberIds=getCoordMembers();
     vends=allUsers.filter(u=>memberIds.includes(u.user_id));
   }
   const sel=document.getElementById('funis-vend-sel');
