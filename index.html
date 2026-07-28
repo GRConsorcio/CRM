@@ -2027,6 +2027,8 @@ function _openUI(msg,pct){
   setupRealtime();
   if(_taskAlertInterval) clearInterval(_taskAlertInterval);
   _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      if(_forceLogoutPollInterval) clearInterval(_forceLogoutPollInterval);
+      _forceLogoutPollInterval=setInterval(checkForceLogoutPoll,30000);
   setTimeout(checkTaskAlerts,2000);
 }
 
@@ -2092,6 +2094,8 @@ async function initApp(user){
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      if(_forceLogoutPollInterval) clearInterval(_forceLogoutPollInterval);
+      _forceLogoutPollInterval=setInterval(checkForceLogoutPoll,30000);
       toast('Conexão lenta — carregando dados em background...','err');
       // loadAll em background com timeout de 15s para não pendurar
       const bgTimeout=setTimeout(()=>{
@@ -2170,6 +2174,8 @@ async function initApp(user){
     setTimeout(checkTaskAlerts,2000);
     if(_taskAlertInterval) clearInterval(_taskAlertInterval);
     _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      if(_forceLogoutPollInterval) clearInterval(_forceLogoutPollInterval);
+      _forceLogoutPollInterval=setInterval(checkForceLogoutPoll,30000);
   } catch(e){
     hideLoading();
     console.error('initApp error:',e);
@@ -2237,6 +2243,25 @@ async function _aplicarForceLogoutSeNecessario(logoutAtRaw,{reload}={}){
   if(reload) setTimeout(()=>location.reload(),800);
   else document.getElementById('auth-screen').style.display='flex';
   return true;
+}
+
+// BUGFIX: o listener de Realtime em crm_config/crm_users (ver setupRealtime)
+// já desloga na hora "Deslogar"/"Deslogar Todos" pra quem está com o app aberto
+// — mas depende do websocket do Realtime estar conectado NAQUELE momento. Ele
+// pode cair silenciosamente (aba em segundo plano por muito tempo, troca de
+// rede, notebook que dormiu) sem avisar nem reconectar sozinho, e nesse caso
+// o usuário só era deslogado no próximo F5/reload manual. Essa checagem roda
+// a cada 30s pra todo mundo (não só admin), como rede de segurança — garante
+// que ninguém fica logado além do prazo mesmo se o Realtime falhar.
+async function checkForceLogoutPoll(){
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    if(!session) return;
+    const{data:cfg}=await sb.from('crm_config').select('valor').eq('chave','force_logout_at').maybeSingle();
+    if(await _aplicarForceLogoutSeNecessario(cfg?.valor,{reload:true})) return;
+    const{data:meuPerfil}=await sb.from('crm_users').select('force_logout_at').eq('user_id',session.user.id).limit(1).maybeSingle();
+    await _aplicarForceLogoutSeNecessario(meuPerfil?.force_logout_at,{reload:true});
+  }catch(e){ console.warn('[force-logout poll] erro:',e.message); }
 }
 
 /* Verificação ativa de sessão no carregamento — não depende de eventos */
@@ -2604,6 +2629,8 @@ async function loadAll(){
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      if(_forceLogoutPollInterval) clearInterval(_forceLogoutPollInterval);
+      _forceLogoutPollInterval=setInterval(checkForceLogoutPoll,30000);
       await loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
       return;
     }
@@ -2657,6 +2684,8 @@ async function loadAll(){
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      if(_forceLogoutPollInterval) clearInterval(_forceLogoutPollInterval);
+      _forceLogoutPollInterval=setInterval(checkForceLogoutPoll,30000);
 
       if(usouIncremental){
         loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
@@ -2784,6 +2813,8 @@ async function loadAll(){
         setTimeout(checkTaskAlerts,2000);
         if(_taskAlertInterval) clearInterval(_taskAlertInterval);
         _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      if(_forceLogoutPollInterval) clearInterval(_forceLogoutPollInterval);
+      _forceLogoutPollInterval=setInterval(checkForceLogoutPoll,30000);
         loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
         return;
       }
@@ -2812,6 +2843,8 @@ async function loadAll(){
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      if(_forceLogoutPollInterval) clearInterval(_forceLogoutPollInterval);
+      _forceLogoutPollInterval=setInterval(checkForceLogoutPoll,30000);
       loadEquipes().catch(e=>console.warn('Equipes not loaded:',e));
       return;
     }
@@ -2942,6 +2975,8 @@ async function loadAll(){
       setTimeout(checkTaskAlerts,2000);
       if(_taskAlertInterval) clearInterval(_taskAlertInterval);
       _taskAlertInterval=setInterval(checkTaskAlerts,60000);
+      if(_forceLogoutPollInterval) clearInterval(_forceLogoutPollInterval);
+      _forceLogoutPollInterval=setInterval(checkForceLogoutPoll,30000);
       carregarMinhasSolicitacoes();
       // IMPORTANTE: precisa rodar aqui também — esse bloco do vendedor faz "return"
       // logo abaixo, então o loadEquipes() do fim da função (linha ~2297) nunca era
@@ -7244,6 +7279,7 @@ async function saveInlineObs(leadId){
 /* ═══ TASK ALERT POPUP (blinking, for all users) ═══ */
 let _taskAlertShown=new Set();
 let _taskAlertInterval=null;
+let _forceLogoutPollInterval=null;
 
 function checkTaskAlerts(){
   if(!allTasks||!CU) return;
@@ -9689,6 +9725,13 @@ function updateLeadsMassCount(){
 async function leadsMassDelete(){
   const ids=[..._selectedLeadIds];
   if(!ids.length){toast('Selecione pelo menos um lead','err');return;}
+  // BUGFIX: apagar individual (delLead) já avisa separadamente quando o lead tem
+  // venda aprovada — apagar em massa não tinha esse aviso, então bastava
+  // selecionar um lote (mesmo sem querer incluir um com venda fechada) e apagar
+  // tudo sem nenhum sinal extra de que uma venda real seria perdida.
+  const idsComVendaAprovada=new Set(allVendas.filter(v=>v.status_venda==='Aprovado').map(v=>v.lead_id));
+  const qtdComVenda=ids.filter(id=>idsComVendaAprovada.has(id)).length;
+  if(qtdComVenda>0&&!confirm(`${qtdComVenda} dos ${ids.length} leads selecionados ${qtdComVenda!==1?'têm':'tem'} VENDA APROVADA. Apagar mesmo assim? A${qtdComVenda!==1?'s vendas serão':' venda será'} perdida${qtdComVenda!==1?'s':''} permanentemente.`))return;
   if(!confirm(`Apagar ${ids.length} lead${ids.length!==1?'s':''}? Esta ação não pode ser desfeita.`))return;
   toast(`Apagando ${ids.length} leads, aguarde...`,'ok');
   // Delete in batches of 100
