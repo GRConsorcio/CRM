@@ -923,6 +923,25 @@ document.addEventListener('DOMContentLoaded', function(){
     <div id="equipes-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px"></div>
   </div>
 
+  <!-- BASE GR/GRO — visível só p/ admin e coordenador (nav já restringe). Marca
+       qual base cada vendedor/supervisor pertence, útil pro backend entender
+       depois qual base (Portal GR) receberia a venda — ainda não conectado. -->
+  <div class="page" id="page-base-comissao">
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Base GR/GRO por Vendedor</div>
+        <input class="inp" id="bc-srch" placeholder="Buscar vendedor..." style="max-width:260px;margin:0" oninput="renderBaseComissao()">
+      </div>
+      <div style="padding:10px 18px;font-size:11.5px;color:var(--muted2);border-bottom:1px solid var(--border)">
+        Marca em qual base (Portal GR ou GRO) cada vendedor/supervisor está — só admin e coordenador enxergam esta tela. Ainda não conecta automaticamente com o Portal GR.
+      </div>
+      <div class="tbl-wrap">
+        <table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Base</th></tr></thead>
+        <tbody id="bc-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
   <!-- IMPORTAR LEADS -->
   <div class="page" id="page-importar">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
@@ -1471,6 +1490,13 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="fld"><label>Valor do Crédito (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-credito" type="text" inputmode="numeric" placeholder="Ex: 90.000,00 ou 90000" oninput="fmtBrlInput(this)"></div>
     </div>
     <div class="fld"><label>Parcela (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-parcela" type="text" inputmode="numeric" placeholder="Ex: 700,00 ou 700" oninput="fmtBrlInput(this)"></div>
+    <div class="fld"><label>Redutor</label>
+      <select class="inp" id="v-redutor">
+        <option value="">—</option>
+        <option value="25">25% (comissão integral)</option>
+        <option value="50">50% (comissão pela metade)</option>
+      </select>
+    </div>
 
     <div class="fld">
       <label>Quantidade de Cotas vendidas</label>
@@ -3375,7 +3401,8 @@ function renderNav(){
     html+=`<div class="nav-sect">Gestão</div>
       <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">${IC.equipes}</span><span class="nav-label">Equipes</span></div>
       <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Vendas</span></div>
-      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon">${IC_clientes}</span><span class="nav-label">Clientes Vendidos</span></div>`;
+      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon">${IC_clientes}</span><span class="nav-label">Clientes Vendidos</span></div>
+      <div class="nav-item" onclick="nav('base-comissao',this);renderBaseComissao()" title="Base GR/GRO"><span class="nav-icon">📉</span><span class="nav-label">Base GR/GRO</span></div>`;
   } else if(isSup){
     // Supervisor: seção Gestão com Vendas da equipe + Clientes Vendidos da equipe
     html+=`<div class="nav-sect">Gestão</div>
@@ -3415,7 +3442,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões','campanhas':'Campanhas'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','base-comissao':'Base GR/GRO','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões','campanhas':'Campanhas'};
 /* ═══ PERSISTÊNCIA DE PÁGINA ATUAL (item solicitado: não voltar sempre pro dashboard) ═══
    Salva a última página visitada por usuário (localStorage, sobrevive a refresh/F5 e a
    logins futuros no mesmo navegador). Páginas de "detalhe" (que dependem de um ID
@@ -4926,6 +4953,38 @@ function renderEquipe(){
   }).join('');
 }
 
+/* ═══ BASE GR/GRO ═══ */
+// Só admin/coordenador acessam esta tela (nav item já é condicionado a
+// isAdminOrCoord()). A gravação passa pela RPC crm_set_base_comissao, que
+// confere de novo no banco quem pode escrever — não depende só de esconder
+// o botão na tela.
+function renderBaseComissao(){
+  const tbody=document.getElementById('bc-tbody');
+  if(!tbody) return;
+  const q=(document.getElementById('bc-srch')?.value||'').toLowerCase().trim();
+  let users=allUsers.filter(u=>u.role==='vendedor'||u.role==='supervisor');
+  if(q) users=users.filter(u=>(u.name||'').toLowerCase().includes(q));
+  users=[...users].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  tbody.innerHTML=users.map(u=>`
+    <tr>
+      <td style="font-weight:700">${u.name}</td>
+      <td style="color:var(--muted2);font-size:12px">${u.email||'—'}</td>
+      <td><span class="badge ${u.role==='supervisor'?'b-coord':'b-vend'}">${u.role}</span></td>
+      <td><select onchange="setBaseComissao('${u.user_id}',this.value)" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px">
+        <option value="" ${!u.base_comissao?'selected':''}>—</option>
+        <option value="GR" ${u.base_comissao==='GR'?'selected':''}>GR</option>
+        <option value="GRO" ${u.base_comissao==='GRO'?'selected':''}>GRO</option>
+      </select></td>
+    </tr>`).join('')||'<tr><td colspan="4" class="empty"><div class="ei">📉</div>Nenhum vendedor encontrado</td></tr>';
+}
+async function setBaseComissao(uid,val){
+  const{error}=await sb.rpc('crm_set_base_comissao',{p_user_id:uid,p_base:val||null});
+  if(error){toast('Erro ao salvar: '+error.message,'err');return;}
+  const i=allUsers.findIndex(u=>u.user_id===uid);
+  if(i>-1) allUsers[i].base_comissao=val||null;
+  toast(val?`Base definida: ${val}`:'Base removida','ok');
+}
+
 async function renderLoginLogs(){
   const tbody=document.getElementById('login-logs-tbody');
   if(!tbody) return;
@@ -5475,12 +5534,13 @@ function openModal(type){
       sv('v-parcela',existingVenda.parcela?Number(existingVenda.parcela).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'');
       sv('v-obs',existingVenda.observacoes||'');
       sv('v-qtd-cotas', existingVenda.qtd_cotas||1);
+      sv('v-redutor', existingVenda.redutor||'');
       // Update button label
       document.querySelector('#modal-venda .btn-save').textContent='Atualizar Venda';
       // Check if user can edit: admin, coordenador, supervisor only
       const canEditVenda=isAdmin()||isCoordenador()||isSupervisor()||(CUProfile?.role==='vendedor'&&existingVenda?.vendedor_id===CU.id);
       document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
-      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-qtd-cotas'].forEach(id=>{
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-qtd-cotas','v-redutor'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.disabled=!canEditVenda;
       });
@@ -5489,9 +5549,10 @@ function openModal(type){
       document.getElementById('v-nasc').value='';
       document.getElementById('v-venc').value='';
       sv('v-qtd-cotas',1);
+      sv('v-redutor','');
       document.querySelector('#modal-venda .btn-save').textContent='Salvar Venda';
       document.querySelector('#modal-venda .btn-save').style.display='';
-      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs'].forEach(id=>{
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-redutor'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.disabled=false;
       });
@@ -6034,6 +6095,7 @@ async function _saveVendaInner(){
     parcela:parseBrl(v('v-parcela'))||null,
     observacoes:v('v-obs')||null,
     qtd_cotas:qtdCotas,
+    redutor:v('v-redutor')||null,
   };
   const insertPayload={...updatePayload,
     lead_id:vendaLeadId, vendedor_id:vendedorId,
