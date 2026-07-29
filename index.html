@@ -936,7 +936,7 @@ document.addEventListener('DOMContentLoaded', function(){
         Marca em qual base (Portal GR ou GRO) cada vendedor/supervisor está — só admin e coordenador enxergam esta tela. Ainda não conecta automaticamente com o Portal GR.
       </div>
       <div class="tbl-wrap">
-        <table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Base</th></tr></thead>
+        <table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Base</th><th>Apelido na Base (Comissões)</th></tr></thead>
         <tbody id="bc-tbody"></tbody></table>
       </div>
     </div>
@@ -1490,12 +1490,23 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="fld"><label>Valor do Crédito (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-credito" type="text" inputmode="numeric" placeholder="Ex: 90.000,00 ou 90000" oninput="fmtBrlInput(this)"></div>
     </div>
     <div class="fld"><label>Parcela (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-parcela" type="text" inputmode="numeric" placeholder="Ex: 700,00 ou 700" oninput="fmtBrlInput(this)"></div>
-    <div class="fld"><label>Redutor</label>
-      <select class="inp" id="v-redutor">
-        <option value="">—</option>
-        <option value="25">25% (comissão integral)</option>
-        <option value="50">50% (comissão pela metade)</option>
-      </select>
+    <div class="fld-row">
+      <div class="fld"><label>Redutor</label>
+        <select class="inp" id="v-redutor">
+          <option value="">—</option>
+          <option value="25">25% (comissão integral)</option>
+          <option value="50">50% (comissão pela metade)</option>
+        </select>
+      </div>
+      <div class="fld"><label>Dia de Vencimento (Base GR/GRO)</label>
+        <select class="inp" id="v-dia-base">
+          <option value="">—</option>
+          <option value="10">Dia 10</option>
+          <option value="16">Dia 16</option>
+          <option value="20">Dia 20</option>
+          <option value="25">Dia 25</option>
+        </select>
+      </div>
     </div>
 
     <div class="fld">
@@ -4975,7 +4986,10 @@ function renderBaseComissao(){
         <option value="GR" ${u.base_comissao==='GR'?'selected':''}>GR</option>
         <option value="GRO" ${u.base_comissao==='GRO'?'selected':''}>GRO</option>
       </select></td>
-    </tr>`).join('')||'<tr><td colspan="4" class="empty"><div class="ei">📉</div>Nenhum vendedor encontrado</td></tr>';
+      <td><input class="inp" value="${u.alias_base_comissao||''}" placeholder="${escJs(u.name)}" style="margin:0;font-size:12px;padding:5px 8px"
+        onchange="setAliasBaseComissao('${u.user_id}',this.value)"
+        title="Nome já usado como consultor na Base GR/GRO — se ficar em branco, usa o nome completo acima"></td>
+    </tr>`).join('')||'<tr><td colspan="5" class="empty"><div class="ei">📉</div>Nenhum vendedor encontrado</td></tr>';
 }
 async function setBaseComissao(uid,val){
   const{error}=await sb.rpc('crm_set_base_comissao',{p_user_id:uid,p_base:val||null});
@@ -4983,6 +4997,13 @@ async function setBaseComissao(uid,val){
   const i=allUsers.findIndex(u=>u.user_id===uid);
   if(i>-1) allUsers[i].base_comissao=val||null;
   toast(val?`Base definida: ${val}`:'Base removida','ok');
+}
+async function setAliasBaseComissao(uid,val){
+  const{error}=await sb.rpc('crm_set_alias_base_comissao',{p_user_id:uid,p_alias:val||null});
+  if(error){toast('Erro ao salvar apelido: '+error.message,'err');return;}
+  const i=allUsers.findIndex(u=>u.user_id===uid);
+  if(i>-1) allUsers[i].alias_base_comissao=val||null;
+  toast('Apelido salvo','ok');
 }
 
 async function renderLoginLogs(){
@@ -5535,12 +5556,13 @@ function openModal(type){
       sv('v-obs',existingVenda.observacoes||'');
       sv('v-qtd-cotas', existingVenda.qtd_cotas||1);
       sv('v-redutor', existingVenda.redutor||'');
+      sv('v-dia-base', existingVenda.dia_vencimento_base||'');
       // Update button label
       document.querySelector('#modal-venda .btn-save').textContent='Atualizar Venda';
       // Check if user can edit: admin, coordenador, supervisor only
       const canEditVenda=isAdmin()||isCoordenador()||isSupervisor()||(CUProfile?.role==='vendedor'&&existingVenda?.vendedor_id===CU.id);
       document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
-      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-qtd-cotas','v-redutor'].forEach(id=>{
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-qtd-cotas','v-redutor','v-dia-base'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.disabled=!canEditVenda;
       });
@@ -5550,9 +5572,10 @@ function openModal(type){
       document.getElementById('v-venc').value='';
       sv('v-qtd-cotas',1);
       sv('v-redutor','');
+      sv('v-dia-base','');
       document.querySelector('#modal-venda .btn-save').textContent='Salvar Venda';
       document.querySelector('#modal-venda .btn-save').style.display='';
-      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-redutor'].forEach(id=>{
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-redutor','v-dia-base'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.disabled=false;
       });
@@ -6096,6 +6119,7 @@ async function _saveVendaInner(){
     observacoes:v('v-obs')||null,
     qtd_cotas:qtdCotas,
     redutor:v('v-redutor')||null,
+    dia_vencimento_base:v('v-dia-base')||null,
   };
   const insertPayload={...updatePayload,
     lead_id:vendaLeadId, vendedor_id:vendedorId,
@@ -6271,6 +6295,16 @@ async function updateVendaStatus(id,status){
   const i=allVendas.findIndex(v=>v.id===id);
   const vendaAntes=allVendas[i]; // referência ao objeto para pegar lead_id etc.
   if(i>-1) allVendas[i].status_venda=status;
+
+  // Envia pra Base GR/GRO se o vendedor tiver base definida — a própria RPC
+  // decide se há o que enviar (vendedor sem base = no-op) e é idempotente
+  // (não duplica se a venda já foi enviada antes). Não bloqueia o fluxo se falhar.
+  if(status==='Aprovado'){
+    sb.rpc('crm_enviar_venda_para_base',{p_venda_id:id}).then(({data,error})=>{
+      if(error){ console.warn('[crm_enviar_venda_para_base] erro:',error.message); return; }
+      if(data?.status==='ok') console.log(`[Base ${data.empresa}] Venda enviada — consultor "${data.consultor}", aba dia ${data.dia}`);
+    }).catch(e=>console.warn('[crm_enviar_venda_para_base] erro:',e.message));
+  }
 
   // Registra no histórico do lead — cobre QUALQUER transição de status
   // (Aprovado, Cancelado, Pendente, SemRetorno), não só as duas originais.
