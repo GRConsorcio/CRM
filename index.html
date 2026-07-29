@@ -770,6 +770,15 @@ document.addEventListener('DOMContentLoaded', function(){
       </div>
       <div class="panel-body" id="vp-bloqueios-list"></div>
     </div>
+    <!-- Lista de conferência: vendas que o admin liberou direto, pulando o
+         fluxo de justificativa/aprovação — fica visível pra auditoria e
+         referência de futuras permissões (ver saveVenda/_bypassBloqueioInfo). -->
+    <div class="panel" id="vp-bypass-panel" style="display:none;margin-bottom:16px">
+      <div class="panel-head">
+        <div class="panel-title">Bypasses de Bloqueio (Admin)</div>
+      </div>
+      <div class="panel-body" id="vp-bypass-list"></div>
+    </div>
     <div class="filter-bar">
       <div style="display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
         <button id="vp-btn-todos" class="tab on" onclick="setVendasFilter('todos')">Todas</button>
@@ -3514,6 +3523,11 @@ function nav(page,el){
       bloqueiosPanel.style.display=podeAprovarBloqueio?'':'none';
       if(podeAprovarBloqueio) renderBloqueiosPendentes();
     }
+    const bypassPanel=document.getElementById('vp-bypass-panel');
+    if(bypassPanel){
+      bypassPanel.style.display=podeAprovarBloqueio?'':'none';
+      if(podeAprovarBloqueio) renderBypassBloqueioLog();
+    }
   }
   if(page==='equipe') renderEquipe();
   if(page==='equipes') renderEquipes();
@@ -6083,13 +6097,23 @@ async function _saveVendaInner(){
   // ── Checagem de "Venda Sem Retorno" (só em venda NOVA, não em edição) ──
   // Se o telefone ou nome do lead bater com algum bloqueio ativo (status
   // 'pendente' ou 'negado'), a venda não é criada até um admin (sozinho)
-  // ou 2 coordenadores diferentes aprovarem uma justificativa.
+  // ou 2 coordenadores diferentes aprovarem uma justificativa. Admin é
+  // exceção: não precisa passar por esse fluxo, mas o bypass fica
+  // registrado em crm_bloqueio_bypass_log (lista "Bypasses de Bloqueio"
+  // na aba Vendas) pra conferência e decisão futura sobre estender essa
+  // permissão pra outros perfis.
+  let _bypassBloqueioInfo=null;
   if(!existingV){
     const bloqueado = await verificarBloqueioAntesDeSalvar(lead?.nome, lead?.telefone);
     if(bloqueado.bloqueado){
-      toast('Esse cliente está marcado como "Venda Sem Retorno" ('+bloqueado.motivo+'). É preciso justificativa + aprovação de admin ou 2 coordenadores antes de prosseguir.','err');
-      await abrirSolicitacaoDesbloqueio(vendaLeadId, lead);
-      return;
+      if(isAdmin()){
+        _bypassBloqueioInfo=bloqueado;
+        toast('Cliente bloqueado ("Venda Sem Retorno") — seguindo direto como admin. Fica registrado na lista de bypasses.','ok');
+      } else {
+        toast('Esse cliente está marcado como "Venda Sem Retorno" ('+bloqueado.motivo+'). É preciso justificativa + aprovação de admin ou 2 coordenadores antes de prosseguir.','err');
+        await abrirSolicitacaoDesbloqueio(vendaLeadId, lead);
+        return;
+      }
     }
   }
 
@@ -6169,6 +6193,19 @@ async function _saveVendaInner(){
   if(!vd||!vd.id){
     toast('Erro crítico: venda sem ID. Tente novamente.','err');
     return;
+  }
+
+  // ── Registra o bypass de bloqueio (admin), se houve ──
+  if(_bypassBloqueioInfo){
+    try{
+      await sb.from('crm_bloqueio_bypass_log').insert({
+        lead_id:vendaLeadId, venda_id:vd.id, bloqueio_id:_bypassBloqueioInfo.registro?.id||null,
+        nome:lead?.nome||null, telefone:lead?.telefone||null,
+        motivo_match:_bypassBloqueioInfo.motivo,
+        justificativa_original:_bypassBloqueioInfo.registro?.justificativa||null,
+        admin_id:CU.id
+      });
+    }catch(e){ console.warn('[crm_bloqueio_bypass_log] erro ao registrar:',e.message); }
   }
 
   // ── Upload de documentos novos (sem apagar os existentes) ──
@@ -6781,6 +6818,25 @@ async function renderBloqueiosPendentes(){
   }).join('');
 }
 
+// Lista de conferência das vendas que o admin liberou direto (sem passar
+// pela justificativa/aprovação) — só leitura, sem ação. Assume container
+// id="vp-bypass-list" na página de Vendas (mesmo padrão de renderBloqueiosPendentes).
+async function renderBypassBloqueioLog(){
+  const el=document.getElementById('vp-bypass-list');
+  if(!el) return;
+  const{data,error}=await sb.from('crm_bloqueio_bypass_log').select('*').order('criado_em',{ascending:false}).limit(200);
+  if(error){ el.innerHTML='<div class="empty">Erro ao carregar lista.</div>'; return; }
+  if(!data||!data.length){ el.innerHTML='<div class="empty">Nenhum bypass registrado ainda.</div>'; return; }
+  el.innerHTML = data.map(b=>{
+    const admin=findUser(b.admin_id)?.name||'—';
+    return `<div class="card" style="margin-bottom:10px;padding:14px">
+      <div style="font-weight:700;color:var(--orange)">${b.nome||'Sem nome'} · ${b.telefone||'Sem telefone'}</div>
+      <div style="font-size:12px;color:var(--muted);margin:6px 0">Liberado direto por ${admin} (admin) em ${fmtDt(b.criado_em)} — bateu por ${b.motivo_match||'—'}</div>
+      ${b.justificativa_original?`<div style="font-size:12px;color:var(--muted2)">Motivo original do bloqueio: ${b.justificativa_original.replace(/</g,'&lt;')}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
 // ═══════════════════════════════════════════════════════════
 // COMENTÁRIOS DA VENDA (com anexo opcional) — reaproveita o bucket
 // de storage 'crm-documentos' já existente, mas grava em tabela própria
@@ -7089,6 +7145,11 @@ function openVendasPage(status){
   if(bloqueiosPanel){
     bloqueiosPanel.style.display=podeAprovar?'':'none';
     if(podeAprovar) renderBloqueiosPendentes();
+  }
+  const bypassPanel=document.getElementById('vp-bypass-panel');
+  if(bypassPanel){
+    bypassPanel.style.display=podeAprovar?'':'none';
+    if(podeAprovar) renderBypassBloqueioLog();
   }
   renderVendasPage();
 }
