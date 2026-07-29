@@ -12551,13 +12551,21 @@ window.repararCotasMesLuiz = async function(){
 
 
 window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, delta=1){
+  // BUGFIX: essa função nunca propagava erro pra fora (sempre resolvia
+  // normalmente, com falhas só em console.warn) — o .catch() de quem chama
+  // nunca disparava de verdade. Resultado: se o ranking falhasse por
+  // qualquer motivo (equipe não resolvida, sem mapeamento, erro de rede no
+  // Firebase), ninguém ficava sabendo — a venda salvava normal e a cota
+  // simplesmente não subia, silenciosamente. Agora avisa via toast.
   try{
     if(!lead || !venda || !vendedor){
       console.warn('[FB Ranking] Dados incompletos:', {lead:!!lead, venda:!!venda, vendedor:!!vendedor});
+      toast('Ranking não sincronizado (dados incompletos). Avise o admin.','err');
       return;
     }
     if(!equipe){
       console.warn(`[FB Ranking] Equipe não resolvida para "${vendedor.name}" — venda não sincronizada.`);
+      toast(`Ranking não sincronizado: equipe de ${vendedor.name} não foi resolvida. Avise o admin.`,'err');
       return;
     }
 
@@ -12573,6 +12581,7 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
       fbKey = 'luiz';
     } else {
       console.warn(`[FB Ranking] Equipe "${equipe.nome}" não mapeada para nenhum Firebase. Verifique o nome da equipe no CRM.`);
+      // Silencioso de propósito: equipes fora de Chis/Luiz não têm ranking mesmo.
       return;
     }
 
@@ -12582,9 +12591,13 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
       const n=document.getElementById('notify');
       const msg = delta > 0 ? 'Ranking: +1 cota!' : 'Ranking: -1 cota';
       if(n){n.textContent=msg;n.className='notify ok show';setTimeout(()=>n.classList.remove('show'),2500);}
+    } else {
+      console.warn('[FB Ranking] incrementarCotaFirebase retornou falso — sync não confirmado.');
+      toast(`Ranking pode não ter atualizado pra ${vendedor.name} — confirme manualmente.`,'err');
     }
   }catch(e){
     console.warn('[FB Ranking] Erro:', e.message, e);
+    toast(`Erro ao sincronizar ranking de ${vendedor?.name||'venda'}: ${e.message}`,'err');
   }
 };
 
