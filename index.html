@@ -12205,8 +12205,14 @@ async function resolverRaizEquipe(fbKey, nomeEquipeCRM){
     }
   }
   // Fallback: usa a primeira equipe disponível
+  // BUGFIX: esse fallback é silencioso demais — a venda é atribuída a uma
+  // raiz do Firebase que pode não ser a equipe certa, sem ninguém saber (o
+  // retorno segue como sucesso normal pra quem chamou). Se o nome da equipe
+  // no CRM não bate com nada no painel do ranking, é bem provável que a cota
+  // esteja indo pro board errado. Agora avisa via toast.
   const fallbackKey = Object.keys(equipes)[0] || 'equipe_luiz';
   console.warn(`[FB Ranking] Nenhuma equipe do Firebase "luiz" bate com o nome "${nomeEquipeCRM}" — usando fallback "${fallbackKey}". Verifique se o nome da equipe no CRM corresponde ao nome cadastrado no painel do ranking.`);
+  if(typeof toast==='function') toast(`Ranking: equipe "${nomeEquipeCRM}" não encontrada no painel — cota pode ter ido pro board errado. Avise o admin.`,'err');
   return fallbackKey;
 }
 
