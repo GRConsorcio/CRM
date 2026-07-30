@@ -1499,23 +1499,12 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="fld"><label>Valor do Crédito (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-credito" type="text" inputmode="numeric" placeholder="Ex: 90.000,00 ou 90000" oninput="fmtBrlInput(this)"></div>
     </div>
     <div class="fld"><label>Parcela (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-parcela" type="text" inputmode="numeric" placeholder="Ex: 700,00 ou 700" oninput="fmtBrlInput(this)"></div>
-    <div class="fld-row">
-      <div class="fld"><label>Redutor</label>
-        <select class="inp" id="v-redutor">
-          <option value="">—</option>
-          <option value="25">25% (comissão integral)</option>
-          <option value="50">50% (comissão pela metade)</option>
-        </select>
-      </div>
-      <div class="fld"><label>Dia de Vencimento (Base GR/GRO)</label>
-        <select class="inp" id="v-dia-base">
-          <option value="">—</option>
-          <option value="10">Dia 10</option>
-          <option value="16">Dia 16</option>
-          <option value="20">Dia 20</option>
-          <option value="25">Dia 25</option>
-        </select>
-      </div>
+    <div class="fld"><label>Redutor</label>
+      <select class="inp" id="v-redutor">
+        <option value="">—</option>
+        <option value="25">25% (comissão integral)</option>
+        <option value="50">50% (comissão pela metade)</option>
+      </select>
     </div>
 
     <div class="fld">
@@ -5570,13 +5559,12 @@ function openModal(type){
       sv('v-obs',existingVenda.observacoes||'');
       sv('v-qtd-cotas', existingVenda.qtd_cotas||1);
       sv('v-redutor', existingVenda.redutor||'');
-      sv('v-dia-base', existingVenda.dia_vencimento_base||'');
       // Update button label
       document.querySelector('#modal-venda .btn-save').textContent='Atualizar Venda';
       // Check if user can edit: admin, coordenador, supervisor only
       const canEditVenda=isAdmin()||isCoordenador()||isSupervisor()||(CUProfile?.role==='vendedor'&&existingVenda?.vendedor_id===CU.id);
       document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
-      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-qtd-cotas','v-redutor','v-dia-base'].forEach(id=>{
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-qtd-cotas','v-redutor'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.disabled=!canEditVenda;
       });
@@ -5586,10 +5574,9 @@ function openModal(type){
       document.getElementById('v-venc').value='';
       sv('v-qtd-cotas',1);
       sv('v-redutor','');
-      sv('v-dia-base','');
       document.querySelector('#modal-venda .btn-save').textContent='Salvar Venda';
       document.querySelector('#modal-venda .btn-save').style.display='';
-      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-redutor','v-dia-base'].forEach(id=>{
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-venc','v-credito','v-parcela','v-obs','v-redutor'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.disabled=false;
       });
@@ -6143,7 +6130,6 @@ async function _saveVendaInner(){
     observacoes:v('v-obs')||null,
     qtd_cotas:qtdCotas,
     redutor:v('v-redutor')||null,
-    dia_vencimento_base:v('v-dia-base')||null,
   };
   const insertPayload={...updatePayload,
     lead_id:vendaLeadId, vendedor_id:vendedorId,
