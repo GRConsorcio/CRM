@@ -6341,6 +6341,16 @@ async function updateVendaStatus(id,status){
       if(data?.status==='ok') console.log(`[Base ${data.empresa}] Venda enviada — consultor "${data.consultor}", aba dia ${data.dia}`);
     }).catch(e=>console.warn('[crm_enviar_venda_para_base] erro:',e.message));
   }
+  // Propaga cancelamento pra Base: Cancelado marca tag "Pós Vendas" nos cards
+  // ainda Pendente Newcon (não mexe nos já aprovados); SemRetorno move os
+  // cards direto pra Cancelados na Base. Só faz efeito se a venda já tinha
+  // sido enviada antes (a própria RPC verifica isso).
+  if(status==='Cancelado'||status==='SemRetorno'){
+    sb.rpc('crm_atualizar_status_base',{p_venda_id:id,p_novo_status:status}).then(({data,error})=>{
+      if(error){ console.warn('[crm_atualizar_status_base] erro:',error.message); return; }
+      if(data?.status==='ok'&&data.afetados>0) console.log(`[Base ${data.empresa}] Status "${status}" propagado — ${data.afetados} card(s) afetado(s)`);
+    }).catch(e=>console.warn('[crm_atualizar_status_base] erro:',e.message));
+  }
 
   // Registra no histórico do lead — cobre QUALQUER transição de status
   // (Aprovado, Cancelado, Pendente, SemRetorno), não só as duas originais.
