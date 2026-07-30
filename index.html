@@ -5685,11 +5685,17 @@ async function saveLead(){
         }
         return;
       }
-      // Duplicata comum (sem venda aprovada) — mostra modal de confirmação para puxar/atribuir
-      const msg = `"${duplicado.nome}" já está na base.\nResponsável atual: ${respNome}\n\nDeseja atribuir este lead a você?`;
+      // Duplicata comum (sem venda aprovada) — mostra modal de confirmação para puxar/atribuir.
+      // BUGFIX: sempre reatribuía pro usuário LOGADO (CU.id), ignorando o vendedor
+      // escolhido no campo "Vendedor Responsável" do formulário — um admin criando
+      // um lead pra outra pessoa (ex: Barbara) via esse dropdown acabava puxando o
+      // lead pra si mesmo em vez de pra ela ao confirmar. Agora respeita o que foi
+      // selecionado no formulário (cai em CU.id só se o campo ficou vazio).
+      const respSelecionadoId = document.getElementById('ld-resp')?.value || CU.id;
+      const respSelecionadoNome = respSelecionadoId===CU.id ? 'você' : (allUsers.find(u=>u.user_id===respSelecionadoId)?.name || 'você');
+      const msg = `"${duplicado.nome}" já está na base.\nResponsável atual: ${respNome}\n\nDeseja atribuir este lead a ${respSelecionadoNome}?`;
       if(confirm(msg)){
-        // Atribui ao usuário atual
-        const patchPayload = {responsavel_id: CU.id, status: duplicado.status||'Novo'};
+        const patchPayload = {responsavel_id: respSelecionadoId, status: duplicado.status||'Novo'};
         await sb.from('crm_leads').update(patchPayload).eq('id', duplicado.id);
         const i = allLeads.findIndex(l=>l.id===duplicado.id);
         if(i>-1) Object.assign(allLeads[i], patchPayload);
@@ -5697,10 +5703,10 @@ async function saveLead(){
         await sb.from('crm_historico').insert({
           lead_id: duplicado.id, user_id: CU.id,
           tipo: 'Reatribuição',
-          descricao: `Lead puxado por ${CU.name||CU.email} (já existia na base — resp. anterior: ${respNome})`,
+          descricao: `Lead puxado por ${CU.name||CU.email} (já existia na base — resp. anterior: ${respNome}) e atribuído a ${respSelecionadoNome}`,
           created_at: new Date().toISOString()
         });
-        toast(`Lead "${duplicado.nome}" atribuído a você!`,'ok');
+        toast(`Lead "${duplicado.nome}" atribuído a ${respSelecionadoNome}!`,'ok');
         closeModal('lead');
         if(CUProfile?.role==='vendedor') renderMeusLeads(); else renderLeads(true);
       }
