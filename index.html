@@ -166,6 +166,17 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .doc-size{font-size:10.5px;color:var(--muted2);white-space:nowrap}
 .doc-actions{display:flex;gap:6px}
 
+/* DOCUMENTOS: feed de pré-visualização (alternativa ao download individual) */
+.doc-view-toggle{display:flex;gap:4px}
+.doc-view-toggle button{background:var(--surface2);border:1px solid var(--border);color:var(--muted2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:700}
+.doc-view-toggle button.on{color:var(--gold2);border-color:var(--gold-dim);background:var(--gold-glow)}
+.doc-feed-item{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px}
+.doc-feed-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.doc-preview-body{border-radius:8px;overflow:hidden;background:var(--bg);min-height:60px;display:flex;align-items:center;justify-content:center}
+.doc-preview-body img{width:100%;display:block;max-height:600px;object-fit:contain;background:#111}
+.doc-preview-body iframe{width:100%;height:600px;border:none;display:block}
+.doc-preview-empty{padding:20px;font-size:11.5px;color:var(--muted2);text-align:center;width:100%}
+
 /* VENDA DETAIL */
 .venda-box{background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:16px 18px;margin-bottom:14px}
 .venda-box-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--gold-dim);margin-bottom:12px}
@@ -1842,6 +1853,11 @@ let editLeadId=null,detailLeadId=null,vendaLeadId=null,roleUserId=null;
 let vendaEditId=null;
 let pendingFiles=[];
 let fromPage='leads';
+// Modo de visualização dos documentos na tela de detalhe do lead: 'list' (baixar
+// individualmente, como antes) ou 'feed' (pré-visualização inline, tipo feed).
+// Global (não por lead) — persiste ao navegar entre leads na mesma sessão.
+let _docViewMode='list';
+let _docPreviewUrlCache={}; // storage_path -> signed url já buscada (evita re-fetch ao trocar de aba)
 // Debounced render — inicializado após definição de debounce() mais abaixo
 // Usamos uma função wrapper para que _debouncedRenderLeads esteja disponível globalmente
 // mesmo antes do debounce() ser declarado (hoisting de var)
@@ -4266,16 +4282,8 @@ async function openDetail(id,from){
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Qtd. Cotas</div><strong style="color:var(--gold2);font-size:15px">${venda.qtd_cotas||1}</strong></div>
       </div>
       ${docs.length>0?`<div style="margin-top:14px">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">Documentos (${docs.length})</div>
-        ${docs.map(d=>`<div class="doc-item">
-          <div class="doc-icon">${d.tipo==='pdf'?'📄':'🖼️'}</div>
-          <div class="doc-name">${d.nome}</div>
-          <div class="doc-size">${fmtSize(d.tamanho)}</div>
-          <div class="doc-actions">
-            <button class="act" onclick="downloadDoc('${d.storage_path}','${escJs(d.nome)}')">⬇️</button>
-            ${isAdminOrCoord()?`<button class="act red" onclick="delDoc('${d.id}','${d.storage_path}')">🗑️</button>`:''}
-          </div>
-        </div>`).join('')}
+        ${docSectionHeaderHtml('Documentos',docs.length)}
+        ${docs.map(d=>docItemHtml(d,isAdminOrCoord())).join('')}
       </div>`:''}
       ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">Aprovado</span>'}
@@ -4322,25 +4330,23 @@ async function openDetail(id,from){
   const contratos=docs.filter(d=>d.categoria==='contrato_lead');
   const outrosDocs=docs.filter(d=>d.categoria!=='contrato_lead');
   html+=`<div class="panel" style="margin-top:16px">
-    <div class="panel-head">
+    <div class="panel-head" style="flex-wrap:wrap;gap:8px">
       <div class="panel-title">Contratos</div>
-      ${canWork?`<label style="cursor:pointer">
-        <input type="file" id="contrato-lead-input-${id}" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple style="display:none" onchange="uploadContratoLead('${id}',this.files)">
-        <span class="btn-sm" onclick="document.getElementById('contrato-lead-input-${id}').click()">+ Anexar</span>
-      </label>`:''}
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="doc-view-toggle">
+          <button class="${_docViewMode==='list'?'on':''}" onclick="setDocViewMode('list')">☰ Lista</button>
+          <button class="${_docViewMode==='feed'?'on':''}" onclick="setDocViewMode('feed')">🖼️ Visualizar</button>
+        </div>
+        ${canWork?`<label style="cursor:pointer">
+          <input type="file" id="contrato-lead-input-${id}" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple style="display:none" onchange="uploadContratoLead('${id}',this.files)">
+          <span class="btn-sm" onclick="document.getElementById('contrato-lead-input-${id}').click()">+ Anexar</span>
+        </label>`:''}
+      </div>
     </div>
     <div class="panel-body" id="contratos-list-${id}">
       ${contratos.length===0
         ?'<div class="empty" style="padding:16px"><div class="ei" style="font-size:22px">📄</div>Nenhum contrato anexado</div>'
-        :contratos.map(d=>`<div class="doc-item">
-            <div class="doc-icon">📄</div>
-            <div class="doc-name">${d.nome}</div>
-            <div class="doc-size" style="font-size:10px;color:var(--muted2)">${fmtSize(d.tamanho)}</div>
-            <div class="doc-actions">
-              <button class="act" onclick="downloadDoc('${d.storage_path}','${escJs(d.nome)}')">⬇️</button>
-              ${canWork?`<button class="act red" onclick="delDoc('${d.id}','${d.storage_path}')">🗑️</button>`:''}
-            </div>
-          </div>`).join('')}
+        :contratos.map(d=>docItemHtml(d,canWork)).join('')}
     </div>
   </div>`;
   const histVisiveis=hist.filter(h=>isAdmin()||h.tipo!=='Interno (Adm)').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -4454,6 +4460,7 @@ async function openDetail(id,from){
   document.getElementById('lead-detail-wrap').innerHTML=html;
   nav('lead-detail',null);
   if(venda) renderComentariosVenda(venda.id);
+  if(_docViewMode==='feed') renderDocPreviews(docs);
 }
 
 function goBackLeads(){
@@ -6412,6 +6419,72 @@ async function updateVendaStatus(id,status){
     renderVendasPage();
   } else if(detailLeadId){
     openDetail(detailLeadId,fromPage);
+  }
+}
+
+/* ═══ Documentos: alterna entre lista (baixar) e feed (pré-visualização inline) ═══ */
+function setDocViewMode(mode){
+  _docViewMode=mode;
+  if(detailLeadId) openDetail(detailLeadId,fromPage);
+}
+function docSectionHeaderHtml(titulo,qtd){
+  return`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim)">${titulo}${qtd!=null?` (${qtd})`:''}</div>
+    <div class="doc-view-toggle">
+      <button class="${_docViewMode==='list'?'on':''}" onclick="setDocViewMode('list')">☰ Lista</button>
+      <button class="${_docViewMode==='feed'?'on':''}" onclick="setDocViewMode('feed')">🖼️ Visualizar</button>
+    </div>
+  </div>`;
+}
+function docItemHtml(d,canDelete){
+  if(_docViewMode==='feed'){
+    return`<div class="doc-feed-item">
+      <div class="doc-feed-head">
+        <div class="doc-icon">${d.tipo==='pdf'?'📄':'🖼️'}</div>
+        <div class="doc-name" style="white-space:normal">${d.nome}</div>
+        <div class="doc-size">${fmtSize(d.tamanho)}</div>
+        <div class="doc-actions">
+          <button class="act" onclick="downloadDoc('${d.storage_path}','${escJs(d.nome)}')" title="Baixar">⬇️</button>
+          ${canDelete?`<button class="act red" onclick="delDoc('${d.id}','${d.storage_path}')" title="Remover">🗑️</button>`:''}
+        </div>
+      </div>
+      <div class="doc-preview-body" id="docprev-${d.id}"><div class="doc-preview-empty">Carregando pré-visualização…</div></div>
+    </div>`;
+  }
+  return`<div class="doc-item">
+    <div class="doc-icon">${d.tipo==='pdf'?'📄':'🖼️'}</div>
+    <div class="doc-name">${d.nome}</div>
+    <div class="doc-size">${fmtSize(d.tamanho)}</div>
+    <div class="doc-actions">
+      <button class="act" onclick="downloadDoc('${d.storage_path}','${escJs(d.nome)}')" title="Baixar">⬇️</button>
+      ${canDelete?`<button class="act red" onclick="delDoc('${d.id}','${d.storage_path}')" title="Remover">🗑️</button>`:''}
+    </div>
+  </div>`;
+}
+// Busca URLs assinadas (bucket 'crm-documentos' é privado) e injeta <img>/<iframe>
+// nos placeholders criados por docItemHtml() em modo feed. Roda depois do HTML já
+// estar no DOM (mesmo padrão de renderComentariosVenda, chamado após innerHTML=html).
+async function renderDocPreviews(docs){
+  if(_docViewMode!=='feed'||!docs||!docs.length) return;
+  for(const d of docs){
+    const el=document.getElementById('docprev-'+d.id);
+    if(!el) continue;
+    try{
+      let url=_docPreviewUrlCache[d.storage_path];
+      if(!url){
+        const{data,error}=await sb.storage.from('crm-documentos').createSignedUrl(d.storage_path,3600);
+        if(error||!data?.signedUrl) throw error||new Error('sem url');
+        url=data.signedUrl;
+        _docPreviewUrlCache[d.storage_path]=url;
+      }
+      if(d.tipo==='pdf'){
+        el.innerHTML=`<iframe src="${url}" title="${(String(d.nome||'').replace(/"/g,'&quot;'))}"></iframe>`;
+      }else{
+        el.innerHTML=`<img src="${url}" alt="${(String(d.nome||'').replace(/"/g,'&quot;'))}" loading="lazy">`;
+      }
+    }catch(e){
+      el.innerHTML='<div class="doc-preview-empty">Não foi possível carregar a pré-visualização. Use o botão de baixar acima.</div>';
+    }
   }
 }
 
