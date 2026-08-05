@@ -2692,9 +2692,19 @@ async function loadAll(){
   // (antes admin/coordenador/supervisor recebiam a tabela crm_tarefas inteira).
   // Cada um só precisa ver as próprias tarefas — isso reduz egress e elimina a
   // necessidade do Realtime ficar escutando a tabela inteira (ver setupRealtime).
+  // crm_historico não tem responsavel_id próprio (só lead_id) — pra quem não é
+  // admin/CEO/coordenador, filtra pelo lead (via embed) em vez de depender só da
+  // política de segurança varrendo a tabela inteira. Sem isso, alguém com poucos
+  // leads visíveis forçava o Postgres a avaliar a política nas 70mil+ linhas até
+  // estourar o timeout — era o erro 500 que travava o carregamento pro vendedor.
+  const histQuery = (isAdmin()||isCEO()||isCoordenador())
+    ? sb.from('crm_historico').select('*')
+    : sb.from('crm_historico').select('*, crm_leads!inner(responsavel_id)')
+        .in('crm_leads.responsavel_id', isSupervisor()?getMeusMembroIds():[CU.id]);
+
   const [lu,lh,lt,lv,ld]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
-    safe(sb.from('crm_historico').select('*').order('created_at',{ascending:false}).limit(2000)),
+    safe(histQuery.order('created_at',{ascending:false}).limit(2000)),
     safe(sb.from('crm_tarefas').select('*').or(`responsavel_id.eq.${CU.id},user_id.eq.${CU.id}`).order('prazo',{ascending:true})),
     safe(sb.from('crm_vendas').select('*').order('created_at',{ascending:false})),
     safe(sb.from('crm_documentos').select('*').order('created_at',{ascending:false}).limit(1000)),
