@@ -66,7 +66,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .main{margin-left:222px;flex:1;min-width:0;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .22s}
 .sidebar.collapsed~.main{margin-left:54px}
 .topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
-.topbar-title{font-size:15px;font-weight:700;color:var(--gold2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;margin-right:12px}
+.topbar-title{font-size:15px;font-weight:700;color:var(--gold2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;margin-left:14px;margin-right:12px}
 .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .user-chip{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px 4px 4px;font-size:11.5px;color:var(--muted2)}
 .user-av{width:26px;height:26px;border-radius:50%;background:var(--gold);color:#0a0a0a;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center}
@@ -331,6 +331,14 @@ tr:hover td{background:rgba(255,255,255,.015)}
   </div>
 </div>
 
+<!-- QUESTIONÁRIO (popup global de pesquisa — aparece sem precisar recarregar a aba) -->
+<div id="questionario-popup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:999998;align-items:center;justify-content:center;padding:20px">
+  <div style="position:relative;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;background:var(--surface);border:1px solid var(--border2);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <button onclick="fecharQuestionarioPopup()" title="Responder depois" style="position:absolute;top:10px;right:10px;z-index:2;width:32px;height:32px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+    <div id="questionario-popup-body" style="padding:22px 20px"></div>
+  </div>
+</div>
+
 <!-- LOADING SCREEN -->
 <div id="loading-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:998;align-items:center;justify-content:center;flex-direction:column;gap:18px">
   <img id="loading-logo-img" alt="GR Consórcio" style="width:48px;height:48px;border-radius:12px;object-fit:cover;box-shadow:0 4px 18px rgba(0,0,0,.45),0 0 0 1px rgba(201,168,76,.25)">
@@ -429,6 +437,18 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- MAIN -->
 <div class="main" id="main">
   <div class="topbar">
+    <div class="topbar-left" style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <div class="user-chip">
+        <div class="user-av" id="u-av">?</div>
+        <span id="u-name"
+      style="
+      font-weight:600;
+      color:#fff;
+      ">
+</span>
+      </div>
+      <button class="btn-sm" onclick="doLogout()">Sair</button>
+    </div>
     <div class="topbar-title" id="topbar-title">Dashboard</div>
     <div class="topbar-right">
       <!-- Notificações (admin only) -->
@@ -446,16 +466,6 @@ document.addEventListener('DOMContentLoaded', function(){
           </div>
         </div>
       </div>
-      <div class="user-chip">
-        <div class="user-av" id="u-av">?</div>
-        <span id="u-name"
-      style="
-      font-weight:600;
-      color:#fff;
-      ">
-</span>
-      </div>
-      <button class="btn-sm" onclick="doLogout()">Sair</button>
     </div>
   </div>
 
@@ -878,6 +888,48 @@ document.addEventListener('DOMContentLoaded', function(){
       <div class="tbl-wrap">
         <table><thead><tr><th>Título/Arquivo</th><th>Tipo</th><th>Status</th><th>Público</th><th>Criada em</th><th></th></tr></thead>
         <tbody id="transm-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUESTIONÁRIOS -->
+  <div class="page" id="page-questionarios">
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head"><div class="panel-title">Novo Questionário</div></div>
+      <div class="panel-body">
+        <div class="fld"><label>Título *</label><input class="inp" id="quest-titulo" placeholder="Ex: Pesquisa de clima — Agosto"></div>
+        <div class="fld"><label>Mostrar para</label>
+          <select class="inp" id="quest-alvo-modo" onchange="onQuestAlvoModoChange()">
+            <option value="todos">Todo mundo</option>
+            <option value="equipes">Equipes específicas</option>
+            <option value="usuarios">Vendedores específicos</option>
+          </select>
+        </div>
+        <div class="fld" id="quest-alvo-equipes-wrap" style="display:none">
+          <label>Equipes</label>
+          <div id="quest-alvo-equipes-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
+        </div>
+        <div class="fld" id="quest-alvo-usuarios-wrap" style="display:none">
+          <label>Vendedores</label>
+          <input class="inp" id="quest-alvo-usuarios-srch" placeholder="Buscar..." oninput="renderQuestAlvoUsuarios()" style="margin-bottom:8px">
+          <div id="quest-alvo-usuarios-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
+        </div>
+        <div class="fld">
+          <label>Perguntas</label>
+          <div id="quest-perguntas-list"></div>
+          <button type="button" class="btn-sm" style="margin-top:6px" onclick="questAddPergunta()">+ Adicionar pergunta</button>
+        </div>
+        <div id="quest-form-status" style="font-size:12px;margin-top:6px"></div>
+        <div class="modal-btns" style="border-top:none;padding-top:6px">
+          <button class="btn-save" onclick="criarQuestionario()">Criar Questionário</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Questionários</div></div>
+      <div class="tbl-wrap">
+        <table><thead><tr><th>Título</th><th>Perguntas</th><th>Respostas</th><th>Status</th><th>Criado em</th><th></th></tr></thead>
+        <tbody id="quest-tbody"></tbody></table>
       </div>
     </div>
   </div>
@@ -1857,7 +1909,11 @@ let fromPage='leads';
 // individualmente, como antes) ou 'feed' (pré-visualização inline, tipo feed).
 // Global (não por lead) — persiste ao navegar entre leads na mesma sessão.
 let _docViewMode='list';
-let _docPreviewUrlCache={}; // storage_path -> signed url já buscada (evita re-fetch ao trocar de aba)
+// storage_path -> {url, expiresAt}. Guarda a validade junto com a URL — a
+// URL assinada só dura 1h (ver createSignedUrl abaixo), e sem isso o cache
+// reusava URLs já expiradas indefinidamente enquanto a aba ficasse aberta,
+// causando erro 400 do Storage ao tentar visualizar docs mais de 1h depois.
+let _docPreviewUrlCache={};
 // Debounced render — inicializado após definição de debounce() mais abaixo
 // Usamos uma função wrapper para que _debouncedRenderLeads esteja disponível globalmente
 // mesmo antes do debounce() ser declarado (hoisting de var)
@@ -3366,6 +3422,7 @@ function renderNav(){
     mail:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M2 4.5l6 5 6-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     lock:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 7V5a3 3 0 016 0v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
     broadcast:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="12.5" r="1.3" fill="currentColor"/><path d="M5 10.3a4.2 4.2 0 016 0M3 8a7 7 0 0110 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    quiz:'<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="3" y="2" width="10" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M6 1.5h4v1.5H6z" fill="currentColor"/><circle cx="5.6" cy="6.2" r="0.9" fill="currentColor"/><path d="M7.6 6.2h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="5.6" cy="9.2" r="0.9" fill="currentColor"/><path d="M7.6 9.2h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="5.6" cy="12.2" r="0.9" fill="currentColor"/><path d="M7.6 12.2h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
   };
 
   // CEO — nav enxuto e isolado: só o funil de leads de Anúncio GR, nada de editar/gerir.
@@ -3449,7 +3506,8 @@ function renderNav(){
       <div class="nav-item" onclick="nav('equipe',this)" title="Usuários"><span class="nav-icon">${IC.users}</span><span class="nav-label">Usuários</span></div>
       <div class="nav-item" id="nav-solicitacoes" onclick="nav('solicitacoes',this);renderSolicitacoes()" title="Solicitações"><span class="nav-icon">${IC.mail}</span><span class="nav-label">Solicitações<span id="sol-adm-badge"></span></span></div>
       <div class="nav-item" onclick="nav('login-logs',this)" title="Histórico de Logins"><span class="nav-icon">${IC.lock}</span><span class="nav-label">Logins</span></div>
-      <div class="nav-item" onclick="nav('transmissoes',this)" title="Transmissões"><span class="nav-icon">${IC.broadcast}</span><span class="nav-label">Transmissões</span></div>`;
+      <div class="nav-item" onclick="nav('transmissoes',this)" title="Transmissões"><span class="nav-icon">${IC.broadcast}</span><span class="nav-label">Transmissões</span></div>
+      <div class="nav-item" onclick="nav('questionarios',this)" title="Questionários"><span class="nav-icon">${IC.quiz}</span><span class="nav-label">Questionários</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
   const flBtn=document.getElementById('sb-force-logout');
@@ -3475,7 +3533,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','base-comissao':'Base GR/GRO','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões','campanhas':'Campanhas'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','base-comissao':'Base GR/GRO','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões','campanhas':'Campanhas','questionarios':'Questionários'};
 /* ═══ PERSISTÊNCIA DE PÁGINA ATUAL (item solicitado: não voltar sempre pro dashboard) ═══
    Salva a última página visitada por usuário (localStorage, sobrevive a refresh/F5 e a
    logins futuros no mesmo navegador). Páginas de "detalhe" (que dependem de um ID
@@ -3560,6 +3618,7 @@ function nav(page,el){
   if(page==='login-logs') renderLoginLogs();
   if(page==='transmissoes') renderTransmissoes();
   if(page==='campanhas') renderCampanhas();
+  if(page==='questionarios') renderQuestionarios();
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 
@@ -4271,7 +4330,7 @@ async function openDetail(id,from){
   // Venda se existir
   if(venda){
     html+=`<div style="padding:16px 18px;border-bottom:1px solid var(--border)">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':venda.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${venda.status_venda==='SemRetorno'?'Cancelados':(venda.status_venda||'Pendente')}</span></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':venda.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${venda.status_venda==='SemRetorno'?'Cancelados':venda.status_venda==='Cancelado'?'Reprovado':(venda.status_venda||'Pendente')}</span></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12.5px">
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">CPF</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Nascimento</div><strong>${venda.data_nascimento?fmtDateStr(venda.data_nascimento):'—'}</strong></div>
@@ -4287,9 +4346,9 @@ async function openDetail(id,from){
       </div>`:''}
       ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">Aprovado</span>'}
-        ${venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">Cancelar</button>`:'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">Cancelado</span>'}
+        ${venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">Reprovar</button>`:'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">Reprovado</span>'}
         ${venda.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${venda.id}','Pendente')">Voltar para Pendente</button>`:''}
-        <button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">Reverter para Lead</button>
+        ${isAdmin()?`<button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">Reverter para Lead</button>`:''}
         ${venda.status_venda!=='SemRetorno'?`<button class="act red" onclick="marcarVendaSemRetorno('${venda.id}')">Venda Sem Retorno</button>`:''}
       </div>`:''}
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
@@ -4313,7 +4372,7 @@ async function openDetail(id,from){
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:8px">Vendas Anteriores deste Cliente (${vendasAnteriores.length})</div>
         ${vendasAnteriores.map(vp=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px">
           <div style="display:flex;align-items:center;gap:10px">
-            <span class="badge ${vp.status_venda==='Aprovado'?'b-aprov':vp.status_venda==='Cancelado'?'b-canc':vp.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${vp.status_venda==='SemRetorno'?'Cancelados':(vp.status_venda||'Pendente')}</span>
+            <span class="badge ${vp.status_venda==='Aprovado'?'b-aprov':vp.status_venda==='Cancelado'?'b-canc':vp.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${vp.status_venda==='SemRetorno'?'Cancelados':vp.status_venda==='Cancelado'?'Reprovado':(vp.status_venda||'Pendente')}</span>
             <span style="color:var(--gold2);font-weight:700">${vp.valor_credito?brl(vp.valor_credito):'—'}</span>
             <span style="color:var(--muted2)">${vp.grupo||'—'} / ${vp.cota||'—'} · ${vp.qtd_cotas||1} cota(s)</span>
             <span style="color:var(--muted2);font-size:11px">${fmtDt(vp.created_at)}</span>
@@ -5292,6 +5351,318 @@ async function fecharTransmissaoPopup(){
   }
   // Se havia outra transmissão pendente na fila, mostra em seguida.
   checkTransmissoesAtivas();
+}
+
+/* ═══ QUESTIONÁRIOS ═══
+   Admin cria com perguntas abertas ou de múltipla escolha, escolhe o público
+   (mesmo padrão de alvo/equipes_alvo/usuarios_alvo de Transmissões/Campanhas)
+   e liga/desliga quando quiser. crm_questionarios está na publicação do
+   Realtime (supabase_realtime) — ligar um questionário dispara o popup pra
+   todo mundo já logado na hora, sem precisar recarregar a aba. */
+let allQuestionarios=[];
+let _questionarioAtual=null; // questionário sendo exibido agora no popup
+let _questionariosRespondidos=new Set(); // ids já respondidos por mim nesta sessão
+let _questPerguntaSeq=0;
+
+function onQuestAlvoModoChange(){
+  const modo=document.getElementById('quest-alvo-modo').value;
+  document.getElementById('quest-alvo-equipes-wrap').style.display=modo==='equipes'?'block':'none';
+  document.getElementById('quest-alvo-usuarios-wrap').style.display=modo==='usuarios'?'block':'none';
+  if(modo==='equipes') renderQuestAlvoEquipes();
+  if(modo==='usuarios') renderQuestAlvoUsuarios();
+}
+function renderQuestAlvoEquipes(){
+  const el=document.getElementById('quest-alvo-equipes-list');
+  if(!el) return;
+  if(!allEquipes.length){el.innerHTML='<div style="font-size:12px;color:var(--muted2)">Nenhuma equipe cadastrada.</div>';return;}
+  el.innerHTML=allEquipes.map(e=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;cursor:pointer">
+      <input type="checkbox" class="quest-eq-chk" value="${e.id}" style="accent-color:var(--gold);width:14px;height:14px">
+      ${e.nome||'(sem nome)'}
+    </label>`).join('');
+}
+function renderQuestAlvoUsuarios(){
+  const el=document.getElementById('quest-alvo-usuarios-list');
+  if(!el) return;
+  const q=(document.getElementById('quest-alvo-usuarios-srch')?.value||'').toLowerCase();
+  const prevChecked=new Set([...el.querySelectorAll('.quest-us-chk:checked')].map(c=>c.value));
+  const list=allUsers.filter(u=>!q||(u.name||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q));
+  if(!list.length){el.innerHTML='<div style="font-size:12px;color:var(--muted2)">Nenhum usuário encontrado.</div>';return;}
+  el.innerHTML=list.map(u=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;cursor:pointer">
+      <input type="checkbox" class="quest-us-chk" value="${u.user_id}" style="accent-color:var(--gold);width:14px;height:14px" ${prevChecked.has(u.user_id)?'checked':''}>
+      ${u.name||u.email}
+    </label>`).join('');
+}
+
+/* Construtor de perguntas — cada linha vive só no DOM (lida direto na hora
+   de criar o questionário), não precisa sincronizar um array em paralelo. */
+function questAddPergunta(){
+  const list=document.getElementById('quest-perguntas-list');
+  const id='qp'+(++_questPerguntaSeq);
+  const row=document.createElement('div');
+  row.className='quest-pergunta-row';
+  row.dataset.id=id;
+  row.style.cssText='border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px';
+  row.innerHTML=`
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <input class="inp quest-p-texto" placeholder="Digite a pergunta..." style="flex:1">
+      <select class="inp quest-p-tipo" style="width:150px" onchange="this.closest('.quest-pergunta-row').querySelector('.quest-p-opcoes-wrap').style.display=this.value==='multipla'?'block':'none'">
+        <option value="aberta">Resposta aberta</option>
+        <option value="multipla">Múltipla escolha</option>
+      </select>
+      <button type="button" class="btn-sm" title="Remover pergunta" onclick="this.closest('.quest-pergunta-row').remove()">✕</button>
+    </div>
+    <div class="quest-p-opcoes-wrap" style="display:none;margin-top:8px">
+      <textarea class="inp quest-p-opcoes" placeholder="Uma opção por linha..." style="min-height:60px"></textarea>
+    </div>`;
+  list.appendChild(row);
+}
+
+async function criarQuestionario(){
+  if(!isAdmin()) return;
+  const titulo=document.getElementById('quest-titulo').value.trim();
+  const modo=document.getElementById('quest-alvo-modo').value;
+  const statusEl=document.getElementById('quest-form-status');
+  if(!titulo){ statusEl.style.color='var(--red)'; statusEl.textContent='Título é obrigatório.'; return; }
+
+  const rows=[...document.querySelectorAll('#quest-perguntas-list .quest-pergunta-row')];
+  if(!rows.length){ statusEl.style.color='var(--red)'; statusEl.textContent='Adicione ao menos uma pergunta.'; return; }
+  const perguntas=[];
+  for(const row of rows){
+    const texto=row.querySelector('.quest-p-texto').value.trim();
+    if(!texto) continue;
+    const tipo=row.querySelector('.quest-p-tipo').value;
+    let opcoes=[];
+    if(tipo==='multipla'){
+      opcoes=row.querySelector('.quest-p-opcoes').value.split('\n').map(o=>o.trim()).filter(Boolean);
+      if(opcoes.length<2){ statusEl.style.color='var(--red)'; statusEl.textContent=`A pergunta "${texto}" precisa de ao menos 2 opções.`; return; }
+    }
+    perguntas.push({id:row.dataset.id, texto, tipo, opcoes});
+  }
+  if(!perguntas.length){ statusEl.style.color='var(--red)'; statusEl.textContent='Adicione ao menos uma pergunta com texto.'; return; }
+
+  let equipes_alvo=[],usuarios_alvo=[];
+  if(modo==='equipes'){
+    equipes_alvo=[...document.querySelectorAll('.quest-eq-chk:checked')].map(c=>c.value);
+    if(!equipes_alvo.length){ statusEl.style.color='var(--red)'; statusEl.textContent='Selecione ao menos uma equipe.'; return; }
+  } else if(modo==='usuarios'){
+    usuarios_alvo=[...document.querySelectorAll('.quest-us-chk:checked')].map(c=>c.value);
+    if(!usuarios_alvo.length){ statusEl.style.color='var(--red)'; statusEl.textContent='Selecione ao menos um vendedor.'; return; }
+  }
+
+  statusEl.style.color='var(--muted2)';
+  statusEl.textContent='Criando...';
+  try{
+    const{error}=await sb.from('crm_questionarios').insert({
+      criado_por:CU.id, titulo, perguntas, alvo:modo, equipes_alvo, usuarios_alvo, ativo:false
+    });
+    if(error) throw error;
+    statusEl.style.color='var(--green)';
+    statusEl.textContent='Questionário criado! Clique em "Rodar" na lista abaixo pra publicar.';
+    document.getElementById('quest-titulo').value='';
+    document.getElementById('quest-perguntas-list').innerHTML='';
+    document.getElementById('quest-alvo-modo').value='todos';
+    onQuestAlvoModoChange();
+    renderQuestionarios();
+  }catch(e){
+    statusEl.style.color='var(--red)';
+    statusEl.textContent='Erro ao criar: '+e.message;
+  }
+}
+
+async function renderQuestionarios(){
+  const tbody=document.getElementById('quest-tbody');
+  if(!tbody) return;
+  tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:16px">Carregando...</td></tr>';
+  try{
+    const{data,error}=await sb.from('crm_questionarios').select('*').order('criado_em',{ascending:false});
+    if(error) throw error;
+    allQuestionarios=data||[];
+    if(!allQuestionarios.length){
+      tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:20px">Nenhum questionário criado ainda.</td></tr>';
+      return;
+    }
+    // Conta respostas de todos de uma vez (1 query) em vez de 1 por linha.
+    const{data:contagem}=await sb.from('crm_questionario_respostas').select('questionario_id');
+    const respPorId={};
+    (contagem||[]).forEach(r=>{ respPorId[r.questionario_id]=(respPorId[r.questionario_id]||0)+1; });
+    tbody.innerHTML=allQuestionarios.map(q=>`<tr>
+      <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="verRespostasQuestionario('${q.id}')">${q.titulo}</td>
+      <td style="color:var(--muted2);font-size:11.5px">${(q.perguntas||[]).length}</td>
+      <td style="color:var(--muted2);font-size:11.5px">${respPorId[q.id]||0}</td>
+      <td><span class="badge ${q.ativo?'b-aprov':'b-pend'}">${q.ativo?'Rodando':'Parado'}</span></td>
+      <td style="color:var(--muted2);font-size:11px">${fmtDt(q.criado_em)}</td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="act ${q.ativo?'red':'green'}" onclick="toggleQuestionarioAtivo('${q.id}',${!q.ativo})">${q.ativo?'⏹ Parar':'▶ Rodar'}</button>
+          <button class="act" onclick="verRespostasQuestionario('${q.id}')">📊</button>
+          <button class="act red" onclick="apagarQuestionario('${q.id}')">🗑</button>
+        </div>
+      </td>
+    </tr>`).join('');
+  }catch(e){
+    tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--red);padding:16px">Erro ao carregar: ${e.message}</td></tr>`;
+  }
+}
+
+async function toggleQuestionarioAtivo(id,novoAtivo){
+  if(!isAdmin()) return;
+  try{
+    const{error}=await sb.from('crm_questionarios').update({
+      ativo:novoAtivo, encerrado_em: novoAtivo?null:new Date().toISOString()
+    }).eq('id',id);
+    if(error) throw error;
+    toast(novoAtivo?'Questionário no ar!':'Questionário parado.','ok');
+    renderQuestionarios();
+  }catch(e){
+    toast('Erro: '+e.message,'err');
+  }
+}
+
+async function apagarQuestionario(id){
+  if(!confirm('Apagar este questionário e todas as respostas recebidas?')) return;
+  try{
+    const{error}=await sb.from('crm_questionarios').delete().eq('id',id);
+    if(error) throw error;
+    toast('Questionário apagado.','ok');
+    renderQuestionarios();
+  }catch(e){
+    toast('Erro: '+e.message,'err');
+  }
+}
+
+async function verRespostasQuestionario(id){
+  const q=allQuestionarios.find(x=>x.id===id);
+  if(!q) return;
+  const{data,error}=await sb.from('crm_questionario_respostas').select('user_id,respostas,respondido_em').eq('questionario_id',id);
+  if(error){ toast('Erro ao carregar respostas: '+error.message,'err'); return; }
+  const respostas=data||[];
+  const perguntasHtml=(q.perguntas||[]).map(p=>{
+    if(p.tipo==='multipla'){
+      const contagem={};
+      (p.opcoes||[]).forEach(o=>contagem[o]=0);
+      respostas.forEach(r=>{ const v=r.respostas?.[p.id]; if(v!=null && contagem[v]!=null) contagem[v]++; });
+      const total=respostas.length||1;
+      return `<div style="margin-bottom:18px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">${p.texto}</div>
+        ${(p.opcoes||[]).map(o=>{
+          const c=contagem[o]||0; const pct=Math.round(c/total*100);
+          return `<div style="margin-bottom:6px">
+            <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted2);margin-bottom:2px"><span>${o}</span><span>${c} (${pct}%)</span></div>
+            <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--gold)"></div></div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+    const abertas=respostas.map(r=>r.respostas?.[p.id]).filter(v=>v&&String(v).trim());
+    return `<div style="margin-bottom:18px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">${p.texto}</div>
+      ${abertas.length
+        ? abertas.map(a=>`<div style="background:var(--surface2);border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:12.5px">${a}</div>`).join('')
+        : '<div style="font-size:12px;color:var(--muted2)">Nenhuma resposta ainda.</div>'}
+    </div>`;
+  }).join('');
+  const modal=document.createElement('div');
+  modal.className='modal-bg on';
+  modal.innerHTML=`
+    <div class="modal" style="width:560px">
+      <div class="modal-title">${q.titulo}<div style="font-size:11px;font-weight:400;color:var(--muted2);margin-top:4px;text-transform:none;letter-spacing:normal">${respostas.length} resposta(s)</div></div>
+      ${perguntasHtml}
+      <div class="modal-btns" style="border-top:none;padding-top:6px">
+        <button class="btn-cancel" onclick="this.closest('.modal-bg').remove()">Fechar</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e=>{ if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+/* ── Popup pro usuário responder — igual ao de Transmissões, mas checando
+   se já respondi antes de mostrar de novo. Chamado no setup do Realtime
+   (uma vez, no login) e sempre que um questionário novo entra no ar. */
+async function checkQuestionariosAtivos(){
+  try{
+    if(document.getElementById('questionario-popup')?.style.display==='flex') return; // já tem um aberto
+    const{data,error}=await sb.from('crm_questionarios').select('*').eq('ativo',true).order('criado_em',{ascending:false});
+    if(error||!data?.length) return;
+    for(const q of data){
+      if(q.criado_por===CU.id) continue; // não mostra pro admin que criou
+      if(_questionariosRespondidos.has(q.id)) continue;
+      const{data:jaRespondeu}=await sb.from('crm_questionario_respostas').select('id').eq('questionario_id',q.id).eq('user_id',CU.id).maybeSingle();
+      if(jaRespondeu){ _questionariosRespondidos.add(q.id); continue; }
+      openQuestionarioPopup(q);
+      return; // um de cada vez
+    }
+  }catch(e){ console.warn('[questionario] erro ao checar ativos:',e.message); }
+}
+
+function openQuestionarioPopup(q){
+  _questionarioAtual=q;
+  const body=document.getElementById('questionario-popup-body');
+  body.innerHTML=`
+    <div style="font-weight:700;font-size:17px;margin-bottom:4px;color:var(--gold2)">${q.titulo}</div>
+    <div style="font-size:11.5px;color:var(--muted2);margin-bottom:16px">Sua resposta ajuda a gente a melhorar.</div>
+    <div id="qr-perguntas">
+      ${(q.perguntas||[]).map(p=>`
+        <div class="fld" data-qpid="${p.id}">
+          <label>${p.texto}</label>
+          ${p.tipo==='multipla'
+            ? (p.opcoes||[]).map(o=>`
+                <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;cursor:pointer">
+                  <input type="radio" name="qr-${p.id}" value="${o}" style="accent-color:var(--gold);width:14px;height:14px">
+                  ${o}
+                </label>`).join('')
+            : `<textarea class="inp" style="min-height:64px" placeholder="Sua resposta..."></textarea>`}
+        </div>`).join('')}
+    </div>
+    <div id="qr-status" style="font-size:12px;margin-top:6px"></div>
+    <div class="modal-btns" style="border-top:none;padding-top:10px">
+      <button class="btn-save" onclick="enviarRespostaQuestionario('${q.id}')">Enviar respostas</button>
+    </div>`;
+  document.getElementById('questionario-popup').style.display='flex';
+}
+
+async function enviarRespostaQuestionario(id){
+  const q=_questionarioAtual;
+  if(!q||q.id!==id) return;
+  const statusEl=document.getElementById('qr-status');
+  const respostas={};
+  for(const p of (q.perguntas||[])){
+    const wrap=document.querySelector(`#qr-perguntas [data-qpid="${p.id}"]`);
+    if(!wrap) continue;
+    if(p.tipo==='multipla'){
+      const sel=wrap.querySelector('input[type=radio]:checked');
+      if(!sel){ statusEl.style.color='var(--red)'; statusEl.textContent=`Responda: "${p.texto}"`; return; }
+      respostas[p.id]=sel.value;
+    } else {
+      const val=wrap.querySelector('textarea').value.trim();
+      if(!val){ statusEl.style.color='var(--red)'; statusEl.textContent=`Responda: "${p.texto}"`; return; }
+      respostas[p.id]=val;
+    }
+  }
+  statusEl.style.color='var(--muted2)';
+  statusEl.textContent='Enviando...';
+  try{
+    const{error}=await sb.from('crm_questionario_respostas').insert({questionario_id:q.id,user_id:CU.id,respostas});
+    if(error) throw error;
+    _questionariosRespondidos.add(q.id);
+    document.getElementById('questionario-popup').style.display='none';
+    document.getElementById('questionario-popup-body').innerHTML='';
+    _questionarioAtual=null;
+    toast('Respostas enviadas — obrigado!','ok');
+    checkQuestionariosAtivos(); // se houver outro na fila, mostra em seguida
+  }catch(e){
+    statusEl.style.color='var(--red)';
+    statusEl.textContent='Erro ao enviar: '+e.message;
+  }
+}
+
+function fecharQuestionarioPopup(){
+  document.getElementById('questionario-popup').style.display='none';
+  document.getElementById('questionario-popup-body').innerHTML='';
+  _questionarioAtual=null;
+  // Não marca como respondido — reaparece no próximo login/checagem enquanto
+  // o questionário continuar no ar e a pessoa não tiver respondido de fato.
 }
 
 /* ═══ CAMPANHAS ═══
@@ -6470,12 +6841,15 @@ async function renderDocPreviews(docs){
     const el=document.getElementById('docprev-'+d.id);
     if(!el) continue;
     try{
-      let url=_docPreviewUrlCache[d.storage_path];
+      const cached=_docPreviewUrlCache[d.storage_path];
+      let url=(cached&&cached.expiresAt>Date.now())?cached.url:null;
       if(!url){
         const{data,error}=await sb.storage.from('crm-documentos').createSignedUrl(d.storage_path,3600);
         if(error||!data?.signedUrl) throw error||new Error('sem url');
         url=data.signedUrl;
-        _docPreviewUrlCache[d.storage_path]=url;
+        // Margem de 100s antes da expiração real, pra nunca servir uma URL
+        // "no fio" que expire durante o carregamento da imagem/PDF.
+        _docPreviewUrlCache[d.storage_path]={url,expiresAt:Date.now()+3500*1000};
       }
       if(d.tipo==='pdf'){
         el.innerHTML=`<iframe src="${url}" title="${(String(d.nome||'').replace(/"/g,'&quot;'))}"></iframe>`;
@@ -7397,14 +7771,14 @@ async function renderVendasPage(){
       <td style="color:var(--gold2);font-weight:700">${v.valor_credito?brl(v.valor_credito):'—'}</td>
       <td style="font-size:11.5px">${v.parcela?brl(v.parcela):'—'}</td>
       <td style="color:var(--muted2);font-size:11px">${v.grupo||'—'} / ${v.cota||'—'}</td>
-      <td><span class="badge ${badgeCls}">${v.status_venda==='SemRetorno'?'Cancelados':(v.status_venda||'Pendente')}</span></td>
+      <td><span class="badge ${badgeCls}">${v.status_venda==='SemRetorno'?'Cancelados':v.status_venda==='Cancelado'?'Reprovado':(v.status_venda||'Pendente')}</span></td>
       <td style="color:var(--muted2);font-size:11px">${fmtDt(v.created_at)}</td>
       <td>
         ${canManage?`<div style="display:flex;gap:4px">
           ${v.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${v.id}','Aprovado')">✅</button>`:''}
-          ${v.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${v.id}','Cancelado')">❌</button>`:''}
+          ${v.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${v.id}','Cancelado')" title="Reprovar">❌</button>`:''}
           ${v.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${v.id}','Pendente')" title="Voltar para Pendente">⏳</button>`:''}
-          <button class="act" onclick="revertVenda('${v.id}','${v.lead_id}')" style="border-color:var(--orange);color:var(--orange)" title="Reverter">↩</button>
+          ${isAdmin()?`<button class="act" onclick="revertVenda('${v.id}','${v.lead_id}')" style="border-color:var(--orange);color:var(--orange)" title="Reverter">↩</button>`:''}
         </div>`:'<button class="act" onclick="openDetail(\''+v.lead_id+'\',\'vendas\')">Ver →</button>'}
       </td>
     </tr>`;
@@ -7430,7 +7804,7 @@ async function buscarNomeLeadOnDemand(leadId, vendaId){
 /* ═══ REVERTER VENDA → LEAD NORMAL ═══ */
 async function revertVenda(vendaId, leadId){
   if(!confirm('Reverter esta venda? O lead voltará ao status anterior e a venda será removida.'))return;
-  if(!isAdmin()&&!isCoordenador()){toast('Sem permissão','err');return;}
+  if(!isAdmin()){toast('Sem permissão','err');return;}
   const vendaAntes=allVendas.find(v=>v.id===vendaId);
   // Remove docs from storage
   const docs=allDocs.filter(d=>d.venda_id===vendaId||d.lead_id===leadId);
@@ -8391,6 +8765,8 @@ function setupRealtime(){
   // Checa se há transmissão pendente pro usuário atual (popup de vídeo/áudio).
   // Fire-and-forget: não deve atrasar o setup do resto do realtime.
   checkTransmissoesAtivas();
+  // Idem para questionário ativo que eu ainda não respondi.
+  checkQuestionariosAtivos();
 
   // BUGFIX/OTIMIZAÇÃO: antes o canal escutava TODAS as mudanças de crm_leads/historico/
   // tarefas/vendas SEM FILTRO — ou seja, toda edição feita por qualquer vendedor era
@@ -8542,6 +8918,21 @@ function setupRealtime(){
       document.getElementById('transmissao-popup-body').innerHTML='';
       _transmissaoAtual=null;
     }
+  });
+
+  // ── crm_questionarios ── popup de pesquisa. Mesma ideia de crm_transmissoes:
+  // a RLS de SELECT já decide quem recebe (alvo/equipes_alvo/usuarios_alvo),
+  // então não precisa filtro aqui. Rodar/Parar (ativo true/false) chega como
+  // UPDATE e reflete na hora pra quem já está logado, sem reload.
+  ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_questionarios'},async(payload)=>{
+    if(payload.eventType==='DELETE'){
+      if(_questionarioAtual&&_questionarioAtual.id===payload.old?.id) fecharQuestionarioPopup();
+    } else {
+      const q=payload.new;
+      if(q?.ativo) checkQuestionariosAtivos();
+      else if(_questionarioAtual&&_questionarioAtual.id===q?.id) fecharQuestionarioPopup();
+    }
+    if(document.getElementById('page-questionarios')?.classList.contains('on')) renderQuestionarios();
   });
 
   // FEATURE: força logout IMEDIATO de quem já está com o app aberto na aba.
