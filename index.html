@@ -6761,7 +6761,7 @@ async function updateVendaStatus(id,status){
 
   // ── Sincronização Firebase do Ranking ──
   // REGRA: só sobe ao criar (Pendente) — controlado em saveVenda()
-  // Aqui: Cancelado → -qtdCotas | Cancelado→Aprovado → +qtdCotas | resto → nada
+  // Aqui: Cancelado → -qtdCotas | Cancelado→Aprovado → +qtdCotas | Cancelado→Pendente → +qtdCotas | resto → nada
   // statusAnterior vem SEMPRE do banco (fetch acima) — se null, não faz nada no Firebase
   console.log(`[FB Ranking] statusAnterior="${statusAnterior}" → novoStatus="${status}"`);
   if(typeof sincronizarVendaFirebase==='function' && vendaAntes && statusAnterior!==null){
@@ -6770,13 +6770,18 @@ async function updateVendaStatus(id,status){
     const equipe=await resolverEquipeParaVenda(lead,vendedor);
     let delta=0;
     if(status==='Cancelado' && statusAnterior!=='Cancelado'){
-      // Qualquer status → Cancelado: desconta
+      // Qualquer status → Cancelado: desconta (só essa venda, protegendo o
+      // indicador "vendas do dia" se ela não for de hoje — ver sincronizarVendaFirebase)
       delta=-(qtdCotas);
       console.log(`[FB Ranking] Cancelando (${statusAnterior}→Cancelado): delta=${delta}`);
     } else if(status==='Aprovado' && statusAnterior==='Cancelado'){
       // Cancelado → Aprovado: devolve (venda recuperada)
       delta=+(qtdCotas);
       console.log(`[FB Ranking] Re-aprovando (Cancelado→Aprovado): delta=+${delta}`);
+    } else if(status==='Pendente' && statusAnterior==='Cancelado'){
+      // Cancelado → Pendente: devolve pro ranking (venda reprovada foi revertida)
+      delta=+(qtdCotas);
+      console.log(`[FB Ranking] Revertendo para Pendente (Cancelado→Pendente): delta=+${delta}`);
     }
     // Pendente → Aprovado = delta 0 (já subiu ao criar)
     // Aprovado → Aprovado = bloqueado pelo guard acima (statusAnterior===status)
@@ -12702,9 +12707,21 @@ function normNome(n){
     .replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
 }
 
+// ── Verifica se uma data (venda.created_at) é HOJE em fuso BRT ──
+// Usado para não deixar reprovar/devolver uma venda de outro dia mexer no
+// indicador "vendas do dia" do ranking — só o total geral deve mudar nesse caso.
+function isDataDeHojeBRT(dataISO){
+  const fmt = d => d.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'});
+  const dataVenda = dataISO ? new Date(dataISO) : new Date();
+  return fmt(dataVenda) === fmt(new Date());
+}
+
 // ── Incrementa +1 na semana correta do vendedor no Firebase ──
 // delta = +1 (nova venda/pendente) ou -1 (cancelado/revertido)
-async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, delta=1){
+// opts.compensarSnapBase = true quando a venda NÃO é de hoje: soma o mesmo
+// delta no snapBase pra manter o indicador "vendas do dia" intacto, mexendo
+// só no total geral (usado por reprovar/devolver venda antiga).
+async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, delta=1, opts={}){
   const db = getDatabase(getFbApp(fbKey));
   const dadosRef = ref(db, `${raiz}/dados`);
   const snap = await get(dadosRef);
@@ -12776,12 +12793,12 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
     snapDiaVal.data === hojeUTC      // data UTC (legado — aceita para não zerar)
   );
 
+  let base;
   if(!snapExisteHoje){
     // Snap não existe OU é de dia anterior — grava novo com base no total pré-incremento
     // ATENÇÃO: o total pré-incremento DEVE ser calculado ANTES de qualquer runTransaction
     // Se o snap de ontem (UTC) ainda está ativo, significa que o ranking não zerou ainda —
     // preservamos a base do snap antigo para não perder vendas do dia.
-    let base;
     if(snapDiaVal && snapDiaVal.data === hojeUTC && snapDiaVal.data !== dataStr){
       // Era UTC de hoje mas BRT mudou — migra o snap preservando a base existente
       base = snapDiaVal.base;
@@ -12790,12 +12807,26 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
       // Snap de dia anterior — calcula base atual
       base = Array.isArray(vendData.s) ? vendData.s.reduce((a,b)=>a+b,0) : 0;
     }
+  } else {
+    base = snapDiaVal.base;
+  }
+
+  // ── COMPENSA O SNAPBASE QUANDO A VENDA NÃO É DE HOJE ──
+  // Reprovar ou devolver pra Pendente uma venda de outro dia não pode mexer
+  // no indicador "vendas do dia" (totalAtual - snapBase) — só no total geral.
+  // Somamos o mesmo delta na base pra que essa diferença fique intacta.
+  if(opts.compensarSnapBase){
+    base += delta;
+    console.log(`[Firebase Ranking ${fbKey}] snapBase compensado (${delta>0?'+'+delta:delta}) para "${vendData.nome}" — venda não é do dia, "vendas do dia" preservado.`);
+  }
+
+  if(!snapExisteHoje || opts.compensarSnapBase){
     await set(snapDiaRef, {
       data: dataStr,       // sempre grava com data BRT
       base,
       nome: vendData.nome
     });
-    console.log(`[Firebase Ranking ${fbKey}] SnapDia gravado para "${vendData.nome}": base=${base}`);
+    if(!snapExisteHoje) console.log(`[Firebase Ranking ${fbKey}] SnapDia gravado para "${vendData.nome}": base=${base}`);
   }
 
   // Agora incrementa o s[] com segurança
@@ -13056,8 +13087,9 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
 
     const nomeEquipe = (equipe.nome || '').toLowerCase();
     const semanaIdx = semanaDoMes(venda.created_at);
+    const vendaDeHoje = isDataDeHojeBRT(venda.created_at);
 
-    console.log(`[FB Ranking] ${delta>0?'+'+delta:delta} | vendedor="${vendedor.name}" | equipe="${equipe.nome}" | semana=${semanaIdx+1}`);
+    console.log(`[FB Ranking] ${delta>0?'+'+delta:delta} | vendedor="${vendedor.name}" | equipe="${equipe.nome}" | semana=${semanaIdx+1} | vendaDeHoje=${vendaDeHoje}`);
 
     let fbKey = null;
     if(nomeEquipe.includes('chis') || nomeEquipe.includes('danylo')){
@@ -13071,7 +13103,7 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
     }
 
     const raiz = await resolverRaizEquipe(fbKey, nomeEquipe);
-    const ok = await incrementarCotaFirebase(fbKey, raiz, vendedor.name, semanaIdx, delta);
+    const ok = await incrementarCotaFirebase(fbKey, raiz, vendedor.name, semanaIdx, delta, {compensarSnapBase: !vendaDeHoje});
     if(ok){
       const n=document.getElementById('notify');
       const msg = delta > 0 ? 'Ranking: +1 cota!' : 'Ranking: -1 cota';
