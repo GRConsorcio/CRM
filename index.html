@@ -18,7 +18,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 /* AUTH */
 #auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999}
 .auth-box{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:44px 40px;width:380px;text-align:center}
-.auth-logo{width:72px;height:72px;border-radius:16px;object-fit:cover;display:block;margin:0 auto 18px;box-shadow:0 4px 18px rgba(0,0,0,.45),0 0 0 1px rgba(201,168,76,.25)}
+.auth-logo{width:72px;height:72px;object-fit:contain;display:block;margin:0 auto 18px}
 .auth-title{font-size:22px;font-weight:900;color:var(--gold2);margin-bottom:4px}
 .auth-sub{font-size:12px;color:var(--muted2);margin-bottom:26px}
 .auth-tabs{display:flex;gap:0;margin-bottom:22px;background:var(--surface2);border-radius:8px;padding:3px}
@@ -442,6 +442,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <!-- Notificações (admin only) -->
       <div class="notif-bell-wrap" id="notif-bell-wrap" style="display:none">
         <button class="notif-bell" onclick="toggleNotifDropdown()" title="Notificações">
+          🔔
           <span id="notif-count" class="notif-count">0</span>
         </button>
         <div class="notif-dropdown" id="notif-dropdown">
