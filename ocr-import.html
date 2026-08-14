@@ -237,7 +237,14 @@ async function processarImagem(file, id){
 
     const texto = data.text || '';
     const palavras = (data.words || []);
-    const novos = parseTexto(texto);
+    // Folhas em tabela (colunas separadas de nome/telefone/e-mail) fazem o
+    // Tesseract devolver o texto solto FORA DE ORDEM — ele lê uma coluna
+    // inteira de cima a baixo, depois a próxima, em vez de linha por linha
+    // da tabela. Por isso a extração principal usa a POSIÇÃO de cada palavra
+    // na imagem (agrupando por linha física, não por linha de texto) —
+    // ver extrairRegistrosPorPosicao. Só cai pro texto corrido (parseTexto)
+    // se a imagem não trouxer coordenadas de palavra por algum motivo.
+    const novos = palavras.length ? extrairRegistrosPorPosicao(palavras) : parseTexto(texto);
     marcarEmailsConfiaveis(novos, palavras);
     novos.forEach(r => rows.push(r));
     barEl.style.width = '100%';
@@ -363,22 +370,95 @@ function desenharOverlay(source, palavras){
   });
 }
 
-/* Tesseract às vezes quebra um e-mail em várias "palavras" (no @, num ponto,
-   ou por causa de uma borda de tabela colada no texto) e dá confiança baixa
-   pro pedaço quebrado, mesmo com as letras certas — a quebra em si não é erro
-   de leitura. Tentar reconstruir o e-mail a partir do agrupamento de linha do
-   Tesseract (data.lines) se mostrou frágil (a linha às vezes mistura colunas
-   diferentes, ou um caractere de ruído no meio quebra a concatenação e o
-   regex não bate mais). É bem mais confiável reaproveitar os e-mails que
-   JÁ foram extraídos certinho de data.text por parseTexto/parseLinha (que já
-   funciona, é o texto corrido, não depende de como o Tesseract dividiu em
-   palavras) e, a partir deles, marcar qualquer palavra que seja um pedaço
-   de algum desses e-mails como confiável. */
+/* Agrupa palavras por linha FÍSICA (posição Y na imagem), não pela ordem do
+   texto que o Tesseract devolve — numa folha em tabela com colunas (nome |
+   telefone | e-mail), o texto solto sai por coluna inteira (todo mundo do
+   nome, depois todo mundo do telefone...), não linha por linha da tabela.
+   A posição na imagem continua certa mesmo quando a ordem do texto não está.
+   Dentro de cada linha, ordena da esquerda pra direita (ordem de leitura). */
+function agruparPalavrasEmLinhas(palavras){
+  const linhas = [];
+  [...palavras]
+    .sort((a,b) => ((a.bbox.y0+a.bbox.y1)/2) - ((b.bbox.y0+b.bbox.y1)/2))
+    .forEach(w => {
+      const meio = (w.bbox.y0+w.bbox.y1)/2;
+      const altura = w.bbox.y1 - w.bbox.y0;
+      const linha = linhas.find(l => Math.abs(l.y - meio) < Math.max(altura, l.altura) * 0.6);
+      if(linha){ linha.words.push(w); }
+      else linhas.push({y:meio, altura, words:[w]});
+    });
+  linhas.forEach(l => l.words.sort((a,b) => a.bbox.x0 - b.bbox.x0));
+  return linhas;
+}
+
+const DOMINIOS_EMAIL = ['gmail.com','hotmail.com','outlook.com','yahoo.com.br','yahoo.com',
+  'uol.com.br','bol.com.br','icloud.com','live.com','terra.com.br','globo.com','globomail.com','msn.com','ig.com.br'];
+
+/* Extrai nome/telefone/e-mail por LINHA FÍSICA (não por linha de texto
+   solto) — cada linha já vem com as palavras na ordem real da esquerda pra
+   direita, então uma tabela em colunas (nome | telefone | e-mail) funciona
+   mesmo se o Tesseract devolveu o texto corrido fora de ordem.
+   O "@" é um dos caracteres que o OCR mais erra (vira "&", "(", "8"...) — em
+   vez de depender de achar um "@" de verdade, procura pelo DOMÍNIO
+   (gmail.com, hotmail.com...), que é só letra/ponto e o OCR lê bem, e
+   reconstrói o e-mail juntando a parte antes do @ (que sobra correta, seja
+   grudada no mesmo token ou na palavra anterior) + "@" + o domínio batido. */
+function extrairRegistrosPorPosicao(palavras){
+  const linhas = agruparPalavrasEmLinhas(palavras.filter(w => w.text && w.text.trim() && w.bbox));
+  return linhas.map(linha => {
+    const ws = linha.words;
+    let email = '', telefone = '';
+    const nomeParts = [];
+    for(let i=0; i<ws.length; i++){
+      const bruto = ws[i].text.trim();
+      const semSujeira = bruto.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g,'');
+      const tLower = semSujeira.toLowerCase();
+
+      if(!email){
+        const dominio = DOMINIOS_EMAIL.find(d => tLower===d || tLower.endsWith(d));
+        if(dominio){
+          const inline = bruto.match(/^([a-zA-Z0-9._%+-]+)[^a-zA-Z0-9._%+-]+([a-zA-Z0-9.-]*)$/);
+          if(inline && inline[1] && tLower.endsWith(dominio)){
+            email = `${inline[1]}@${dominio}`;
+          } else if(i>0){
+            const anterior = ws[i-1].text.replace(/[^a-zA-Z0-9._%+-]+$/,'').trim();
+            email = anterior ? `${anterior}@${dominio}` : dominio;
+            if(anterior) nomeParts.pop(); // desfaz o push da palavra anterior — ela virou o local-part do e-mail
+          } else {
+            email = dominio;
+          }
+          continue;
+        }
+      }
+
+      if(!telefone && /^\+?[\d\s().-]+$/.test(bruto)){
+        const digitos = bruto.replace(/\D/g,'');
+        if(digitos.length>=8 && digitos.length<=13) telefone = digitos;
+        if(telefone) continue;
+      }
+
+      if(semSujeira) nomeParts.push(bruto);
+    }
+    const nome = nomeParts.join(' ').replace(/^[\W_]+|[\W_]+$/g,'').trim();
+    return {
+      nome: (nome.length>=2 && /[a-zA-ZÀ-ÿ]/.test(nome)) ? nome : '',
+      telefone, email
+    };
+  }).filter(r => r.nome || r.telefone || r.email);
+}
+
+/* Marca como confiável (visualmente) qualquer palavra que seja um pedaço de
+   algum e-mail que JÁ foi reconstruído certo por extrairRegistrosPorPosicao —
+   independe de como o Tesseract cortou/agrupou as palavras. */
 function marcarEmailsConfiaveis(linhasParseadas, palavrasFlat){
   const emails = linhasParseadas.map(r => r.email).filter(Boolean);
   if(!emails.length) return;
   palavrasFlat.forEach(w => {
-    const t = (w.text||'').trim();
+    // limpa sujeira nas pontas (ex: "ysalascarvalho0309&" -> "ysalascarvalho0309")
+    // pra comparar com o e-mail já reconstruído — o "&" era exatamente o
+    // caractere que o OCR leu errado no lugar do "@", então a palavra crua
+    // nunca vai bater literalmente contra o e-mail corrigido.
+    const t = (w.text||'').trim().replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g,'');
     if(t.length < 2) return; // fragmento de 1 char é sinal fraco demais, ignora
     if(emails.some(email => email.includes(t))) w._emailOk = true;
   });
