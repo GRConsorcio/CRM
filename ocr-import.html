@@ -237,8 +237,8 @@ async function processarImagem(file, id){
 
     const texto = data.text || '';
     const palavras = (data.words || []);
-    marcarEmailsConfiaveis(data, palavras);
     const novos = parseTexto(texto);
+    marcarEmailsConfiaveis(novos, palavras);
     novos.forEach(r => rows.push(r));
     barEl.style.width = '100%';
     const baixaConf = palavras.filter(w => !w._emailOk && w.confidence < 60).length;
@@ -363,43 +363,25 @@ function desenharOverlay(source, palavras){
   });
 }
 
-/* Tesseract às vezes quebra um e-mail em duas "palavras" bem no @ (ex:
-   "fulano@" + "gmail.com") e dá confiança baixa pro pedaço quebrado, mesmo
-   quando as letras estão certinhas — a quebra em si não é erro de leitura.
-   Em vez de confiar só na confiança bruta, junta as palavras de cada linha,
-   procura padrão de e-mail no texto da linha inteira e marca como confiável
-   TODAS as palavras que fazem parte de um e-mail batido (@gmail, @hotmail,
-   @outlook, .com.br, etc — qualquer coisa que bata o formato usuario@dominio). */
-function marcarEmailsConfiaveis(data, palavrasFlat){
-  const linhas = data.lines && data.lines.length ? data.lines : agruparPalavrasEmLinhas(palavrasFlat);
-  const emailRe = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-  linhas.forEach(linha => {
-    const palavrasDaLinha = linha.words || [];
-    if(!palavrasDaLinha.length) return;
-    const textoLinha = palavrasDaLinha.map(w=>w.text).join('');
-    const matches = textoLinha.match(emailRe);
-    if(!matches) return;
-    matches.forEach(email => {
-      palavrasDaLinha.forEach(w => {
-        if(w.text && email.includes(w.text)) w._emailOk = true;
-      });
-    });
+/* Tesseract às vezes quebra um e-mail em várias "palavras" (no @, num ponto,
+   ou por causa de uma borda de tabela colada no texto) e dá confiança baixa
+   pro pedaço quebrado, mesmo com as letras certas — a quebra em si não é erro
+   de leitura. Tentar reconstruir o e-mail a partir do agrupamento de linha do
+   Tesseract (data.lines) se mostrou frágil (a linha às vezes mistura colunas
+   diferentes, ou um caractere de ruído no meio quebra a concatenação e o
+   regex não bate mais). É bem mais confiável reaproveitar os e-mails que
+   JÁ foram extraídos certinho de data.text por parseTexto/parseLinha (que já
+   funciona, é o texto corrido, não depende de como o Tesseract dividiu em
+   palavras) e, a partir deles, marcar qualquer palavra que seja um pedaço
+   de algum desses e-mails como confiável. */
+function marcarEmailsConfiaveis(linhasParseadas, palavrasFlat){
+  const emails = linhasParseadas.map(r => r.email).filter(Boolean);
+  if(!emails.length) return;
+  palavrasFlat.forEach(w => {
+    const t = (w.text||'').trim();
+    if(t.length < 2) return; // fragmento de 1 char é sinal fraco demais, ignora
+    if(emails.some(email => email.includes(t))) w._emailOk = true;
   });
-}
-// Fallback só pro caso raro de a resposta do Tesseract não trazer data.lines —
-// agrupa palavras cuja caixa (bbox) se sobrepõe verticalmente, aproximando "linha".
-function agruparPalavrasEmLinhas(palavras){
-  const linhas = [];
-  [...palavras].sort((a,b)=>(a.bbox?.y0||0)-(b.bbox?.y0||0)).forEach(w => {
-    if(!w.bbox){ linhas.push({words:[w]}); return; }
-    const meio = (w.bbox.y0+w.bbox.y1)/2;
-    const linha = linhas.find(l => {
-      const ref = l.words[0].bbox;
-      return ref && meio >= ref.y0 - 4 && meio <= ref.y1 + 4;
-    });
-    if(linha) linha.words.push(w); else linhas.push({words:[w]});
-  });
-  return linhas;
 }
 
 /* ── Reconhecimento de padrões: nome / telefone / e-mail ──
