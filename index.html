@@ -9504,10 +9504,24 @@ async function importLeads(leads,fonte){
     return;
   }
 
-  // Insert in batches of 50
+  // Insert in batches of 50. Uma queda momentânea de conexão (comum em
+  // 4G/wifi de loja) fazia o fetch falhar, o lote inteiro virava "erro" sem
+  // nenhuma tentativa nova e sem NENHUMA mensagem — o vendedor só via
+  // "1 erro" sem saber se era falha de rede (tenta de novo) ou dado inválido
+  // (precisa corrigir). Agora tenta de novo automaticamente antes de desistir
+  // e guarda a mensagem real do último erro pra mostrar.
+  let ultimoErro=null;
   for(let i=0;i<batch.length;i+=50){
-    const{data,error}=await sb.from('crm_leads').insert(batch.slice(i,i+50)).select();
-    if(error){errs+=Math.min(50,batch.length-i);console.error('Import error:',error);}
+    const chunk=batch.slice(i,i+50);
+    let data=null, error=null;
+    for(let tentativa=1;tentativa<=3;tentativa++){
+      const res=await sb.from('crm_leads').insert(chunk).select();
+      data=res.data; error=res.error;
+      if(!error) break;
+      console.warn(`[importLeads] tentativa ${tentativa}/3 falhou:`,error.message);
+      if(tentativa<3) await new Promise(r=>setTimeout(r,900*tentativa));
+    }
+    if(error){errs+=chunk.length;ultimoErro=error.message;console.error('Import error:',error);}
     else{ok+=data?.length||0;if(data)allLeads.unshift(...data);}
   }
 
@@ -9523,12 +9537,13 @@ async function importLeads(leads,fonte){
     <strong>${fonte}</strong><span style="color:var(--muted2);font-size:11px">${now}</span></div>
     <div style="color:var(--green)">${ok} importado${ok!==1?'s':''}</div>
     ${dups?`<div style="color:var(--orange)">${dups} duplicado${dups!==1?'s':''} ignorado${dups!==1?'s':''}</div>`:''}
-    ${errs?`<div style="color:var(--red)">${errs} erro${errs!==1?'s':''}</div>`:''}`;
+    ${errs?`<div style="color:var(--red)">${errs} erro${errs!==1?'s':''}${ultimoErro?': '+ultimoErro:''}</div>`:''}`;
   if(log.querySelector('.empty')) log.innerHTML='';
   log.prepend(entry);
 
   let msg = `${ok} lead${ok!==1?'s':''} importado${ok!==1?'s':''}!`;
   if(dups) msg += ` (${dups} duplicados ignorados)`;
+  if(errs) msg += ultimoErro ? ` — ${errs} erro(s): ${ultimoErro}` : ` (${errs} erro(s) — tente novamente)`;
   toast(msg, ok>0?'ok':'err');
 }
 
