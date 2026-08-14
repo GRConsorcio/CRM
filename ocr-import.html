@@ -101,6 +101,7 @@ td.col-actions{width:36px;text-align:center}
     <div class="opts">
       <label><input type="checkbox" id="opt-preprocess" checked> Melhorar imagem antes de ler (recomendado p/ fotos de celular)</label>
       <label><input type="checkbox" id="opt-append" checked> Somar com resultados já lidos (em vez de substituir)</label>
+      <label><input type="checkbox" id="opt-girar180"> Fotos de cabeça pra baixo (girar 180° antes de ler)</label>
       <label style="gap:8px">Tipo de folha:
         <select id="opt-modo" style="background:var(--s2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:12px">
           <option value="limpa">Impressa, limpa</option>
@@ -215,8 +216,11 @@ async function processarImagem(file, id){
     statusEl.textContent = 'preparando...';
     const modo = document.getElementById('opt-modo').value; // 'limpa' | 'rabiscada'
     let source = file;
+    if(document.getElementById('opt-girar180').checked){
+      source = await girarImagem180(source);
+    }
     if(document.getElementById('opt-preprocess').checked){
-      source = await preprocessarImagem(file);
+      source = await preprocessarImagem(source);
     }
 
     statusEl.textContent = 'carregando leitor...';
@@ -293,6 +297,28 @@ async function processarImagem(file, id){
   }finally{
     _progressoAtual = null;
   }
+}
+
+/* Gira a imagem 180° antes de ler — mais simples e confiável do que tentar
+   detectar automaticamente a orientação (o Tesseract não faz isso sozinho
+   no modo usado aqui, e uma detecção "esperta" própria não daria pra testar
+   direito sem ver o resultado ao vivo). Fica a critério de quem envia a
+   foto marcar quando ela veio de cabeça pra baixo. */
+function girarImagem180(source){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.translate(canvas.width, canvas.height);
+      ctx.rotate(Math.PI);
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('falha ao girar imagem')), 'image/png');
+    };
+    img.onerror = () => reject(new Error('não foi possível abrir a imagem'));
+    img.src = source instanceof Blob ? URL.createObjectURL(source) : source;
+  });
 }
 
 /* Binarização adaptativa (método de Otsu): acha sozinho o ponto de corte
