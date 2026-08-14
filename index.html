@@ -839,6 +839,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <div class="panel">
       <div class="panel-head">
         <div class="panel-title">Membros da Equipe</div>
+        <button class="btn-save" id="btn-novo-usuario" style="display:none" onclick="openNovoUsuarioModal()">+ Novo Usuário</button>
       </div>
       <div class="tbl-wrap">
         <table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Leads</th><th>Fechamentos</th><th></th></tr></thead>
@@ -1669,6 +1670,39 @@ document.addEventListener('DOMContentLoaded', function(){
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('role')">Cancelar</button>
       <button class="btn-save" onclick="saveRole()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Novo usuário (admin cria login) -->
+<div class="modal-bg" id="modal-novo-usuario">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-title">Novo Usuário</div>
+    <div class="fld"><label>Nome</label>
+      <input class="inp" id="nu-nome" placeholder="Nome completo">
+    </div>
+    <div class="fld"><label>E-mail</label>
+      <input class="inp" id="nu-email" type="email" placeholder="nome@grconsorcio.com.br">
+    </div>
+    <div class="fld"><label>Senha (opcional — em branco gera uma temporária)</label>
+      <input class="inp" id="nu-senha" type="text" placeholder="Mínimo 6 caracteres">
+    </div>
+    <div class="fld"><label>Perfil</label>
+      <select class="inp" id="nu-role">
+        <option value="vendedor">Vendedor</option>
+        <option value="supervisor">Supervisor</option>
+        <option value="coordenador">Coordenador</option>
+        <option value="admin">Admin</option>
+        <option value="ceo">CEO (somente leitura)</option>
+      </select>
+    </div>
+    <div class="fld"><label>Equipe (opcional)</label>
+      <select class="inp" id="nu-equipe"><option value="">— Nenhuma —</option></select>
+    </div>
+    <div id="nu-status" style="font-size:12px;margin-bottom:8px"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('novo-usuario')">Cancelar</button>
+      <button class="btn-save" id="nu-btn-salvar" onclick="criarUsuario()">Criar</button>
     </div>
   </div>
 </div>
@@ -5034,6 +5068,8 @@ function renderTarefas(){
 
 /* ═══ EQUIPE ═══ */
 function renderEquipe(){
+  const btnNovo=document.getElementById('btn-novo-usuario');
+  if(btnNovo) btnNovo.style.display=isAdmin()?'inline-flex':'none';
   document.getElementById('eq-tbody').innerHTML=allUsers.map(u=>{
     const leads=allLeads.filter(l=>l.responsavel_id===u.user_id).length;
     const fechs=allLeads.filter(l=>l.responsavel_id===u.user_id&&l.status==='Fechado').length;
@@ -6988,6 +7024,54 @@ async function saveRole(){
   const i=allUsers.findIndex(u=>u.user_id===roleUserId);
   if(i>-1) allUsers[i].role=role;
   closeModal('role');toast('Perfil atualizado!','ok');renderEquipe();
+}
+
+/* ═══ NOVO USUÁRIO (admin cria login) ═══
+   Mesmo motivo do delUser: criar login por outra pessoa exige a
+   service_role key, então passa pela Edge Function 'create-user'. */
+function openNovoUsuarioModal(){
+  if(!isAdmin()){toast('Sem permissão','err');return;}
+  document.getElementById('nu-nome').value='';
+  document.getElementById('nu-email').value='';
+  document.getElementById('nu-senha').value='';
+  document.getElementById('nu-role').value='vendedor';
+  document.getElementById('nu-status').textContent='';
+  const eqSel=document.getElementById('nu-equipe');
+  eqSel.innerHTML='<option value="">— Nenhuma —</option>'+allEquipes.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+  document.getElementById('modal-novo-usuario').classList.add('on');
+}
+async function criarUsuario(){
+  const nome=v('nu-nome'), email=v('nu-email').toLowerCase(), senha=v('nu-senha'),
+    role=v('nu-role'), equipeId=v('nu-equipe')||null;
+  const statusEl=document.getElementById('nu-status'), btn=document.getElementById('nu-btn-salvar');
+  if(!nome||!email){statusEl.style.color='var(--red)';statusEl.textContent='Nome e e-mail são obrigatórios.';return;}
+  btn.disabled=true; btn.textContent='Criando...';
+  statusEl.style.color='var(--muted2)'; statusEl.textContent='';
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    if(!session?.access_token){toast('Sessão expirada, faça login novamente','err');return;}
+    const resp=await fetch(SUPA_URL+'/functions/v1/create-user',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({name:nome,email,password:senha||undefined,role,equipe_id:equipeId})
+    });
+    const out=await resp.json().catch(()=>({}));
+    if(!resp.ok||!out.success){
+      statusEl.style.color='var(--red)';
+      statusEl.textContent=out.error||'Erro ao criar usuário';
+      return;
+    }
+    allUsers.push({user_id:out.user_id,name:nome,email,role,ativo:true});
+    if(equipeId) allMembroEquipes.push({equipe_id:equipeId,user_id:out.user_id,cargo:'membro'});
+    closeModal('novo-usuario');
+    renderEquipe();
+    toast(out.senha_temporaria?`Usuário criado! Senha temporária: ${out.senha_temporaria}`:'Usuário criado!','ok');
+  }catch(e){
+    statusEl.style.color='var(--red)';
+    statusEl.textContent='Erro: '+e.message;
+  }finally{
+    btn.disabled=false; btn.textContent='Criar';
+  }
 }
 
 // Exclusão real: remove o login do usuário no Supabase Auth (não só o perfil).
