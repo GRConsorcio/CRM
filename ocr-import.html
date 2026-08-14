@@ -122,6 +122,7 @@ td.col-actions{width:36px;text-align:center}
       <div class="actions">
         <button class="btn-sm" onclick="addRow()">+ Linha manual</button>
         <button class="btn-sm" onclick="removerDuplicados()">🧹 Remover duplicados</button>
+        <button class="btn-sm" onclick="limparTudo()" style="color:var(--red)">🗑️ Limpar tudo</button>
         <button class="btn-outline" onclick="copiarTexto()">📋 Copiar (Nome | Telefone | E-mail)</button>
         <button class="btn-outline" onclick="exportarCSV()">Exportar .csv</button>
         <button class="btn-primary" onclick="exportarXLSX()">⬇ Exportar .xlsx</button>
@@ -138,6 +139,21 @@ td.col-actions{width:36px;text-align:center}
 <script>
 let rows = []; // {nome, telefone, email}
 let rowSeq = 0;
+
+// Salva no navegador (localStorage) pra não perder o que já foi somado se a
+// aba fechar ou recarregar — quem usa essa ferramenta vai processando várias
+// fotos ao longo do tempo, então perder tudo num F5 seria bem ruim.
+const CHAVE_LOCAL = 'ocr_import_rows_v1';
+function salvarLocal(){
+  try{ localStorage.setItem(CHAVE_LOCAL, JSON.stringify(rows)); }
+  catch(e){ console.warn('[salvarLocal] não deu pra salvar:', e.message); }
+}
+function carregarLocal(){
+  try{
+    const salvo = localStorage.getItem(CHAVE_LOCAL);
+    if(salvo){ const dados = JSON.parse(salvo); if(Array.isArray(dados)) rows = dados; }
+  }catch(e){ console.warn('[carregarLocal] não deu pra carregar:', e.message); }
+}
 
 function toast(msg, type){
   const t = document.getElementById('toast');
@@ -586,6 +602,7 @@ function parseLinha(linhaBruta){
 
 /* ── Tabela editável ── */
 function renderTable(){
+  salvarLocal();
   const wrap = document.getElementById('table-wrap');
   document.getElementById('count').textContent = rows.length
     ? `${rows.length} registro${rows.length!==1?'s':''} — revise antes de exportar`
@@ -597,9 +614,9 @@ function renderTable(){
   wrap.innerHTML = `<table>
     <thead><tr><th style="width:34%">Nome</th><th style="width:23%">Telefone</th><th style="width:33%">E-mail</th><th></th></tr></thead>
     <tbody>${rows.map((r,i)=>`<tr>
-      <td><input class="cell-input" value="${escapeAttr(r.nome)}" oninput="rows[${i}].nome=this.value"></td>
-      <td><input class="cell-input ${r.telefone && r.telefone.replace(/\D/g,'').length<8?'warn':''}" value="${escapeAttr(r.telefone)}" oninput="rows[${i}].telefone=this.value"></td>
-      <td><input class="cell-input ${r.email && !r.email.includes('@')?'warn':''}" value="${escapeAttr(r.email)}" oninput="rows[${i}].email=this.value"></td>
+      <td><input class="cell-input" value="${escapeAttr(r.nome)}" oninput="rows[${i}].nome=this.value" onchange="salvarLocal()"></td>
+      <td><input class="cell-input ${r.telefone && r.telefone.replace(/\D/g,'').length<8?'warn':''}" value="${escapeAttr(r.telefone)}" oninput="rows[${i}].telefone=this.value" onchange="salvarLocal()"></td>
+      <td><input class="cell-input ${r.email && !r.email.includes('@')?'warn':''}" value="${escapeAttr(r.email)}" oninput="rows[${i}].email=this.value" onchange="salvarLocal()"></td>
       <td class="col-actions"><button class="btn-sm" onclick="removerLinha(${i})" title="Remover">✕</button></td>
     </tr>`).join('')}</tbody>
   </table>`;
@@ -626,6 +643,15 @@ function removerDuplicados(){
   rows = semDuplicata;
   renderTable();
   toast(removidos ? `${removidos} duplicado(s) removido(s)` : 'Nenhum duplicado encontrado', removidos ? 'ok' : 'err');
+}
+
+function limparTudo(){
+  if(!rows.length){ toast('Já está vazio','err'); return; }
+  if(!confirm(`Apagar todos os ${rows.length} registro(s) salvos? Não dá pra desfazer.`)) return;
+  rows = [];
+  document.getElementById('queue').innerHTML = '';
+  renderTable();
+  toast('Tudo limpo','ok');
 }
 
 /* ── Exportação ── */
@@ -660,7 +686,9 @@ function baixarArquivo(blob, nome){
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
 
+carregarLocal();
 renderTable();
+if(rows.length) toast(`${rows.length} registro(s) recuperado(s) da última vez`,'ok');
 </script>
 </body>
 </html>
