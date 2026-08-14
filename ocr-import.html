@@ -68,6 +68,14 @@ td.col-actions{width:36px;text-align:center}
 .raw-toggle{margin-top:16px}
 .raw-toggle summary{cursor:pointer;font-size:11.5px;color:var(--muted);user-select:none}
 .raw-block{margin-top:10px;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;white-space:pre-wrap;max-height:220px;overflow-y:auto;color:var(--muted2)}
+.raw-block .w-ok{color:var(--text)}
+.raw-block .w-low{color:var(--red);background:rgba(217,79,79,0.15);border-radius:3px;padding:0 2px}
+.raw-block .w-mid{color:var(--gold2)}
+.overlay-wrap{margin-top:10px;max-width:100%;overflow:auto;border:1px solid var(--border);border-radius:8px}
+.overlay-wrap canvas{display:block;max-width:100%;height:auto}
+.legend{display:flex;gap:14px;margin-top:8px;font-size:10.5px;color:var(--muted2)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
 
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:11px 20px;border-radius:8px;font-size:12.5px;opacity:0;pointer-events:none;transition:all .25s;z-index:999;box-shadow:0 10px 30px rgba(0,0,0,0.4)}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -91,9 +99,16 @@ td.col-actions{width:36px;text-align:center}
       <div class="drop-sub">Pode selecionar várias de uma vez — cada imagem vira uma "folha" processada em sequência</div>
     </div>
     <div class="opts">
-      <label><input type="checkbox" id="opt-preprocess" checked> Melhorar contraste antes de ler (recomendado p/ fotos de celular)</label>
+      <label><input type="checkbox" id="opt-preprocess" checked> Melhorar imagem antes de ler (recomendado p/ fotos de celular)</label>
       <label><input type="checkbox" id="opt-append" checked> Somar com resultados já lidos (em vez de substituir)</label>
+      <label style="gap:8px">Tipo de folha:
+        <select id="opt-modo" style="background:var(--s2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:12px">
+          <option value="limpa">Impressa, limpa</option>
+          <option value="rabiscada" selected>Impressa com rabiscos/marcações à mão em cima</option>
+        </select>
+      </label>
     </div>
+    <div class="drop-sub" style="margin-top:8px">No modo "com rabiscos", cada palavra reconhecida fica marcada por confiança (verde = confiável, vermelho = duvidosa) — é onde provavelmente caiu em cima de um rabisco. Revise essas antes de exportar.</div>
     <div class="queue" id="queue"></div>
   </div>
 
@@ -168,49 +183,110 @@ async function handleFiles(files){
   renderTable();
 }
 
+/* Um worker só, reaproveitado entre as imagens — criar um novo por imagem
+   é lento (baixa o modelo de novo) e o Tesseract não gosta de vários
+   workers simultâneos no navegador mesmo. O logger é global ao worker (não
+   por chamada de recognize), então guardamos em _progressoAtual pra onde
+   mandar o progresso da imagem sendo lida no momento. */
+let _worker = null;
+let _progressoAtual = null; // {statusEl, barEl}
+async function getWorker(){
+  if(_worker) return _worker;
+  _worker = await Tesseract.createWorker('por', 1, {
+    logger: m => {
+      if(!_progressoAtual) return;
+      if(m.status === 'recognizing text'){
+        const pct = Math.round((m.progress||0)*100);
+        _progressoAtual.statusEl.textContent = `lendo (${pct}%)`;
+        _progressoAtual.barEl.style.width = pct+'%';
+      } else if(m.status){
+        _progressoAtual.statusEl.textContent = m.status.replace(/_/g,' ');
+      }
+    }
+  });
+  return _worker;
+}
+
 async function processarImagem(file, id){
   const statusEl = document.getElementById(id+'-status');
   const barEl = document.getElementById(id+'-bar');
   try{
     statusEl.textContent = 'preparando...';
+    const modo = document.getElementById('opt-modo').value; // 'limpa' | 'rabiscada'
     let source = file;
     if(document.getElementById('opt-preprocess').checked){
       source = await preprocessarImagem(file);
     }
-    statusEl.textContent = 'lendo (0%)';
-    const { data } = await Tesseract.recognize(source, 'por', {
-      logger: m => {
-        if(m.status === 'recognizing text'){
-          const pct = Math.round((m.progress||0)*100);
-          statusEl.textContent = `lendo (${pct}%)`;
-          barEl.style.width = pct+'%';
-        } else if(m.status){
-          statusEl.textContent = m.status.replace(/_/g,' ');
-        }
-      }
+
+    statusEl.textContent = 'carregando leitor...';
+    const worker = await getWorker();
+    // PSM = como o Tesseract tenta entender o layout da página.
+    // "limpa": trata como coluna única de texto (bom pra lista organizada).
+    // "rabiscada": trata palavras como espalhadas, sem assumir blocos/linhas
+    // limpas — rabisco por cima quebra a leitura de "linha reta" e esse modo
+    // é mais tolerante a isso, lendo palavra por palavra em vez de tentar
+    // reconstruir uma estrutura de parágrafo que não existe de verdade.
+    await worker.setParameters({
+      tessedit_pageseg_mode: modo === 'rabiscada' ? Tesseract.PSM.SPARSE_TEXT : Tesseract.PSM.SINGLE_COLUMN
     });
+
+    statusEl.textContent = 'lendo (0%)';
+    _progressoAtual = { statusEl, barEl };
+    const { data } = await worker.recognize(source);
+    _progressoAtual = null;
+
     const texto = data.text || '';
+    const palavras = (data.words || []);
     const novos = parseTexto(texto);
     novos.forEach(r => rows.push(r));
     barEl.style.width = '100%';
-    statusEl.textContent = `✓ ${novos.length} registro(s)`;
+    const baixaConf = palavras.filter(w => w.confidence < 60).length;
+    statusEl.textContent = `✓ ${novos.length} registro(s)${baixaConf?`, ${baixaConf} palavra(s) duvidosa(s)`:''}`;
     statusEl.classList.add('done');
+
     if(texto.trim()){
       const details = document.createElement('details');
       details.className = 'raw-toggle';
-      details.innerHTML = `<summary>Ver texto bruto reconhecido nesta imagem</summary><div class="raw-block">${escapeHtml(texto.trim())}</div>`;
+      details.open = baixaConf > 0; // já abre sozinho quando tem coisa duvidosa pra revisar
+      const textoColorido = palavras.length
+        ? palavras.map(w => {
+            const cls = w.confidence < 60 ? 'w-low' : (w.confidence < 80 ? 'w-mid' : 'w-ok');
+            return `<span class="${cls}" title="confiança: ${Math.round(w.confidence)}%">${escapeHtml(w.text)}</span>`;
+          }).join(' ')
+        : escapeHtml(texto.trim());
+      details.innerHTML = `<summary>Ver texto reconhecido nesta imagem ${baixaConf?`(${baixaConf} palavra${baixaConf!==1?'s':''} em vermelho = provável rabisco/erro)`:''}</summary>
+        <div class="raw-block">${textoColorido}</div>
+        <div class="legend"><span><i style="background:var(--text)"></i>confiável</span><span><i style="background:var(--gold2)"></i>duvidosa</span><span><i style="background:var(--red)"></i>provável ruído/rabisco</span></div>`;
       document.getElementById(id).after(details);
+
+      // Mostra a imagem com caixinhas coloridas por confiança em cima de cada
+      // palavra — assim dá pra ver DIRETO no rabisco por que aquela palavra
+      // saiu errada, em vez de só confiar (ou desconfiar) do texto solto.
+      if(palavras.length){
+        try{
+          const overlayCanvas = await desenharOverlay(source, palavras);
+          const overlayWrap = document.createElement('div');
+          overlayWrap.className = 'overlay-wrap';
+          overlayWrap.appendChild(overlayCanvas);
+          details.querySelector('.raw-block').after(overlayWrap);
+        }catch(e){ console.warn('[overlay]', e); }
+      }
     }
   }catch(e){
     console.error('[OCR]', e);
     statusEl.textContent = 'falhou: '+(e.message||'erro');
     statusEl.classList.add('err');
+  }finally{
+    _progressoAtual = null;
   }
 }
 
-/* Escala de cinza + aumento de contraste via canvas — fotos de celular (luz
-   desigual, sombra, papel amarelado) melhoram bastante na leitura com isso,
-   sem precisar de nenhuma lib extra além do que o navegador já tem. */
+/* Binarização adaptativa (método de Otsu): acha sozinho o ponto de corte
+   claro/escuro ideal PRA CADA foto (em vez de um contraste fixo que funciona
+   numa imagem e estraga outra) e transforma tudo em preto-e-branco puro —
+   é o formato que o Tesseract lê melhor, e como rabisco geralmente é mais
+   fino/claro que letra impressa em negrito, esse corte tende a apagar boa
+   parte do rabisco mantendo o texto impresso legível. */
 function preprocessarImagem(file){
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -221,10 +297,17 @@ function preprocessarImagem(file){
       ctx.drawImage(img, 0, 0);
       const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const d = imgData.data;
-      const contrast = 1.35, brightness = 8;
-      for(let i=0; i<d.length; i+=4){
-        const gray = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
-        const v = Math.min(255, Math.max(0, (gray-128)*contrast + 128 + brightness));
+
+      const hist = new Array(256).fill(0);
+      const gray = new Uint8ClampedArray(d.length/4);
+      for(let i=0, p=0; i<d.length; i+=4, p++){
+        const g = Math.round(d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114);
+        gray[p] = g;
+        hist[g]++;
+      }
+      const threshold = otsuThreshold(hist, gray.length);
+      for(let i=0, p=0; i<d.length; i+=4, p++){
+        const v = gray[p] > threshold ? 255 : 0;
         d[i]=d[i+1]=d[i+2]=v;
       }
       ctx.putImageData(imgData, 0, 0);
@@ -232,6 +315,49 @@ function preprocessarImagem(file){
     };
     img.onerror = () => reject(new Error('não foi possível abrir a imagem'));
     img.src = URL.createObjectURL(file);
+  });
+}
+function otsuThreshold(hist, total){
+  let sum = 0;
+  for(let i=0;i<256;i++) sum += i*hist[i];
+  let sumB=0, wB=0, maxVar=0, threshold=127;
+  for(let i=0;i<256;i++){
+    wB += hist[i];
+    if(wB===0) continue;
+    const wF = total - wB;
+    if(wF===0) break;
+    sumB += i*hist[i];
+    const mB = sumB/wB, mF = (sum-sumB)/wF;
+    const varBetween = wB*wF*(mB-mF)*(mB-mF);
+    if(varBetween > maxVar){ maxVar = varBetween; threshold = i; }
+  }
+  return threshold;
+}
+
+/* Desenha a imagem processada com um retângulo colorido (por confiança) em
+   cima de cada palavra reconhecida — a forma mais direta de comparar "o que
+   o sistema leu" com "o que realmente tem no papel, rabisco incluso". */
+function desenharOverlay(source, palavras){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      palavras.forEach(w => {
+        if(!w.bbox) return;
+        const conf = w.confidence;
+        const cor = conf < 60 ? '#D94F4F' : (conf < 80 ? '#E2C46A' : '#3EC99A');
+        const {x0,y0,x1,y1} = w.bbox;
+        ctx.strokeStyle = cor;
+        ctx.lineWidth = Math.max(1, canvas.width/500);
+        ctx.strokeRect(x0, y0, x1-x0, y1-y0);
+      });
+      resolve(canvas);
+    };
+    img.onerror = () => reject(new Error('falha ao desenhar overlay'));
+    img.src = source instanceof Blob ? URL.createObjectURL(source) : source;
   });
 }
 
