@@ -120,6 +120,7 @@ td.col-actions{width:36px;text-align:center}
       </div>
       <div class="actions">
         <button class="btn-sm" onclick="addRow()">+ Linha manual</button>
+        <button class="btn-sm" onclick="removerDuplicados()">🧹 Remover duplicados</button>
         <button class="btn-outline" onclick="copiarTexto()">📋 Copiar (Nome | Telefone | E-mail)</button>
         <button class="btn-outline" onclick="exportarCSV()">Exportar .csv</button>
         <button class="btn-primary" onclick="exportarXLSX()">⬇ Exportar .xlsx</button>
@@ -398,6 +399,16 @@ function agruparPalavrasEmLinhas(palavras){
 const DOMINIOS_EMAIL = ['gmail.com','hotmail.com','outlook.com','yahoo.com.br','yahoo.com',
   'uol.com.br','bol.com.br','icloud.com','live.com','terra.com.br','globo.com','globomail.com','msn.com','ig.com.br'];
 
+// Nem todo e-mail é gmail/hotmail/outlook — várias listas reais têm domínio
+// próprio de empresa (ex: "@drtconsultoria.com", "@jmnobreaks.com.br"). Pra
+// esses, não dá pra confiar numa lista fixa; em vez disso aceita qualquer
+// token com CARA de domínio (rótulos separados por ponto, terminando numa
+// sigla de 2+ letras) como candidato — junto com o "@" quase sempre errado
+// pelo OCR, é o melhor sinal disponível sem conhecer o domínio de antemão.
+function pareceDominio(t){
+  return t.length>=6 && /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(t);
+}
+
 /* Um símbolo/bolinha desenhado à mão do lado do nome (comum nessas listas)
    não carrega nenhuma informação — é só uma marca visual. Um token com 1-2
    caracteres e nenhuma letra/dígito de verdade é ruído, não dado. */
@@ -430,7 +441,7 @@ function extrairRegistrosPorPosicao(palavras){
       if(ehSimboloDecorativo(bruto, semSujeira)) continue;
 
       if(!email){
-        const dominio = DOMINIOS_EMAIL.find(d => tLower===d || tLower.endsWith(d));
+        const dominio = DOMINIOS_EMAIL.find(d => tLower===d || tLower.endsWith(d)) || (pareceDominio(tLower) ? tLower : null);
         if(dominio){
           const inline = bruto.match(/^([a-zA-Z0-9._%+-]+)[^a-zA-Z0-9._%+-]+([a-zA-Z0-9.-]*)$/);
           let x0Email = w.bbox.x0;
@@ -569,6 +580,27 @@ function renderTable(){
 }
 function removerLinha(i){ rows.splice(i,1); renderTable(); }
 function addRow(){ rows.push({nome:'',telefone:'',email:''}); renderTable(); }
+
+// A mesma pessoa aparece mais de uma vez com frequência quando dá pra somar
+// várias folhas/fotos (ou a própria folha já tinha repetição). Considera
+// duplicata quando o TELEFONE bate (dígitos só, ignora formatação) — e,
+// pra registros sem telefone, quando o E-MAIL bate. Mantém sempre a
+// primeira ocorrência.
+function removerDuplicados(){
+  if(!rows.length){ toast('Nada pra verificar ainda','err'); return; }
+  const vistos = new Set();
+  const semDuplicata = [];
+  let removidos = 0;
+  rows.forEach(r => {
+    const chave = r.telefone ? 'tel:'+r.telefone.replace(/\D/g,'') : (r.email ? 'mail:'+r.email.toLowerCase() : null);
+    if(chave && vistos.has(chave)){ removidos++; return; }
+    if(chave) vistos.add(chave);
+    semDuplicata.push(r);
+  });
+  rows = semDuplicata;
+  renderTable();
+  toast(removidos ? `${removidos} duplicado(s) removido(s)` : 'Nenhum duplicado encontrado', removidos ? 'ok' : 'err');
+}
 
 /* ── Exportação ── */
 function copiarTexto(){
