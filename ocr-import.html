@@ -245,6 +245,10 @@ async function processarImagem(file, id){
     // ver extrairRegistrosPorPosicao. Só cai pro texto corrido (parseTexto)
     // se a imagem não trouxer coordenadas de palavra por algum motivo.
     const novos = palavras.length ? extrairRegistrosPorPosicao(palavras) : parseTexto(texto);
+    // Sem nome na folha (ex: lista só de e-mail + telefone) mas com e-mail
+    // detectado: usa o e-mail como nome também, em vez de deixar em branco —
+    // dá pra identificar/importar o registro sem precisar de um nome separado.
+    novos.forEach(r => { if(!r.nome && r.email) r.nome = r.email; });
     marcarEmailsConfiaveis(novos, palavras);
     novos.forEach(r => rows.push(r));
     barEl.style.width = '100%';
