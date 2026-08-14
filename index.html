@@ -1558,14 +1558,14 @@ document.addEventListener('DOMContentLoaded', function(){
     <div class="fld"><label>Valor do Crédito (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-credito" type="text" inputmode="numeric" placeholder="Ex: 90.000,00 ou 90000" oninput="fmtBrlInput(this)"></div>
     <div class="fld"><label>Parcela (R$) * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-parcela" type="text" inputmode="numeric" placeholder="Ex: 700,00 ou 700" oninput="fmtBrlInput(this)"></div>
     <div class="fld-row">
-      <div class="fld"><label>Redutor</label>
+      <div class="fld"><label>Redutor * <span style="color:var(--red)">obrigatório</span></label>
         <select class="inp" id="v-redutor">
           <option value="">—</option>
           <option value="25">25% (comissão integral)</option>
           <option value="50">50% (comissão pela metade)</option>
         </select>
       </div>
-      <div class="fld"><label>Dia de Vencimento (Base GR/GRO)</label>
+      <div class="fld"><label>Dia de Vencimento (Base GR/GRO) * <span style="color:var(--red)">obrigatório</span></label>
         <select class="inp" id="v-dia-base">
           <option value="">—</option>
           <option value="10">Dia 10</option>
@@ -6486,6 +6486,8 @@ async function _saveVendaInner(){
   if(!v('v-cota')){toast('Informe a Cota','err');return;}
   if(!v('v-credito')){toast('Informe o Valor do Crédito','err');return;}
   if(!v('v-parcela')){toast('Informe a Parcela','err');return;}
+  if(!v('v-redutor')){toast('Selecione o Redutor','err');return;}
+  if(!v('v-dia-base')){toast('Selecione o Dia de Vencimento (Base GR/GRO)','err');return;}
 
   const existingV=vendaEditId?allVendas.find(vx=>vx.id===vendaEditId):null;
   const totalNewFiles=Object.values(catFiles).reduce((s,a)=>s+a.length,0);
