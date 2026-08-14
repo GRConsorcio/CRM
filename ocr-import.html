@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Digitalizador de Listas — Nome / Telefone / E-mail</title>
+<style>
+:root{
+  --bg:#0B0B12; --s1:#12121C; --s2:#181826; --border:#26263A; --border2:#33334A;
+  --text:#E8E8F0; --muted:#8A8AA0; --muted2:#6B6B88;
+  --gold:#C9A84C; --gold2:#E2C46A; --green:#2A9467; --green2:#3EC99A; --red:#D94F4F;
+  --font-d:'Georgia',serif; --font-b:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-b);background:var(--bg);color:var(--text);min-height:100vh;padding:32px 20px;font-size:14px}
+.wrap{max-width:1080px;margin:0 auto}
+header{margin-bottom:28px}
+h1{font-family:var(--font-d);font-size:26px;font-weight:700;letter-spacing:-0.3px;margin-bottom:6px}
+.sub{color:var(--muted);font-size:13px;line-height:1.6;max-width:640px}
+
+.panel{background:var(--s1);border:1px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:20px}
+.panel-title{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+
+.drop{border:2px dashed var(--border2);border-radius:var(--radius);padding:36px 20px;text-align:center;cursor:pointer;transition:all .15s;position:relative}
+.drop:hover,.drop.drag{border-color:var(--gold);background:rgba(201,168,76,0.05)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.drop-icon{font-size:30px;margin-bottom:10px;opacity:.8}
+.drop-txt{font-weight:600;font-size:13.5px;margin-bottom:4px}
+.drop-sub{font-size:11.5px;color:var(--muted2)}
+
+.opts{display:flex;gap:18px;align-items:center;margin-top:16px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.opts label{display:flex;align-items:center;gap:6px;cursor:pointer}
+
+.queue{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+.qitem{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:8px;font-size:12px}
+.qthumb{width:36px;height:36px;object-fit:cover;border-radius:5px;flex-shrink:0;background:var(--border)}
+.qname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.qstatus{font-size:11px;color:var(--muted2);flex-shrink:0;min-width:110px;text-align:right}
+.qbar{width:60px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0}
+.qbar-fill{height:100%;background:var(--gold);width:0%;transition:width .2s}
+.qstatus.done{color:var(--green2)}
+.qstatus.err{color:var(--red)}
+
+.results-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+.count{font-size:12px;color:var(--muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+button{font-family:inherit;cursor:pointer;border-radius:8px;font-size:12px;transition:all .12s}
+.btn-primary{background:var(--gold);color:#08080D;border:none;padding:9px 16px;font-weight:600}
+.btn-primary:hover{background:var(--gold2)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.btn-outline{background:transparent;color:var(--text);border:1px solid var(--border2);padding:9px 14px}
+.btn-outline:hover{border-color:var(--gold);color:var(--gold2)}
+.btn-sm{background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 9px;font-size:11px}
+.btn-sm:hover{border-color:var(--red);color:var(--red)}
+
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted2);padding:8px 10px;border-bottom:1px solid var(--border2)}
+tbody td{padding:0;border-bottom:1px solid var(--border)}
+tbody tr:hover{background:rgba(255,255,255,0.015)}
+.cell-input{width:100%;background:transparent;border:none;color:var(--text);padding:9px 10px;font-size:13px;font-family:inherit;outline:none;border-radius:0}
+.cell-input:focus{background:rgba(201,168,76,0.06);box-shadow:inset 0 0 0 1px var(--gold)}
+.cell-input.warn{color:var(--red)}
+td.col-actions{width:36px;text-align:center}
+.empty{text-align:center;padding:40px 20px;color:var(--muted2)}
+.empty-icon{font-size:26px;margin-bottom:8px;opacity:.6}
+
+.raw-toggle{margin-top:16px}
+.raw-toggle summary{cursor:pointer;font-size:11.5px;color:var(--muted);user-select:none}
+.raw-block{margin-top:10px;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;white-space:pre-wrap;max-height:220px;overflow-y:auto;color:var(--muted2)}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:11px 20px;border-radius:8px;font-size:12.5px;opacity:0;pointer-events:none;transition:all .25s;z-index:999;box-shadow:0 10px 30px rgba(0,0,0,0.4)}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.err{border-color:var(--red);color:var(--red)}
+.toast.ok{border-color:var(--green2);color:var(--green2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📇 Digitalizador de Listas</h1>
+    <div class="sub">Fotografe ou envie uma folha (ou várias) com nome, telefone e e-mail — o sistema lê a imagem, tenta separar os três campos automaticamente e monta uma planilha editável. Funciona melhor com texto impresso/digitado; letra de mão pode sair errada e precisar de correção manual.</div>
+  </header>
+
+  <div class="panel">
+    <div class="panel-title">1. Enviar imagens</div>
+    <div class="drop" id="drop">
+      <input type="file" id="file-input" accept="image/*" multiple>
+      <div class="drop-icon">🖼️</div>
+      <div class="drop-txt">Clique ou arraste as fotos das folhas aqui</div>
+      <div class="drop-sub">Pode selecionar várias de uma vez — cada imagem vira uma "folha" processada em sequência</div>
+    </div>
+    <div class="opts">
+      <label><input type="checkbox" id="opt-preprocess" checked> Melhorar contraste antes de ler (recomendado p/ fotos de celular)</label>
+      <label><input type="checkbox" id="opt-append" checked> Somar com resultados já lidos (em vez de substituir)</label>
+    </div>
+    <div class="queue" id="queue"></div>
+  </div>
+
+  <div class="panel">
+    <div class="results-head">
+      <div>
+        <div class="panel-title" style="margin-bottom:2px">2. Resultado (editável)</div>
+        <div class="count" id="count">Nenhum registro ainda</div>
+      </div>
+      <div class="actions">
+        <button class="btn-sm" onclick="addRow()">+ Linha manual</button>
+        <button class="btn-outline" onclick="copiarTexto()">📋 Copiar (Nome | Telefone | E-mail)</button>
+        <button class="btn-outline" onclick="exportarCSV()">Exportar .csv</button>
+        <button class="btn-primary" onclick="exportarXLSX()">⬇ Exportar .xlsx</button>
+      </div>
+    </div>
+    <div id="table-wrap"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+let rows = []; // {nome, telefone, email}
+let rowSeq = 0;
+
+function toast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast on' + (type ? ' '+type : '');
+  clearTimeout(toast._h);
+  toast._h = setTimeout(()=>t.classList.remove('on'), 3200);
+}
+
+/* ── Upload (clique ou arrastar) ── */
+const dropEl = document.getElementById('drop');
+const fileInput = document.getElementById('file-input');
+fileInput.addEventListener('change', e => handleFiles([...e.target.files]));
+['dragenter','dragover'].forEach(ev => dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.remove('drag'); }));
+dropEl.addEventListener('drop', e => {
+  const files = [...(e.dataTransfer?.files||[])].filter(f => f.type.startsWith('image/'));
+  if(files.length) handleFiles(files);
+});
+
+async function handleFiles(files){
+  if(!files.length) return;
+  if(!document.getElementById('opt-append').checked) rows = [];
+  const queueEl = document.getElementById('queue');
+  for(const file of files){
+    const id = 'q'+(rowSeq++);
+    const url = URL.createObjectURL(file);
+    const item = document.createElement('div');
+    item.className = 'qitem';
+    item.id = id;
+    item.innerHTML = `<img class="qthumb" src="${url}">
+      <div class="qname">${escapeHtml(file.name)}</div>
+      <div class="qbar"><div class="qbar-fill" id="${id}-bar"></div></div>
+      <div class="qstatus" id="${id}-status">na fila...</div>`;
+    queueEl.appendChild(item);
+  }
+  fileInput.value = '';
+
+  // processa uma folha por vez (Tesseract não gosta de rodar várias workers ao mesmo tempo no navegador)
+  const items = queueEl.querySelectorAll('.qitem');
+  const startIdx = items.length - files.length;
+  for(let i=0; i<files.length; i++){
+    await processarImagem(files[i], items[startIdx+i].id);
+  }
+  renderTable();
+}
+
+async function processarImagem(file, id){
+  const statusEl = document.getElementById(id+'-status');
+  const barEl = document.getElementById(id+'-bar');
+  try{
+    statusEl.textContent = 'preparando...';
+    let source = file;
+    if(document.getElementById('opt-preprocess').checked){
+      source = await preprocessarImagem(file);
+    }
+    statusEl.textContent = 'lendo (0%)';
+    const { data } = await Tesseract.recognize(source, 'por', {
+      logger: m => {
+        if(m.status === 'recognizing text'){
+          const pct = Math.round((m.progress||0)*100);
+          statusEl.textContent = `lendo (${pct}%)`;
+          barEl.style.width = pct+'%';
+        } else if(m.status){
+          statusEl.textContent = m.status.replace(/_/g,' ');
+        }
+      }
+    });
+    const texto = data.text || '';
+    const novos = parseTexto(texto);
+    novos.forEach(r => rows.push(r));
+    barEl.style.width = '100%';
+    statusEl.textContent = `✓ ${novos.length} registro(s)`;
+    statusEl.classList.add('done');
+    if(texto.trim()){
+      const details = document.createElement('details');
+      details.className = 'raw-toggle';
+      details.innerHTML = `<summary>Ver texto bruto reconhecido nesta imagem</summary><div class="raw-block">${escapeHtml(texto.trim())}</div>`;
+      document.getElementById(id).after(details);
+    }
+  }catch(e){
+    console.error('[OCR]', e);
+    statusEl.textContent = 'falhou: '+(e.message||'erro');
+    statusEl.classList.add('err');
+  }
+}
+
+/* Escala de cinza + aumento de contraste via canvas — fotos de celular (luz
+   desigual, sombra, papel amarelado) melhoram bastante na leitura com isso,
+   sem precisar de nenhuma lib extra além do que o navegador já tem. */
+function preprocessarImagem(file){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imgData.data;
+      const contrast = 1.35, brightness = 8;
+      for(let i=0; i<d.length; i+=4){
+        const gray = d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114;
+        const v = Math.min(255, Math.max(0, (gray-128)*contrast + 128 + brightness));
+        d[i]=d[i+1]=d[i+2]=v;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('falha ao converter imagem')), 'image/png');
+    };
+    img.onerror = () => reject(new Error('não foi possível abrir a imagem'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+/* ── Reconhecimento de padrões: nome / telefone / e-mail ──
+   Tenta primeiro separadores explícitos de coluna (a folha em papel muitas
+   vezes já tem "Nome - Telefone - Email" ou colunas bem espaçadas — OCR
+   preserva isso como múltiplos espaços/tabs na maioria das vezes). Se a
+   linha não tiver separador claro, cai pra extração por regex num texto corrido. */
+function parseTexto(texto){
+  return texto.split('\n').map(parseLinha).filter(Boolean);
+}
+function parseLinha(linhaBruta){
+  const linha = linhaBruta.trim();
+  if(!linha || linha.length < 3) return null;
+
+  let partes = null;
+  if(linha.includes('|')) partes = linha.split('|');
+  else if(/\s[-–]\s/.test(linha)) partes = linha.split(/\s[-–]\s/);
+  else if(/\t| {2,}/.test(linha)) partes = linha.split(/\t| {2,}/);
+  partes = partes?.map(p => p.trim()).filter(Boolean);
+
+  let nome = '', telefone = '', email = '';
+  if(partes && partes.length >= 2){
+    partes.forEach(p => {
+      const digitos = p.replace(/\D/g,'');
+      if(!email && /@/.test(p)) email = p;
+      else if(!telefone && digitos.length >= 8 && digitos.length <= 13) telefone = p;
+      else nome = nome ? nome+' '+p : p;
+    });
+  } else {
+    let resto = linha;
+    const emailMatch = resto.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if(emailMatch){ email = emailMatch[0]; resto = resto.replace(emailMatch[0], ' '); }
+    const phoneMatch = resto.match(/(\+?\d{1,3}[\s.-]?)?\(?\d{2}\)?[\s.-]?\d{4,5}[\s.-]?\d{4}/);
+    if(phoneMatch){ telefone = phoneMatch[0].trim(); resto = resto.replace(phoneMatch[0], ' '); }
+    nome = resto.replace(/[|,;_-]+/g,' ').replace(/\s{2,}/g,' ').trim();
+  }
+
+  telefone = telefone.replace(/[^\d+]/g,'');
+  nome = nome.replace(/^[\W_]+|[\W_]+$/g,'').trim();
+
+  if(!nome && !telefone && !email) return null;
+  // linha só com ruído de OCR (ex: "___" ou cabeçalho "Nome Telefone Email")
+  if(!telefone && !email && /^(nome|telefone|e-?mail|n[uú]mero)s?$/i.test(nome)) return null;
+  return { nome, telefone, email };
+}
+
+/* ── Tabela editável ── */
+function renderTable(){
+  const wrap = document.getElementById('table-wrap');
+  document.getElementById('count').textContent = rows.length
+    ? `${rows.length} registro${rows.length!==1?'s':''} — revise antes de exportar`
+    : 'Nenhum registro ainda';
+  if(!rows.length){
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">📄</div>Envie uma imagem acima pra começar</div>`;
+    return;
+  }
+  wrap.innerHTML = `<table>
+    <thead><tr><th style="width:34%">Nome</th><th style="width:23%">Telefone</th><th style="width:33%">E-mail</th><th></th></tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr>
+      <td><input class="cell-input" value="${escapeAttr(r.nome)}" oninput="rows[${i}].nome=this.value"></td>
+      <td><input class="cell-input ${r.telefone && r.telefone.replace(/\D/g,'').length<8?'warn':''}" value="${escapeAttr(r.telefone)}" oninput="rows[${i}].telefone=this.value"></td>
+      <td><input class="cell-input ${r.email && !r.email.includes('@')?'warn':''}" value="${escapeAttr(r.email)}" oninput="rows[${i}].email=this.value"></td>
+      <td class="col-actions"><button class="btn-sm" onclick="removerLinha(${i})" title="Remover">✕</button></td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+function removerLinha(i){ rows.splice(i,1); renderTable(); }
+function addRow(){ rows.push({nome:'',telefone:'',email:''}); renderTable(); }
+
+/* ── Exportação ── */
+function copiarTexto(){
+  if(!rows.length){ toast('Nada pra copiar ainda','err'); return; }
+  const texto = rows.map(r => [r.nome, r.telefone, r.email].filter(Boolean).join(' | ')).join('\n');
+  navigator.clipboard.writeText(texto)
+    .then(()=>toast(`${rows.length} linha(s) copiada(s) — cole direto no importador de leads`,'ok'))
+    .catch(()=>toast('Não consegui copiar automaticamente — selecione o texto manualmente','err'));
+}
+function exportarCSV(){
+  if(!rows.length){ toast('Nada pra exportar ainda','err'); return; }
+  const linhas = [['Nome','Telefone','Email'], ...rows.map(r=>[r.nome,r.telefone,r.email])];
+  const csv = linhas.map(l => l.map(c => `"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  baixarArquivo(new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'}), 'lista.csv');
+}
+function exportarXLSX(){
+  if(!rows.length){ toast('Nada pra exportar ainda','err'); return; }
+  const ws = XLSX.utils.json_to_sheet(rows.map(r=>({Nome:r.nome, Telefone:r.telefone, Email:r.email})));
+  ws['!cols'] = [{wch:28},{wch:18},{wch:28}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lista');
+  XLSX.writeFile(wb, 'lista.xlsx');
+}
+function baixarArquivo(blob, nome){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+
+renderTable();
+</script>
+</body>
+</html>
