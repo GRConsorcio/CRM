@@ -237,10 +237,11 @@ async function processarImagem(file, id){
 
     const texto = data.text || '';
     const palavras = (data.words || []);
+    marcarEmailsConfiaveis(data, palavras);
     const novos = parseTexto(texto);
     novos.forEach(r => rows.push(r));
     barEl.style.width = '100%';
-    const baixaConf = palavras.filter(w => w.confidence < 60).length;
+    const baixaConf = palavras.filter(w => !w._emailOk && w.confidence < 60).length;
     statusEl.textContent = `✓ ${novos.length} registro(s)${baixaConf?`, ${baixaConf} palavra(s) duvidosa(s)`:''}`;
     statusEl.classList.add('done');
 
@@ -250,8 +251,9 @@ async function processarImagem(file, id){
       details.open = baixaConf > 0; // já abre sozinho quando tem coisa duvidosa pra revisar
       const textoColorido = palavras.length
         ? palavras.map(w => {
-            const cls = w.confidence < 60 ? 'w-low' : (w.confidence < 80 ? 'w-mid' : 'w-ok');
-            return `<span class="${cls}" title="confiança: ${Math.round(w.confidence)}%">${escapeHtml(w.text)}</span>`;
+            const cls = w._emailOk ? 'w-ok' : (w.confidence < 60 ? 'w-low' : (w.confidence < 80 ? 'w-mid' : 'w-ok'));
+            const titulo = w._emailOk ? 'e-mail reconhecido pelo padrão — considerado confiável' : `confiança: ${Math.round(w.confidence)}%`;
+            return `<span class="${cls}" title="${titulo}">${escapeHtml(w.text)}</span>`;
           }).join(' ')
         : escapeHtml(texto.trim());
       details.innerHTML = `<summary>Ver texto reconhecido nesta imagem ${baixaConf?`(${baixaConf} palavra${baixaConf!==1?'s':''} em vermelho = provável rabisco/erro)`:''}</summary>
@@ -348,7 +350,7 @@ function desenharOverlay(source, palavras){
       palavras.forEach(w => {
         if(!w.bbox) return;
         const conf = w.confidence;
-        const cor = conf < 60 ? '#D94F4F' : (conf < 80 ? '#E2C46A' : '#3EC99A');
+        const cor = w._emailOk ? '#3EC99A' : (conf < 60 ? '#D94F4F' : (conf < 80 ? '#E2C46A' : '#3EC99A'));
         const {x0,y0,x1,y1} = w.bbox;
         ctx.strokeStyle = cor;
         ctx.lineWidth = Math.max(1, canvas.width/500);
@@ -359,6 +361,45 @@ function desenharOverlay(source, palavras){
     img.onerror = () => reject(new Error('falha ao desenhar overlay'));
     img.src = source instanceof Blob ? URL.createObjectURL(source) : source;
   });
+}
+
+/* Tesseract às vezes quebra um e-mail em duas "palavras" bem no @ (ex:
+   "fulano@" + "gmail.com") e dá confiança baixa pro pedaço quebrado, mesmo
+   quando as letras estão certinhas — a quebra em si não é erro de leitura.
+   Em vez de confiar só na confiança bruta, junta as palavras de cada linha,
+   procura padrão de e-mail no texto da linha inteira e marca como confiável
+   TODAS as palavras que fazem parte de um e-mail batido (@gmail, @hotmail,
+   @outlook, .com.br, etc — qualquer coisa que bata o formato usuario@dominio). */
+function marcarEmailsConfiaveis(data, palavrasFlat){
+  const linhas = data.lines && data.lines.length ? data.lines : agruparPalavrasEmLinhas(palavrasFlat);
+  const emailRe = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  linhas.forEach(linha => {
+    const palavrasDaLinha = linha.words || [];
+    if(!palavrasDaLinha.length) return;
+    const textoLinha = palavrasDaLinha.map(w=>w.text).join('');
+    const matches = textoLinha.match(emailRe);
+    if(!matches) return;
+    matches.forEach(email => {
+      palavrasDaLinha.forEach(w => {
+        if(w.text && email.includes(w.text)) w._emailOk = true;
+      });
+    });
+  });
+}
+// Fallback só pro caso raro de a resposta do Tesseract não trazer data.lines —
+// agrupa palavras cuja caixa (bbox) se sobrepõe verticalmente, aproximando "linha".
+function agruparPalavrasEmLinhas(palavras){
+  const linhas = [];
+  [...palavras].sort((a,b)=>(a.bbox?.y0||0)-(b.bbox?.y0||0)).forEach(w => {
+    if(!w.bbox){ linhas.push({words:[w]}); return; }
+    const meio = (w.bbox.y0+w.bbox.y1)/2;
+    const linha = linhas.find(l => {
+      const ref = l.words[0].bbox;
+      return ref && meio >= ref.y0 - 4 && meio <= ref.y1 + 4;
+    });
+    if(linha) linha.words.push(w); else linhas.push({words:[w]});
+  });
+  return linhas;
 }
 
 /* ── Reconhecimento de padrões: nome / telefone / e-mail ──
