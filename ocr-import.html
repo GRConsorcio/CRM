@@ -244,7 +244,14 @@ async function processarImagem(file, id){
     // na imagem (agrupando por linha física, não por linha de texto) —
     // ver extrairRegistrosPorPosicao. Só cai pro texto corrido (parseTexto)
     // se a imagem não trouxer coordenadas de palavra por algum motivo.
-    const novos = palavras.length ? extrairRegistrosPorPosicao(palavras) : parseTexto(texto);
+    let imgDataRisco = null;
+    try{ imgDataRisco = await carregarImageData(source); }catch(e){ console.warn('[risco]', e); }
+    const extraidos = palavras.length ? extrairRegistrosPorPosicao(palavras, imgDataRisco) : parseTexto(texto);
+    // Contatos riscados (nome, telefone ou e-mail com um traço em cima) já
+    // foram tratados/são inválidos pra quem preencheu a folha — não entram
+    // no resultado, mas ficam contados pra quem revisar saber que existiam.
+    const riscados = extraidos.filter(r => r._riscado).length;
+    const novos = extraidos.filter(r => !r._riscado);
     // Sem nome na folha (ex: lista só de e-mail + telefone) mas com e-mail
     // detectado: usa o e-mail como nome também, em vez de deixar em branco —
     // dá pra identificar/importar o registro sem precisar de um nome separado.
@@ -253,7 +260,7 @@ async function processarImagem(file, id){
     novos.forEach(r => rows.push(r));
     barEl.style.width = '100%';
     const baixaConf = palavras.filter(w => !w._emailOk && w.confidence < 60).length;
-    statusEl.textContent = `✓ ${novos.length} registro(s)${baixaConf?`, ${baixaConf} palavra(s) duvidosa(s)`:''}`;
+    statusEl.textContent = `✓ ${novos.length} registro(s)${riscados?`, ${riscados} riscado(s) ignorado(s)`:''}${baixaConf?`, ${baixaConf} palavra(s) duvidosa(s)`:''}`;
     statusEl.classList.add('done');
 
     if(texto.trim()){
@@ -398,6 +405,13 @@ function agruparPalavrasEmLinhas(palavras){
 const DOMINIOS_EMAIL = ['gmail.com','hotmail.com','outlook.com','yahoo.com.br','yahoo.com',
   'uol.com.br','bol.com.br','icloud.com','live.com','terra.com.br','globo.com','globomail.com','msn.com','ig.com.br'];
 
+/* Um símbolo/bolinha desenhado à mão do lado do nome (comum nessas listas)
+   não carrega nenhuma informação — é só uma marca visual. Um token com 1-2
+   caracteres e nenhuma letra/dígito de verdade é ruído, não dado. */
+function ehSimboloDecorativo(bruto, semSujeira){
+  return !semSujeira || (bruto.length<=2 && !/[a-zA-Z0-9]/.test(bruto));
+}
+
 /* Extrai nome/telefone/e-mail por LINHA FÍSICA (não por linha de texto
    solto) — cada linha já vem com as palavras na ordem real da esquerda pra
    direita, então uma tabela em colunas (nome | telefone | e-mail) funciona
@@ -406,17 +420,25 @@ const DOMINIOS_EMAIL = ['gmail.com','hotmail.com','outlook.com','yahoo.com.br','
    vez de depender de achar um "@" de verdade, procura pelo DOMÍNIO
    (gmail.com, hotmail.com...), que é só letra/ponto e o OCR lê bem, e
    reconstrói o e-mail juntando a parte antes do @ (que sobra correta, seja
-   grudada no mesmo token ou na palavra anterior) + "@" + o domínio batido. */
-function extrairRegistrosPorPosicao(palavras){
+   grudada no mesmo token ou na palavra anterior) + "@" + o domínio batido.
+   `imgData` (opcional) é usado pra checar se o telefone/e-mail/nome dessa
+   linha está riscado (ver temRisco) — quando alguém risca um contato na
+   folha é porque ele já foi tratado/é inválido, então esses ficam de fora
+   do resultado (contados à parte, não descartados sem aviso). */
+function extrairRegistrosPorPosicao(palavras, imgData){
   const linhas = agruparPalavrasEmLinhas(palavras.filter(w => w.text && w.text.trim() && w.bbox));
   return linhas.map(linha => {
     const ws = linha.words;
-    let email = '', telefone = '';
-    const nomeParts = [];
+    let email = '', telefone = '', emailWords = [], telefoneWord = null;
+    let primeiraColunaX = Infinity;
+    const candidatosNome = []; // guarda os objetos-palavra (não só texto) pra poder filtrar por posição depois
+
     for(let i=0; i<ws.length; i++){
-      const bruto = ws[i].text.trim();
+      const w = ws[i];
+      const bruto = w.text.trim();
       const semSujeira = bruto.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g,'');
       const tLower = semSujeira.toLowerCase();
+      if(ehSimboloDecorativo(bruto, semSujeira)) continue;
 
       if(!email){
         const dominio = DOMINIOS_EMAIL.find(d => tLower===d || tLower.endsWith(d));
@@ -424,31 +446,104 @@ function extrairRegistrosPorPosicao(palavras){
           const inline = bruto.match(/^([a-zA-Z0-9._%+-]+)[^a-zA-Z0-9._%+-]+([a-zA-Z0-9.-]*)$/);
           if(inline && inline[1] && tLower.endsWith(dominio)){
             email = `${inline[1]}@${dominio}`;
+            emailWords = [w];
           } else if(i>0){
             const anterior = ws[i-1].text.replace(/[^a-zA-Z0-9._%+-]+$/,'').trim();
             email = anterior ? `${anterior}@${dominio}` : dominio;
-            if(anterior) nomeParts.pop(); // desfaz o push da palavra anterior — ela virou o local-part do e-mail
+            emailWords = anterior ? [ws[i-1], w] : [w];
+            if(anterior) candidatosNome.pop(); // desfaz o push da palavra anterior — ela virou o local-part do e-mail
           } else {
             email = dominio;
+            emailWords = [w];
           }
+          primeiraColunaX = Math.min(primeiraColunaX, emailWords[0].bbox.x0);
           continue;
         }
       }
 
       if(!telefone && /^\+?[\d\s().-]+$/.test(bruto)){
         const digitos = bruto.replace(/\D/g,'');
-        if(digitos.length>=8 && digitos.length<=13) telefone = digitos;
-        if(telefone) continue;
+        if(digitos.length>=8 && digitos.length<=13){
+          telefone = digitos;
+          telefoneWord = w;
+          primeiraColunaX = Math.min(primeiraColunaX, w.bbox.x0);
+          continue;
+        }
       }
 
-      if(semSujeira) nomeParts.push(bruto);
+      candidatosNome.push(w);
     }
-    const nome = nomeParts.join(' ').replace(/^[\W_]+|[\W_]+$/g,'').trim();
-    return {
-      nome: (nome.length>=2 && /[a-zA-ZÀ-ÿ]/.test(nome)) ? nome : '',
-      telefone, email
-    };
+
+    // Só aceita como nome palavras que vêm ANTES da primeira coluna de
+    // telefone/e-mail da linha — texto depois disso é quase sempre anotação
+    // manual (resultado de ligação: "não atende", "caixa postal"...), não
+    // faz parte do nome da pessoa.
+    const nomeWords = primeiraColunaX===Infinity
+      ? candidatosNome
+      : candidatosNome.filter(w => w.bbox.x1 <= primeiraColunaX + 4);
+    const nome = nomeWords.map(w=>w.text.trim()).join(' ').replace(/^[\W_]+|[\W_]+$/g,'').trim();
+    const nomeFinal = (nome.length>=2 && /[a-zA-ZÀ-ÿ]/.test(nome)) ? nome : '';
+
+    // Risco em QUALQUER pedaço usado (nome, telefone ou e-mail) já invalida
+    // o registro inteiro — normalmente quem risca faz isso na linha toda,
+    // mas às vezes risca só o telefone (já ligaram) e isso já é suficiente
+    // sinal de "não importar de novo".
+    let riscado = false;
+    if(imgData){
+      const bboxesPraChecar = [...nomeWords.map(w=>w.bbox), ...emailWords.map(w=>w.bbox)];
+      if(telefoneWord) bboxesPraChecar.push(telefoneWord.bbox);
+      riscado = bboxesPraChecar.some(bb => temRisco(imgData, bb));
+    }
+
+    return { nome: nomeFinal, telefone, email, _riscado: riscado };
   }).filter(r => r.nome || r.telefone || r.email);
+}
+
+/* Detecta um risco/traço desenhado por cima do texto: uma faixa fina na
+   ALTURA DO MEIO da caixa da palavra com proporção de pixel escuro muito
+   maior do que letra normal produziria (letra tem vãos entre caracteres;
+   uma linha reta desenhada por cima não tem).
+   Usa LUMINÂNCIA (não só o canal vermelho) porque risco em caneta vermelha
+   é comum nessas folhas — vermelho puro tem o canal R alto (pareceria
+   "claro" se olhasse só ele), mas é visualmente escuro; luminância pega
+   isso certo tanto pra imagem original colorida quanto pra já binarizada. */
+function temRisco(imgData, bbox){
+  if(!bbox) return false;
+  const {x0,y0,x1,y1} = bbox;
+  const altura = y1 - y0;
+  if(altura < 6 || (x1-x0) < 6) return false;
+  const meioY = Math.round((y0+y1)/2);
+  const faixa = Math.max(1, Math.round(altura*0.15));
+  let total=0, escuros=0;
+  for(let y=meioY-faixa; y<=meioY+faixa; y++){
+    if(y<0 || y>=imgData.height) continue;
+    for(let x=Math.round(x0); x<Math.round(x1); x++){
+      if(x<0 || x>=imgData.width) continue;
+      const idx = (y*imgData.width + x) * 4;
+      const luminancia = imgData.data[idx]*0.299 + imgData.data[idx+1]*0.587 + imgData.data[idx+2]*0.114;
+      total++;
+      if(luminancia < 128) escuros++;
+    }
+  }
+  if(total < 10) return false;
+  return (escuros/total) > 0.55;
+}
+
+/* Carrega a imagem (a mesma que foi lida pelo Tesseract) num canvas só pra
+   poder ler os pixels — usado pela detecção de risco. */
+function carregarImageData(source){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    };
+    img.onerror = () => reject(new Error('falha ao carregar imagem pra detecção de risco'));
+    img.src = source instanceof Blob ? URL.createObjectURL(source) : source;
+  });
 }
 
 /* Marca como confiável (visualmente) qualquer palavra que seja um pedaço de
