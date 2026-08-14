@@ -437,8 +437,20 @@ function parseLinha(linhaBruta){
     nome = resto.replace(/[|,;_-]+/g,' ').replace(/\s{2,}/g,' ').trim();
   }
 
+  // Cada campo só fica preenchido se realmente parecer aquilo — sem sinal
+  // real (nome sem nenhuma letra, telefone com poucos dígitos, e-mail sem
+  // o formato usuário@domínio), a coluna fica vazia em vez de levar lixo de
+  // OCR (traço de borda de tabela, pontuação solta, etc) pra planilha.
   telefone = telefone.replace(/[^\d+]/g,'');
+  if(telefone.length < 8 || telefone.length > 14) telefone = '';
+
   nome = nome.replace(/^[\W_]+|[\W_]+$/g,'').trim();
+  if(nome.length < 2 || !/[a-zA-ZÀ-ÿ]/.test(nome)) nome = '';
+
+  if(email){
+    const emailEstrito = email.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    email = emailEstrito ? emailEstrito[0] : '';
+  }
 
   if(!nome && !telefone && !email) return null;
   // linha só com ruído de OCR (ex: "___" ou cabeçalho "Nome Telefone Email")
