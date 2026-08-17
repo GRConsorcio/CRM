@@ -4376,9 +4376,10 @@ async function openDetail(id,from){
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">CPF</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Nascimento</div><strong>${venda.data_nascimento?fmtDateStr(venda.data_nascimento):'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Grupo / Cota</div><strong>${venda.grupo||'—'} / ${venda.cota||'—'}</strong></div>
-        <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Vencimento</div><strong>${venda.data_vencimento?fmtDateStr(venda.data_vencimento):'—'}</strong></div>
+        <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Vencimento (Base GR/GRO)</div><strong>${venda.dia_vencimento_base?'Dia '+venda.dia_vencimento_base:'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Crédito</div><strong style="color:var(--gold2)">${venda.valor_credito?brl(venda.valor_credito):'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Parcela</div><strong>${venda.parcela?brl(venda.parcela):'—'}</strong></div>
+        <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Redutor</div><strong>${venda.redutor?venda.redutor+'%':'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Qtd. Cotas</div><strong style="color:var(--gold2);font-size:15px">${venda.qtd_cotas||1}</strong></div>
       </div>
       ${docs.length>0?`<div style="margin-top:14px">
