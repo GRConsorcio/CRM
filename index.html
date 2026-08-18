@@ -8915,7 +8915,7 @@ async function _renderDuplicatasResult(grupos){
           <div style="font-size:12.5px;font-weight:700;color:var(--text)">${escJs(g.nomes[0])}</div>
           <div style="font-size:11px;color:var(--muted2)">${g.qtd} cadastros com esse nome e telefone — mantém 1 (o com mais histórico), apaga o resto</div>
         </div>
-        <button class="act" style="border-color:var(--green);color:var(--green);flex-shrink:0" onclick="mesclarGrupoDuplicata('${keeperId}',${JSON.stringify(loserIds)},this)">Mesclar</button>
+        <button class="act" style="border-color:var(--green);color:var(--green);flex-shrink:0" onclick='mesclarGrupoDuplicata("${keeperId}",${JSON.stringify(loserIds)},this)'>Mesclar</button>
       </div>`;
     }).join('');
   }
@@ -8947,12 +8947,12 @@ async function _renderDuplicatasResult(grupos){
         const lead=leadsMap.get(id);
         const nome=lead?.nome||'(lead não encontrado)';
         const temVenda=leadTemVenda(id);
-        return`<div style="margin-bottom:3px">
-          <span class="badge" style="cursor:pointer;background:var(--surface2);border:1px solid var(--border);color:var(--text)" onclick="toggleDupChip('${id}','dupchip_${id}')">${escJs(nome)}${temVenda?' 🔒':''}</span>
+        return`<div style="margin-bottom:3px" id="dupchiprow_${id}">
+          <span class="badge" style="cursor:pointer;background:var(--surface2);border:1px solid var(--border);color:var(--text)" onclick="toggleDupChip('${id}','dupchip_${id}',${idxGlobal})">${escJs(nome)}${temVenda?' 🔒':''}</span>
           <div id="dupchip_${id}" style="display:none"></div>
         </div>`;
       }).join('');
-      return`<div style="padding:10px 12px;background:${corFundo};border:1px solid ${corBorda};border-radius:8px;margin-bottom:6px">
+      return`<div style="padding:10px 12px;background:${corFundo};border:1px solid ${corBorda};border-radius:8px;margin-bottom:6px" id="dupgroup_${idxGlobal}">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
           <div style="font-size:11.5px;color:var(--muted2)">Telefone ${g.tel_norm||'—'} · ${g.qtd} leads</div>
           ${invalido?`<div style="display:flex;align-items:center;gap:8px">
@@ -8979,7 +8979,7 @@ async function _renderDuplicatasResult(grupos){
 
 // Abre/fecha o "balão" de um lead dentro de um grupo de colisão, mostrando
 // status, vendedor e se tem venda vinculada (protegida contra exclusão).
-async function toggleDupChip(leadId,wrapId){
+async function toggleDupChip(leadId,wrapId,groupIdx){
   const wrap=document.getElementById(wrapId);
   if(!wrap) return;
   if(wrap.dataset.open==='1'){
@@ -9007,7 +9007,7 @@ async function toggleDupChip(leadId,wrapId){
         ${lead.observacoes?`<div style="margin-top:4px;color:var(--text);font-style:italic">"${escJs(lead.observacoes)}"</div>`:''}
         <div style="display:flex;gap:8px;margin-top:8px">
           <button class="btn-sm" onclick="closeModal('duplicatas');openDetail('${leadId}','leads')">Ver completo</button>
-          ${temVenda?'':`<button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirLeadColisao('${leadId}',this)">Excluir este</button>`}
+          ${temVenda?'':`<button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirLeadColisao('${leadId}',${groupIdx},this)">Excluir este</button>`}
         </div>
       </div>`;
     wrap.dataset.loaded='1';
@@ -9016,7 +9016,23 @@ async function toggleDupChip(leadId,wrapId){
   }
 }
 
-async function excluirLeadColisao(leadId,btn){
+// Remove o lead da tela e do estado em memória (_dupGruposAtual) sem re-rodar
+// o relatório inteiro — com 800+ grupos, reabrir o modal a cada exclusão
+// jogava o admin de volta pro topo e perdia onde ele estava revisando.
+function _removeLeadFromDupView(leadId,groupIdx){
+  const row=document.getElementById('dupchiprow_'+leadId);
+  if(row) row.remove();
+  const g=_dupGruposAtual[groupIdx];
+  if(!g) return;
+  g.lead_ids=g.lead_ids.filter(id=>id!==leadId);
+  // Sobrou 1 (ou 0) lead no grupo — não é mais uma duplicata de verdade, some o card inteiro.
+  if(g.lead_ids.length<=1){
+    const groupEl=document.getElementById('dupgroup_'+groupIdx);
+    if(groupEl) groupEl.remove();
+  }
+}
+
+async function excluirLeadColisao(leadId,groupIdx,btn){
   if(leadTemVenda(leadId)){ toast('Este lead tem venda vinculada — não pode ser apagado.','err'); return; }
   if(!confirm('Apagar este lead e todo o histórico? Não dá pra desfazer.')) return;
   btn.disabled=true; btn.textContent='Apagando...';
@@ -9029,7 +9045,7 @@ async function excluirLeadColisao(leadId,btn){
     allHist=allHist.filter(h=>h.lead_id!==leadId);
     allTasks=allTasks.filter(t=>t.lead_id!==leadId);
     toast('Lead apagado','ok');
-    openDuplicatas(); // re-roda o relatório do zero pra refletir a exclusão
+    _removeLeadFromDupView(leadId,groupIdx);
   }catch(e){
     toast('Erro ao apagar: '+e.message,'err');
     btn.disabled=false; btn.textContent='Excluir este';
@@ -9054,7 +9070,19 @@ async function excluirGrupoInvalido(groupIdx,btn){
     allHist=allHist.filter(h=>!apagaveis.includes(h.lead_id));
     allTasks=allTasks.filter(t=>!apagaveis.includes(t.lead_id));
     toast(`${apagaveis.length} lead(s) apagado(s)${msgProt}`,'ok');
-    openDuplicatas();
+    // Some o grupo inteiro do DOM e do estado em memória — sem reabrir o relatório.
+    g.lead_ids=g.lead_ids.filter(id=>protegidos.includes(id));
+    const groupEl=document.getElementById('dupgroup_'+groupIdx);
+    if(groupEl){
+      if(protegidos.length){
+        // Ainda sobrou gente com venda protegida — remove só os chips apagados, mantém o card.
+        apagaveis.forEach(id=>{ const row=document.getElementById('dupchiprow_'+id); if(row) row.remove(); });
+        const btnRow=groupEl.querySelector('button');
+        if(btnRow) btnRow.remove();
+      } else {
+        groupEl.remove();
+      }
+    }
   }catch(e){
     toast('Erro ao apagar grupo: '+e.message,'err');
     btn.disabled=false; btn.textContent='Excluir todos (menos com venda)';
