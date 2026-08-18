@@ -8603,31 +8603,68 @@ function getLabelBloqueioPorLead(lead){
 // campo, troca de status, retorno automático, etc.) — nunca contam como
 // "comentário real" do vendedor pra decidir se um Perdido pode ser reciclado.
 const TIPOS_HIST_SISTEMA = new Set(['Status','Edição','Interno (Adm)','Retorno Automático','Enviado p/ Equipe','Criação']);
+function _comentarioRealFiltro(h){
+  const desc = (h.descricao || '').trim();
+  if(TIPOS_HIST_SISTEMA.has(h.tipo)) return false;
+  // "Venda revertida" usa tipo Anotação — mesmo tipo de um comentário real
+  // — mas é texto fixo gerado pelo sistema, não escrito pelo vendedor.
+  if(desc.startsWith('Venda revertida')) return false;
+  if(desc.startsWith('[BLOQUEADO')) return false;
+  return desc.length >= 3;
+}
 function leadTemComentarioReal(leadId){
   const hist = allHist.filter(h => h.lead_id === leadId);
-  return hist.some(h => {
-    const desc = (h.descricao || '').trim();
-    if(TIPOS_HIST_SISTEMA.has(h.tipo)) return false;
-    // "Venda revertida" usa tipo Anotação — mesmo tipo de um comentário real
-    // — mas é texto fixo gerado pelo sistema, não escrito pelo vendedor.
-    if(desc.startsWith('Venda revertida')) return false;
-    if(desc.startsWith('[BLOQUEADO')) return false;
-    return desc.length >= 3;
-  });
+  return hist.some(_comentarioRealFiltro);
 }
+// Comentário real mais recente do lead — usado pra mostrar um trecho na tela
+// de "Avaliar Perdidos" quando o admin decide reciclar mesmo com comentário.
+function getUltimoComentarioReal(leadId){
+  const hist = allHist.filter(h => h.lead_id === leadId && _comentarioRealFiltro(h));
+  hist.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  return hist[0] || null;
+}
+let _avListaReciclarCount = 0;
+let _selecionadosComComentario = new Set();
+
+function toggleComComentario(id,checked){
+  if(checked) _selecionadosComComentario.add(id); else _selecionadosComComentario.delete(id);
+  atualizarBotaoAvaliarPerdidos();
+}
+function toggleTodosComComentario(checked){
+  document.querySelectorAll('.av-com-chk').forEach(c=>{
+    c.checked=checked;
+    if(checked) _selecionadosComComentario.add(c.dataset.id); else _selecionadosComComentario.delete(c.dataset.id);
+  });
+  atualizarBotaoAvaliarPerdidos();
+}
+function atualizarBotaoAvaliarPerdidos(){
+  const btn=document.getElementById('avaliar-perdidos-btn-confirmar');
+  if(btn) btn.disabled = (_avListaReciclarCount===0 && _selecionadosComComentario.size===0);
+}
+
 async function openAvaliarPerdidos(){
   // Coleta todos os perdidos e classifica em: reciclar, bloqueados, com_comentário
   const perdidos = allLeads.filter(l => l.status === 'Perdido');
-  const listaReciclar   = [];  // {lead}
-  const listaBloqueados = [];  // {lead, label}
+  const listaReciclar      = [];  // {lead} — sem comentário, sem palavra bloqueada
+  const listaBloqueados    = [];  // {lead, label} — sem comentário, com palavra bloqueada
+  const listaComComentario = [];  // {lead, comentario} — tem comentário real (nunca reciclado sozinho, só se o admin escolher)
 
   for(const l of perdidos){
     if(!leadTemComentarioReal(l.id)){
       const label = getLabelBloqueioPorLead(l);
       if(label) listaBloqueados.push({lead:l, label});
       else listaReciclar.push(l);
+    } else if(!temPalavraBloqueiaNaObs(l)){
+      // Tem comentário real — nunca entra na reciclagem automática, mas o admin
+      // pode escolher incluir manualmente (ver checkbox na lista abaixo). Leads
+      // com palavra bloqueada ficam de fora daqui também, mesmo com comentário
+      // — a trava de palavra-chave é uma regra de negócio à parte que não é
+      // pra ser contornada por essa tela.
+      listaComComentario.push({lead:l, comentario:getUltimoComentarioReal(l.id)});
     }
   }
+  _avListaReciclarCount = listaReciclar.length;
+  _selecionadosComComentario.clear();
 
   // Preview badge
   const prev = document.getElementById('avaliar-perdidos-preview');
@@ -8635,6 +8672,7 @@ async function openAvaliarPerdidos(){
   let parts=[];
   if(listaReciclar.length>0) parts.push(`<span style="color:var(--red);font-weight:700">${listaReciclar.length} lead(s) serão reciclados</span>`);
   if(listaBloqueados.length>0) parts.push(`<span style="color:var(--orange);font-weight:700">${listaBloqueados.length} bloqueado(s) de reciclagem</span>`);
+  if(listaComComentario.length>0) parts.push(`<span style="color:var(--gold2);font-weight:700">${listaComComentario.length} com comentário — revise abaixo</span>`);
   if(!parts.length) parts.push('<span style="color:var(--green)">Nenhum lead perdido sem comentário encontrado ✅</span>');
   prevTxt.innerHTML = parts.join(' &nbsp;·&nbsp; ');
   prev.style.background='var(--surface2)';prev.style.borderColor='var(--border2)';prevTxt.style.color='var(--text)';
@@ -8660,7 +8698,7 @@ async function openAvaliarPerdidos(){
     bloqWrap.style.display='none';
   }
 
-  // Lista para RECICLAR
+  // Lista para RECICLAR (automático)
   const recWrap=document.getElementById('av-reciclar-wrap');
   const recList=document.getElementById('av-reciclar-list');
   if(listaReciclar.length>0){
@@ -8680,7 +8718,35 @@ async function openAvaliarPerdidos(){
     recWrap.style.display='none';
   }
 
-  document.getElementById('avaliar-perdidos-btn-confirmar').disabled = listaReciclar.length === 0;
+  // Lista COM COMENTÁRIO — opcional, o admin escolhe quais reciclar mesmo assim
+  const comWrap=document.getElementById('av-comentario-wrap');
+  const comList=document.getElementById('av-comentario-list');
+  const comSelAll=document.getElementById('av-comentario-sel-all');
+  if(listaComComentario.length>0){
+    comList.innerHTML=listaComComentario.map(({lead:l,comentario:c})=>{
+      const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+      const txt=(c?.descricao||'').trim();
+      const trecho=txt.length>110?txt.slice(0,110)+'…':txt;
+      return`<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 12px;border-bottom:1px solid rgba(201,168,76,0.12);font-size:12px;cursor:pointer">
+        <input type="checkbox" class="av-com-chk" data-id="${l.id}" style="margin-top:3px;accent-color:var(--gold);flex-shrink:0" onchange="toggleComComentario('${l.id}',this.checked)">
+        <div style="flex:1;min-width:0">
+          <div>
+            <span style="font-weight:700;color:var(--text)">${l.nome}</span>
+            <span style="color:var(--muted2);font-size:11px"> · ${l.telefone||'—'}</span>
+            ${resp?`<span style="color:var(--muted);font-size:11px"> · ${resp.name}</span>`:''}
+          </div>
+          <div style="color:var(--muted2);font-size:11px;margin-top:3px;font-style:italic;overflow-wrap:break-word">"${trecho||'(comentário vazio)'}"</div>
+          ${c?`<div style="color:var(--muted2);font-size:10px;margin-top:2px">${fmtDt(c.created_at)}</div>`:''}
+        </div>
+      </label>`;
+    }).join('');
+    comWrap.style.display='';
+    if(comSelAll) comSelAll.checked=false;
+  } else {
+    comWrap.style.display='none';
+  }
+
+  atualizarBotaoAvaliarPerdidos();
   document.getElementById('modal-avaliar-perdidos').classList.add('on');
 }
 
@@ -8691,7 +8757,8 @@ async function confirmarAvaliarPerdidos(){
   loading.style.display = '';
   try{
     const perdidos = allLeads.filter(l => l.status === 'Perdido');
-    const paraReciclar = [];
+    const paraReciclar = [];              // sem comentário, sem palavra bloqueada
+    const paraReciclarComComentario = [];  // tem comentário — só entra se o admin marcou o checkbox
     for(const l of perdidos){
       if(!leadTemComentarioReal(l.id)){
         if(temPalavraBloqueiaNaObs(l)){
@@ -8707,30 +8774,34 @@ async function confirmarAvaliarPerdidos(){
         } else {
           paraReciclar.push(l);
         }
+      } else if(_selecionadosComComentario.has(l.id) && !temPalavraBloqueiaNaObs(l)){
+        paraReciclarComComentario.push(l);
       }
     }
-    if(!paraReciclar.length){
+    const todosParaReciclar=[...paraReciclar,...paraReciclarComComentario];
+    if(!todosParaReciclar.length){
       toast('Nenhum lead para reciclar.','ok');
       closeModal('avaliar-perdidos');
       return;
     }
     // Guarda vendedor/equipe ANTES de reciclar (reciclarLeadParaPool zera esses
     // campos no próprio objeto em memória, então precisa capturar antes).
-    const infoAnterior = new Map(paraReciclar.map(l=>[l.id,{
+    const infoAnterior = new Map(todosParaReciclar.map(l=>[l.id,{
       nomeVend: allUsers.find(u=>u.user_id===l.responsavel_id)?.name || 'Sem vendedor',
       nomeEquipe: allEquipes.find(e=>e.id===l.equipe_id)?.nome || 'Sem equipe',
     }]));
+    const idsComComentario = new Set(paraReciclarComComentario.map(l=>l.id));
     // 1. Reciclagem via função central (mesma usada no retorno automático) —
     // garante que a regra "só marca Remalho a partir do 2º retorno" e a
     // contagem de retornos_count fiquem iguais nos dois fluxos. runInChunks
     // evita o ERR_INSUFFICIENT_RESOURCES visto em produção quando muitos leads
     // são reciclados de uma vez.
-    const resultadosRecicl = await runInChunks(paraReciclar, l=>reciclarLeadParaPool(l));
-    const falhasUpd = paraReciclar.filter((l,idx)=>!resultadosRecicl[idx].ok);
-    const reciclados = paraReciclar.filter(l=>!falhasUpd.includes(l));
+    const resultadosRecicl = await runInChunks(todosParaReciclar, l=>reciclarLeadParaPool(l));
+    const falhasUpd = todosParaReciclar.filter((l,idx)=>!resultadosRecicl[idx].ok);
+    const reciclados = todosParaReciclar.filter(l=>!falhasUpd.includes(l));
     if(falhasUpd.length){
       const porMotivo={};
-      paraReciclar.forEach((l,idx)=>{
+      todosParaReciclar.forEach((l,idx)=>{
         if(resultadosRecicl[idx].ok) return;
         const msg=resultadosRecicl[idx].error?.message||resultadosRecicl[idx].error?.code||'erro desconhecido';
         (porMotivo[msg]=porMotivo[msg]||[]).push(l.id);
@@ -8755,12 +8826,15 @@ async function confirmarAvaliarPerdidos(){
     // 2. Registra no histórico (visível só para adm — tipo especial) o status anterior e o vendedor
     for(const l of reciclados){
       const info = infoAnterior.get(l.id) || {nomeVend:'Sem vendedor', nomeEquipe:'Sem equipe'};
+      const motivo = idsComComentario.has(l.id)
+        ? 'reciclado manualmente pelo admin apesar de ter comentário'
+        : 'sem comentário explicativo';
       try{
         await sb.from('crm_historico').insert({
           lead_id: l.id,
           user_id: CU.id,
           tipo: 'Interno (Adm)',
-          descricao: `[RECICLADO] Status anterior: Perdido | Vendedor: ${info.nomeVend} | Equipe: ${info.nomeEquipe} | Motivo: sem comentário explicativo`,
+          descricao: `[RECICLADO] Status anterior: Perdido | Vendedor: ${info.nomeVend} | Equipe: ${info.nomeEquipe} | Motivo: ${motivo}`,
           created_at: new Date().toISOString()
         });
       } catch(e){ console.warn('Hist insert error:', e); }
@@ -8769,10 +8843,13 @@ async function confirmarAvaliarPerdidos(){
     const { data: newHist } = await sb.from('crm_historico').select('*').order('created_at', { ascending: false }).limit(2000);
     if(newHist) allHist = newHist;
     saveCache();
+    _selecionadosComComentario.clear();
     closeModal('avaliar-perdidos');
     reRenderCurrent();
     const msgFalha = falhasUpd.length ? ` (${falhasUpd.length} falharam)` : '';
-    toast(`${reciclados.length} lead(s) reciclado(s) para a base como Novo!${msgFalha}`, 'ok');
+    const qtdComComentario = reciclados.filter(l=>idsComComentario.has(l.id)).length;
+    const msgComComentario = qtdComComentario ? ` (${qtdComComentario} com comentário, incluído manualmente)` : '';
+    toast(`${reciclados.length} lead(s) reciclado(s) para a base como Novo!${msgComComentario}${msgFalha}`, 'ok');
   } catch(e){
     toast('Erro: ' + e.message, 'err');
   } finally {
@@ -8786,6 +8863,22 @@ async function confirmarAvaliarPerdidos(){
    capado de 12k do front) e separa dois padrões: "identica" (mesmo nome +
    telefone — mesclável direto) e "colisao" (mesmo telefone em nomes
    diferentes — provável erro de importação, não mescla sozinho, só avisa). */
+// Telefone "impossível de ligar": todos os dígitos iguais (00000000000,
+// 11111111111...), sequência óbvia (0123456789...), ou curto demais pra ser
+// um número de verdade com DDD (BR precisa de 10-11 dígitos). Detecta o lixo
+// de importação/digitação sem precisar abrir cada lead um por um.
+function telefoneInvalido(tel){
+  if(!tel) return true;
+  if(tel.length<10) return true;
+  if(/^(\d)\1+$/.test(tel)) return true;
+  if(tel==='01234567890'||tel==='12345678901'||tel==='09876543210'||tel==='98765432109') return true;
+  return false;
+}
+function leadTemVenda(leadId){
+  return allVendas.some(v=>v.lead_id===leadId);
+}
+
+let _dupGruposAtual=[]; // grupos "colisão" (com lead_ids resolvidos), indexados p/ os botões de ação
 async function openDuplicatas(){
   if(!isAdmin()) return;
   document.getElementById('modal-duplicatas').classList.add('on');
@@ -8796,14 +8889,14 @@ async function openDuplicatas(){
   try{
     const{data,error}=await sb.rpc('crm_relatorio_duplicatas');
     if(error) throw error;
-    _renderDuplicatasResult(data||[]);
+    await _renderDuplicatasResult(data||[]);
   }catch(e){
     body.innerHTML=`<div class="empty"><div class="ei">⚠️</div>Erro ao verificar duplicatas: ${e.message}</div>`;
   }finally{
     loading.style.display='none';
   }
 }
-function _renderDuplicatasResult(grupos){
+async function _renderDuplicatasResult(grupos){
   const body=document.getElementById('duplicatas-body');
   const identicas=grupos.filter(g=>g.tipo==='identica');
   const colisoes=grupos.filter(g=>g.tipo==='colisao');
@@ -8826,14 +8919,146 @@ function _renderDuplicatasResult(grupos){
       </div>`;
     }).join('');
   }
+
   if(colisoes.length){
-    html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--orange);margin:16px 0 8px">Mesmo telefone, nomes diferentes — ${colisoes.length} grupo(s), revisar manualmente</div>`;
-    html+=colisoes.map(g=>`<div style="padding:10px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:8px;margin-bottom:6px">
-        <div style="font-size:11.5px;color:var(--muted2);margin-bottom:2px">Telefone ${g.tel_norm} · ${g.qtd} leads</div>
-        <div style="font-size:12px;color:var(--text)">${g.nomes.map(n=>escJs(n)).join(', ')}</div>
-      </div>`).join('');
+    // g.nomes vem de um array_agg(DISTINCT nome) separado — não bate 1:1 com
+    // g.lead_ids (pode ter menos nomes que ids se dois leads tiverem o mesmo
+    // nome). Pra abrir "o lead certo" ao clicar, busca os cadastros completos
+    // direto no banco (id confiável) em vez de confiar no array de nomes.
+    const todosIds=[...new Set(colisoes.flatMap(g=>g.lead_ids))];
+    const leadsMap=new Map();
+    for(let i=0;i<todosIds.length;i+=200){
+      const chunk=todosIds.slice(i,i+200);
+      const{data:rows,error:errFetch}=await sb.from('crm_leads')
+        .select('id,nome,telefone,status,tipo_lead,proposta_quente,responsavel_id,origem,created_at,observacoes')
+        .in('id',chunk);
+      if(errFetch){ console.warn('Duplicatas: erro ao buscar leads da colisão:',errFetch.message); continue; }
+      (rows||[]).forEach(r=>leadsMap.set(r.id,r));
+    }
+
+    const invalidas=colisoes.filter(g=>telefoneInvalido(g.tel_norm));
+    const revisar=colisoes.filter(g=>!telefoneInvalido(g.tel_norm));
+    _dupGruposAtual=colisoes; // índice usado pelos botões de exclusão em lote
+
+    const renderGrupo=(g,idxGlobal,invalido)=>{
+      const corBorda=invalido?'rgba(239,68,68,0.3)':'rgba(245,158,11,0.25)';
+      const corFundo=invalido?'rgba(239,68,68,0.05)':'rgba(245,158,11,0.06)';
+      const chips=g.lead_ids.map(id=>{
+        const lead=leadsMap.get(id);
+        const nome=lead?.nome||'(lead não encontrado)';
+        const temVenda=leadTemVenda(id);
+        return`<div style="margin-bottom:3px">
+          <span class="badge" style="cursor:pointer;background:var(--surface2);border:1px solid var(--border);color:var(--text)" onclick="toggleDupChip('${id}','dupchip_${id}')">${escJs(nome)}${temVenda?' 🔒':''}</span>
+          <div id="dupchip_${id}" style="display:none"></div>
+        </div>`;
+      }).join('');
+      return`<div style="padding:10px 12px;background:${corFundo};border:1px solid ${corBorda};border-radius:8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <div style="font-size:11.5px;color:var(--muted2)">Telefone ${g.tel_norm||'—'} · ${g.qtd} leads</div>
+          ${invalido?`<div style="display:flex;align-items:center;gap:8px">
+            <span class="badge b-perdido">número inválido</span>
+            <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirGrupoInvalido(${idxGlobal},this)">Excluir todos (menos com venda)</button>
+          </div>`:''}
+        </div>
+        <div>${chips}</div>
+      </div>`;
+    };
+
+    if(invalidas.length){
+      html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--red);margin:16px 0 8px">Números inválidos (impossível ligar) — ${invalidas.length} grupo(s)</div>`;
+      html+=invalidas.map(g=>renderGrupo(g,colisoes.indexOf(g),true)).join('');
+    }
+    if(revisar.length){
+      html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--orange);margin:16px 0 8px">Mesmo telefone, nomes diferentes — ${revisar.length} grupo(s), revisar manualmente</div>`;
+      html+=`<div style="font-size:11px;color:var(--muted2);margin-bottom:8px">Clique no nome pra ver o status do lead e decidir se apaga.</div>`;
+      html+=revisar.map(g=>renderGrupo(g,colisoes.indexOf(g),false)).join('');
+    }
   }
   body.innerHTML=html;
+}
+
+// Abre/fecha o "balão" de um lead dentro de um grupo de colisão, mostrando
+// status, vendedor e se tem venda vinculada (protegida contra exclusão).
+async function toggleDupChip(leadId,wrapId){
+  const wrap=document.getElementById(wrapId);
+  if(!wrap) return;
+  if(wrap.dataset.open==='1'){
+    wrap.dataset.open='0';
+    wrap.style.display='none';
+    return;
+  }
+  wrap.dataset.open='1';
+  wrap.style.display='';
+  if(wrap.dataset.loaded==='1') return;
+  wrap.innerHTML='<div style="padding:8px;font-size:11px;color:var(--muted2)">Carregando...</div>';
+  try{
+    const{data:lead,error}=await sb.from('crm_leads').select('*').eq('id',leadId).maybeSingle();
+    if(error||!lead){ wrap.innerHTML='<div style="padding:8px;font-size:11px;color:var(--red)">Lead não encontrado (já foi apagado?).</div>'; return; }
+    const temVenda=leadTemVenda(leadId);
+    const resp=allUsers.find(u=>u.user_id===lead.responsavel_id);
+    wrap.innerHTML=`
+      <div style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin:4px 0 8px;font-size:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <div>${sBadge(lead.status,lead.tipo_lead,null,lead.proposta_quente)}</div>
+          ${temVenda?'<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(74,222,128,0.12);padding:2px 8px;border-radius:5px;white-space:nowrap">🔒 tem venda — protegido</span>':''}
+        </div>
+        <div style="margin-top:6px;color:var(--muted2)">Telefone: ${lead.telefone||'—'} · Origem: ${lead.origem||'—'}</div>
+        <div style="color:var(--muted2)">Vendedor: ${resp?resp.name:'Sem vendedor'} · Criado: ${fmtDt(lead.created_at)}</div>
+        ${lead.observacoes?`<div style="margin-top:4px;color:var(--text);font-style:italic">"${escJs(lead.observacoes)}"</div>`:''}
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn-sm" onclick="closeModal('duplicatas');openDetail('${leadId}','leads')">Ver completo</button>
+          ${temVenda?'':`<button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirLeadColisao('${leadId}',this)">Excluir este</button>`}
+        </div>
+      </div>`;
+    wrap.dataset.loaded='1';
+  }catch(e){
+    wrap.innerHTML='<div style="padding:8px;font-size:11px;color:var(--red)">Erro: '+e.message+'</div>';
+  }
+}
+
+async function excluirLeadColisao(leadId,btn){
+  if(leadTemVenda(leadId)){ toast('Este lead tem venda vinculada — não pode ser apagado.','err'); return; }
+  if(!confirm('Apagar este lead e todo o histórico? Não dá pra desfazer.')) return;
+  btn.disabled=true; btn.textContent='Apagando...';
+  try{
+    await sb.from('crm_historico').delete().eq('lead_id',leadId);
+    await sb.from('crm_tarefas').delete().eq('lead_id',leadId);
+    await sb.from('crm_documentos').delete().eq('lead_id',leadId);
+    await sb.from('crm_leads').delete().eq('id',leadId);
+    allLeads=allLeads.filter(l=>l.id!==leadId);
+    allHist=allHist.filter(h=>h.lead_id!==leadId);
+    allTasks=allTasks.filter(t=>t.lead_id!==leadId);
+    toast('Lead apagado','ok');
+    openDuplicatas(); // re-roda o relatório do zero pra refletir a exclusão
+  }catch(e){
+    toast('Erro ao apagar: '+e.message,'err');
+    btn.disabled=false; btn.textContent='Excluir este';
+  }
+}
+
+async function excluirGrupoInvalido(groupIdx,btn){
+  const g=_dupGruposAtual[groupIdx];
+  if(!g){ toast('Grupo não encontrado — reabra Duplicatas e tente de novo.','err'); return; }
+  const protegidos=g.lead_ids.filter(id=>leadTemVenda(id));
+  const apagaveis=g.lead_ids.filter(id=>!protegidos.includes(id));
+  if(!apagaveis.length){ toast('Todos os leads deste grupo têm venda vinculada — nada foi apagado.','err'); return; }
+  const msgProt=protegidos.length?` (${protegidos.length} com venda mantido(s))`:'';
+  if(!confirm(`Apagar ${apagaveis.length} lead(s) com número inválido "${g.tel_norm}"?${msgProt} Não dá pra desfazer.`)) return;
+  btn.disabled=true; btn.textContent='Apagando...';
+  try{
+    await sb.from('crm_historico').delete().in('lead_id',apagaveis);
+    await sb.from('crm_tarefas').delete().in('lead_id',apagaveis);
+    await sb.from('crm_documentos').delete().in('lead_id',apagaveis);
+    await sb.from('crm_leads').delete().in('id',apagaveis);
+    allLeads=allLeads.filter(l=>!apagaveis.includes(l.id));
+    allHist=allHist.filter(h=>!apagaveis.includes(h.lead_id));
+    allTasks=allTasks.filter(t=>!apagaveis.includes(t.lead_id));
+    toast(`${apagaveis.length} lead(s) apagado(s)${msgProt}`,'ok');
+    openDuplicatas();
+  }catch(e){
+    toast('Erro ao apagar grupo: '+e.message,'err');
+    btn.disabled=false; btn.textContent='Excluir todos (menos com venda)';
+  }
 }
 async function mesclarGrupoDuplicata(keeperId,loserIds,btn){
   if(!confirm(`Mesclar ${loserIds.length+1} cadastros em 1? Histórico, tarefas e vendas dos outros são movidos pro que fica. Não dá pra desfazer.`))return;
@@ -12582,6 +12807,20 @@ function irParaLeadNotif(leadId, notifId){
         Leads que serão reciclados
       </div>
       <div id="av-reciclar-list" style="max-height:180px;overflow-y:auto;border:1px solid rgba(74,222,128,0.2);border-radius:8px;background:rgba(74,222,128,0.04)"></div>
+    </div>
+    <!-- Lista de leads COM COMENTÁRIO — opcional, admin escolhe -->
+    <div id="av-comentario-wrap" style="display:none;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold2)">
+          Têm comentário — reciclar mesmo assim?
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted2);cursor:pointer">
+          <input type="checkbox" id="av-comentario-sel-all" style="accent-color:var(--gold)" onchange="toggleTodosComComentario(this.checked)">
+          selecionar todos
+        </label>
+      </div>
+      <div style="font-size:11px;color:var(--muted2);margin-bottom:8px">Estes leads têm algo escrito no histórico e por isso ficam de fora da reciclagem automática. Marque os que quer reciclar mesmo assim.</div>
+      <div id="av-comentario-list" style="max-height:220px;overflow-y:auto;border:1px solid rgba(201,168,76,0.25);border-radius:8px;background:rgba(201,168,76,0.04)"></div>
     </div>
     <div id="avaliar-perdidos-loading" style="text-align:center;padding:12px;color:var(--muted2);font-size:12px;display:none">Analisando leads...</div>
     <div class="modal-btns">
