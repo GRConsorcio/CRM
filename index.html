@@ -3528,17 +3528,15 @@ function renderNav(){
     <div class="nav-item" onclick="nav('campanhas',this)" title="Campanhas"><span class="nav-icon">${IC.campanhas}</span><span class="nav-label">Campanhas</span></div>`;
 
   if(admin){
-    // Admin e Coordenador: seção Gestão com Equipes + Vendas (todos) + Clientes Vendidos
+    // Admin e Coordenador: seção Gestão com Equipes + Vendas (todos)
     html+=`<div class="nav-sect">Gestão</div>
       <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">${IC.equipes}</span><span class="nav-label">Equipes</span></div>
       <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Vendas</span></div>
-      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon">${IC_clientes}</span><span class="nav-label">Clientes Vendidos</span></div>
       <div class="nav-item" onclick="nav('base-comissao',this);renderBaseComissao()" title="Base GR/GRO"><span class="nav-icon">📉</span><span class="nav-label">Base GR/GRO</span></div>`;
   } else if(isSup){
-    // Supervisor: seção Gestão com Vendas da equipe + Clientes Vendidos da equipe
+    // Supervisor: seção Gestão com Vendas da equipe
     html+=`<div class="nav-sect">Gestão</div>
-      <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas da Equipe"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Vendas da Equipe</span></div>
-      <div class="nav-item" onclick="openClientesVendidos()" title="Clientes Vendidos"><span class="nav-icon">${IC_clientes}</span><span class="nav-label">Clientes Vendidos</span></div>`;
+      <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas da Equipe"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Vendas da Equipe</span></div>`;
   }
   // Vendedor NÃO tem seção Gestão
 
