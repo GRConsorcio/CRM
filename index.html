@@ -9596,6 +9596,18 @@ function fixEncoding(str){
     .replace(/Ã»/g,'û').replace(/Ã/g,'À').replace(/Ã/g,'Â')
     .replace(/â€œ/g,'"').replace(/â€/g,'"').replace(/â€™/g,"'");
 }
+// Um lead só é "útil" pro CRM se tiver telefone (é o canal de contato
+// principal do negócio — sem ele não dá pra ligar nem mandar WhatsApp) E
+// pelo menos mais um dado além dele (nome ou e-mail). Um registro "desconexo"
+// — só o telefone sozinho, só o nome sozinho, ou só o e-mail sozinho — não é
+// utilizável de verdade, então é descartado automaticamente na importação
+// (CSV, texto livre e formulário estruturado passam todos por aqui).
+function leadEhUtil(l){
+  const temTel=!!(l.telefone && l.telefone.replace(/\D/g,'').length>=8);
+  const temNome=!!(l.nome && l.nome.trim().length>=2);
+  const temEmail=!!(l.email && /@/.test(l.email));
+  return temTel && (temNome||temEmail);
+}
 // Limpa prefixos de telefone (p:, tel:, w:, etc.) e retorna só dígitos + +
 function cleanTel(raw){
   if(!raw) return null;
@@ -9630,14 +9642,21 @@ function parseCSV(text){
   lines.slice(1).forEach((line,i)=>{
     const cols=line.split(delim).map(c=>c.trim().replace(/^"|"$/g,''));
     const nome=colMap.nome>=0?cols[colMap.nome]:'';
-    if(!nome){erros.push(`Linha ${i+2}: nome vazio`);return;}
-    csvParsedLeads.push({
-      nome:fixEncoding(nome),
+    const candidato={
+      nome:fixEncoding(nome)||'',
       telefone:cleanTel(colMap.telefone>=0?fixEncoding(cols[colMap.telefone]):null),
       email:colMap.email>=0?fixEncoding(cols[colMap.email])||null:null,
       interesse:colMap.interesse>=0?fixEncoding(cols[colMap.interesse])||null:null,
       origem:colMap.origem>=0?fixEncoding(cols[colMap.origem])||'CSV':'CSV',
-    });
+    };
+    // Precisa de telefone + pelo menos mais um dado (nome ou e-mail) — uma
+    // linha só com nome (sem telefone nem e-mail), só com telefone, ou só
+    // com e-mail é "desconexa" e nem entra no preview.
+    if(!leadEhUtil(candidato)){
+      erros.push(`Linha ${i+2}: ${!candidato.telefone?'sem telefone':'dados insuficientes (só um campo preenchido)'}`);
+      return;
+    }
+    csvParsedLeads.push(candidato);
   });
 
   const preview=document.getElementById('csv-preview');
@@ -9752,9 +9771,7 @@ async function importBulk(){
     // ── 3. Limpa espaços duplos e vírgulas/pontos soltos no nome ──
     nomeRaw = nomeRaw.replace(/\s{2,}/g,' ').replace(/^[,.\-\s]+|[,.\-\s]+$/g,'').trim();
 
-    if(!nomeRaw) return null;
-
-    return{
+    const candidato={
       nome:nomeRaw,
       telefone:telRaw||null,
       email:emailRaw||null,
@@ -9763,17 +9780,31 @@ async function importBulk(){
       responsavel_id:finalBulkRespId||null,
       tipo_lead:tipoLead,
     };
+    // Precisa de telefone + pelo menos mais um dado (nome ou e-mail) — uma
+    // linha desconexa (só um dos três) é descartada aqui, antes mesmo de
+    // chegar em importLeads.
+    return leadEhUtil(candidato)?candidato:null;
   }).filter(Boolean);
 
-  if(!leads.length){toast('Nenhum lead válido encontrado','err');return;}
+  if(!leads.length){toast('Nenhum lead válido encontrado — precisa de telefone + nome ou e-mail em cada linha','err');return;}
   await importLeads(leads,origemEscolhida);
   document.getElementById('bulk-text').value='';
   document.getElementById('bulk-origem').value='';
 }
 
-async function importLeads(leads,fonte){
+async function importLeads(leadsBrutos,fonte){
   let ok=0,errs=0,dups=0;
   const batch=[];
+
+  // Rede de segurança final contra lead "desconexo" (só telefone, só nome ou
+  // só e-mail, sem mais nenhum dado) — mesmo que algum caminho de importação
+  // futuro esqueça de filtrar isso antes de chegar aqui, não entra na base.
+  const descartados=leadsBrutos.length - leadsBrutos.filter(leadEhUtil).length;
+  const leads=leadsBrutos.filter(leadEhUtil);
+  if(!leads.length){
+    toast(descartados?`${descartados} lead(s) descartado(s) — faltava telefone ou dados demais em branco.`:'Nenhum lead para importar','err');
+    return;
+  }
 
   // Checagem de duplicata contra o BANCO INTEIRO — antes só comparava com
   // allLeads (cache local, capado em ~12k) e dentro do próprio arquivo, então
@@ -9875,12 +9906,14 @@ async function importLeads(leads,fonte){
     <strong>${fonte}</strong><span style="color:var(--muted2);font-size:11px">${now}</span></div>
     <div style="color:var(--green)">${ok} importado${ok!==1?'s':''}</div>
     ${dups?`<div style="color:var(--orange)">${dups} duplicado${dups!==1?'s':''} ignorado${dups!==1?'s':''}</div>`:''}
+    ${descartados?`<div style="color:var(--orange)">${descartados} descartado${descartados!==1?'s':''} — sem telefone ou desconexo${descartados!==1?'s':''}</div>`:''}
     ${errs?`<div style="color:var(--red)">${errs} erro${errs!==1?'s':''}${ultimoErro?': '+ultimoErro:''}</div>`:''}`;
   if(log.querySelector('.empty')) log.innerHTML='';
   log.prepend(entry);
 
   let msg = `${ok} lead${ok!==1?'s':''} importado${ok!==1?'s':''}!`;
   if(dups) msg += ` (${dups} duplicados ignorados)`;
+  if(descartados) msg += ` (${descartados} descartado(s) — sem telefone ou desconexo)`;
   if(errs) msg += ultimoErro ? ` — ${errs} erro(s): ${ultimoErro}` : ` (${errs} erro(s) — tente novamente)`;
   toast(msg, ok>0?'ok':'err');
 }
