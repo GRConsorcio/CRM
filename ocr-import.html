@@ -95,8 +95,8 @@ td.col-actions{width:36px;text-align:center}
     <div class="drop" id="drop">
       <input type="file" id="file-input" accept="image/*" multiple>
       <div class="drop-icon">🖼️</div>
-      <div class="drop-txt">Clique ou arraste as fotos das folhas aqui</div>
-      <div class="drop-sub">Pode selecionar várias de uma vez — cada imagem vira uma "folha" processada em sequência</div>
+      <div class="drop-txt">Clique, arraste ou cole (Ctrl+V) as fotos das folhas aqui</div>
+      <div class="drop-sub">Pode selecionar várias de uma vez — cada imagem vira uma "folha" processada em sequência. Colar funciona com prints/imagens copiadas, mesmo sem estarem salvas no computador.</div>
     </div>
     <div class="opts">
       <label><input type="checkbox" id="opt-preprocess" checked> Melhorar imagem antes de ler (recomendado p/ fotos de celular)</label>
@@ -172,6 +172,28 @@ fileInput.addEventListener('change', e => handleFiles([...e.target.files]));
 dropEl.addEventListener('drop', e => {
   const files = [...(e.dataTransfer?.files||[])].filter(f => f.type.startsWith('image/'));
   if(files.length) handleFiles(files);
+});
+
+// Colar (Ctrl+V) direto da área de transferência — cobre print/captura de tela
+// ou imagem copiada de outro lugar (WhatsApp Web, e-mail, navegador), sem
+// precisar salvar o arquivo no computador antes. clipboardData.items só tem
+// itens do tipo "file" quando o que foi copiado é de fato uma imagem (texto
+// copiado não aparece aqui), então isso não atrapalha colar texto normal
+// dentro dos campos da tabela.
+document.addEventListener('paste', e => {
+  const itens = [...(e.clipboardData?.items||[])];
+  const arquivos = itens
+    .filter(it => it.kind === 'file' && it.type.startsWith('image/'))
+    .map((it,idx) => {
+      const f = it.getAsFile();
+      if(f && !f.name) Object.defineProperty(f, 'name', {value:`colado-${Date.now()}-${idx}.png`});
+      return f;
+    })
+    .filter(Boolean);
+  if(!arquivos.length) return; // deixa o paste normal (texto nos campos) acontecer
+  e.preventDefault();
+  handleFiles(arquivos);
+  toast(`${arquivos.length} imagem(ns) colada(s)`, 'ok');
 });
 
 async function handleFiles(files){
