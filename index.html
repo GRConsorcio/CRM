@@ -548,6 +548,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <button class="btn-sm" id="leads-recolher-tudo-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openRecolherTudo()">Recolher tudo para mim</button>
       <button class="btn-sm" id="leads-avaliar-perdidos-btn" style="display:none;border-color:var(--red);color:var(--red)" onclick="openAvaliarPerdidos()">Avaliar Perdidos</button>
       <button class="btn-sm" id="leads-duplicatas-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openDuplicatas()">Duplicatas</button>
+      <button class="btn-sm" id="leads-exportar-btn" style="display:none;border-color:var(--gold-dim);color:var(--gold2)" onclick="exportarLeadsCSV()">⬇ Exportar CSV</button>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">Selecionar</button>
       <span id="new-lead-btn-wrap"></span>
     </div>
@@ -3902,6 +3903,8 @@ function renderLeads(resetPage){
   if(apb) apb.style.display=isAdmin()?'':'none';
   const dpb=document.getElementById('leads-duplicatas-btn');
   if(dpb) dpb.style.display=isAdmin()?'':'none';
+  const exb=document.getElementById('leads-exportar-btn');
+  if(exb) exb.style.display=isAdmin()?'':'none';
   // Populate DDD filter (admin only)
   populateDDDFilter();
   populateEquipeFilterLeads();
@@ -3992,6 +3995,38 @@ function renderLeads(resetPage){
   updateLeadsMassCount();
   // Render pagination bar
   renderLeadsPagination(f.length, totalPages);
+}
+
+// Exporta a base inteira (allLeads) para CSV, excluindo os já vendidos (status
+// 'Fechado') — ignora os filtros ativos na tela de propósito, pois o pedido é
+// sempre "toda a lista" de leads em aberto, não só a página/filtro atual.
+function csvEsc(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }
+
+function exportarLeadsCSV(){
+  if(!isAdmin()){toast('Apenas admin pode exportar','err');return;}
+  const leads=allLeads.filter(l=>l.status!=='Fechado');
+  if(!leads.length){toast('Nenhum lead para exportar','err');return;}
+  const headers=['Nome','Telefone','Email','Status','Tipo','Interesse','Origem','Vendedor','Equipe','Criado em','Atualizado em','Observações'];
+  const rows=leads.map(l=>{
+    const u=findUser(l.responsavel_id);
+    const eq=allEquipes.find(e=>e.id===l.equipe_id);
+    return[
+      l.nome||'',l.telefone||'',l.email||'',l.status||'',l.tipo_lead||'Novo',
+      l.interesse||'',l.origem||'',u?u.name:'',eq?eq.nome:'',
+      l.created_at?new Date(l.created_at).toLocaleString('pt-BR'):'',
+      l.updated_at?new Date(l.updated_at).toLocaleString('pt-BR'):'',
+      l.observacoes||''
+    ];
+  });
+  // Delimitador ';' — Excel em pt-BR usa ',' como separador decimal e só
+  // reconhece colunas automaticamente com ';' nesse locale.
+  const csv=[headers,...rows].map(r=>r.map(csvEsc).join(';')).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`leads_sem_vendidos_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  URL.revokeObjectURL(url);
+  toast(`${leads.length.toLocaleString('pt-BR')} lead(s) exportado(s)`,'ok');
 }
 
 function renderLeadsPagination(total, totalPages){
