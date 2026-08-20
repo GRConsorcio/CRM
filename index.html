@@ -3983,7 +3983,7 @@ function renderLeads(resetPage){
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
         <td><div style="display:flex;gap:5px">
           <button class="act" onclick="editLead('${l.id}')">✏️</button>
-          ${(isAdmin()||isSupervisor())?`<button class="act red" onclick="delLead('${l.id}')">🗑️</button>`:''}
+          ${isAdmin()?`<button class="act red" onclick="delLead('${l.id}')">🗑️</button>`:''}
         </div></td>
       </tr>`;
     }).join('');
@@ -4382,7 +4382,7 @@ async function openDetail(id,from){
         ${canEdit?`<button class="act green" onclick="abrirVendaForm('${id}',${venda?`'${venda.id}'`:'null'})" data-lead="${id}">${venda?'Ver Venda':'Registrar Venda'}</button>`:''}
         ${(canEdit&&venda?.status_venda==='Aprovado')?`<button class="act" style="border-color:var(--blue);color:var(--blue)" onclick="abrirVendaForm('${id}',null)" title="Cliente comprando de novo — registra uma venda nova e separada, sem criar outro lead">+ Nova Venda</button>`:''}
         ${canEditData?`<button class="act" onclick="editLead('${id}')">Editar</button>`:''}
-        ${(isAdmin()||isSupervisor())?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >Apagar</button>`:''}
+        ${isAdmin()?`<button class="act red" onclick="if(confirm('Apagar este lead permanentemente?'))delLead('${id}')" >Apagar</button>`:''}
         ${(isAdminOrCoord()||isSupervisor())&&!lead.equipe_id?`<button class="act" onclick="openEnviarEquipe('${id}')" style="border-color:var(--blue);color:var(--blue)">Enviar p/ Equipe</button>`:''}
         ${(isAdminOrCoord()||isSupervisor())&&lead.equipe_id?`<button class="act" onclick="recolherLead('${id}')" style="border-color:var(--orange);color:var(--orange)">Recolher</button>`:''}
       </div>
@@ -6339,7 +6339,7 @@ function editLead(id){
 }
 
 async function delLead(id){
-  if(!isAdmin()&&!isSupervisor()){toast('Sem permissão para apagar leads','err');return;}
+  if(!isAdmin()){toast('Sem permissão para apagar leads','err');return;}
   // BUGFIX: diferente da mesclagem de duplicatas (crm_merge_leads, que sempre
   // move a venda pro cadastro que fica antes de apagar o resto), esse delete
   // direto apagava a venda junto sem nenhum aviso extra — bastava clicar
@@ -10730,7 +10730,7 @@ function openLeadsMass(){
   document.querySelectorAll('.lead-chk-td').forEach(td=>td.style.display='table-cell');
   // Show delete button only for admin
   const delWrap=document.getElementById('mass-delete-btn-wrap');
-  if(delWrap) delWrap.innerHTML=(isAdmin()||isSupervisor())
+  if(delWrap) delWrap.innerHTML=isAdmin()
     ?'<div style="width:1px;height:20px;background:var(--border);display:inline-block;margin:0 2px;vertical-align:middle"></div><button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="leadsMassDelete()">Apagar</button>'
     :'';
   // Origem (vendedor de origem para filtrar) — inclui "Sem vendedor"
