@@ -3997,14 +3997,33 @@ function renderLeads(resetPage){
   renderLeadsPagination(f.length, totalPages);
 }
 
-// Exporta a base inteira (allLeads) para CSV, excluindo os já vendidos (status
-// 'Fechado') — ignora os filtros ativos na tela de propósito, pois o pedido é
-// sempre "toda a lista" de leads em aberto, não só a página/filtro atual.
+// Exporta a base inteira para CSV, excluindo os já vendidos (status 'Fechado').
+// BUGFIX: exportar allLeads (cache em memória) deixava de fora leads mais antigos
+// que o ADMIN_LEADS_CAP (12000) não carrega — agora busca direto no Supabase,
+// paginado, então sempre traz a base completa em aberto, não só o que já veio
+// pro cache local.
 function csvEsc(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }
 
-function exportarLeadsCSV(){
+async function exportarLeadsCSV(){
   if(!isAdmin()){toast('Apenas admin pode exportar','err');return;}
-  const leads=allLeads.filter(l=>l.status!=='Fechado');
+  const btn=document.getElementById('leads-exportar-btn');
+  if(btn){btn.disabled=true;btn.textContent='Buscando base...';}
+  const loadingToast=showLoadingProgress(0);
+  let leads;
+  try{
+    leads=await fetchAllPages(
+      sb.from('crm_leads').select(getLeadListCols()).neq('status','Fechado').order('created_at',{ascending:false}),
+      1000,
+      (total)=>updateLoadingProgress(loadingToast,total)
+    );
+  }catch(e){
+    hideLoadingProgress(loadingToast,0);
+    if(btn){btn.disabled=false;btn.textContent='⬇ Exportar CSV';}
+    toast('Erro ao buscar base completa: '+e.message,'err');
+    return;
+  }
+  hideLoadingProgress(loadingToast,leads.length);
+  if(btn){btn.disabled=false;btn.textContent='⬇ Exportar CSV';}
   if(!leads.length){toast('Nenhum lead para exportar','err');return;}
   const headers=['Nome','Telefone','Email','Status','Tipo','Interesse','Origem','Vendedor','Equipe','Criado em','Atualizado em','Observações'];
   const rows=leads.map(l=>{
