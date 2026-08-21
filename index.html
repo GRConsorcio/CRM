@@ -1925,6 +1925,11 @@ const SUPA_URL='https://prquggwhjcvenzuziaox.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBycXVnZ3doamN2ZW56dXppYW94Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTUzMDUsImV4cCI6MjA5Mzc5MTMwNX0.vjbVhGIUowS6AGE1Uf5uDutCMI193mhgra3GSwlqMec';
 const {createClient}=supabase;
 const sb=createClient(SUPA_URL,SUPA_KEY);
+// Exposto pro <script type="module"> do ranking Firebase mais abaixo — módulo
+// ES não enxerga const/let de nível superior de um <script> clássico, só o
+// que for pendurado explicitamente em window (mesmo padrão já usado pra
+// window._allEquipes).
+window._crmSb=sb;
 
 let CU=null,CUProfile=null;
 let _initAppInProgress=false;
@@ -13374,7 +13379,7 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
   }
 
   // Agora incrementa o s[] com segurança
-  await runTransaction(ref(db, `${raiz}/dados/${vendKey}/s`), currentS=>{
+  const txResult = await runTransaction(ref(db, `${raiz}/dados/${vendKey}/s`), currentS=>{
     if(!Array.isArray(currentS)) currentS = [0,0,0,0];
     while(currentS.length <= semanaIdx) currentS.push(0);
     currentS[semanaIdx] = Math.max(0, (currentS[semanaIdx]||0) + delta);
@@ -13383,13 +13388,72 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
 
   const acao = delta > 0 ? `+${delta}` : String(delta);
   console.log(`[Firebase Ranking ${fbKey}] ${acao} para ${vendData.nome} semana ${semanaIdx+1} (${raiz})`);
-  return true;
+  // Devolve o valor da semana JÁ COM o delta aplicado (lido do snapshot que a
+  // própria transação commitou) — usado pra calcular a taxa de conversão sem
+  // precisar de outra leitura separada do Firebase.
+  const novoValorSemana = txResult?.snapshot?.val()?.[semanaIdx] ?? null;
+  return {vendKey, novoValorSemana};
 }
 
 // delta=+1 ao criar venda (Pendente), delta=-1 ao cancelar ou reverter
 // A equipe já vem resolvida pelo script principal via resolverEquipeParaVenda()
 window._crmAllEquipes        = ()=> window._allEquipes        || [];
 window._crmAllMembroEquipes  = ()=> window._allMembroEquipes  || [];
+
+// ══════════════════════════════════════════════════════════════
+// TAXA DE CONVERSÃO (cotas ÷ leads da semana) — escrita no Firebase pra
+// aparecer no painel externo do ranking, junto dos dados de cada vendedor.
+// Mesma janela de semana do mês já usada pro s[] (dias 1-7/8-14/15-21/22+),
+// pra bater com o período mostrado no board.
+// ══════════════════════════════════════════════════════════════
+
+// 00:00 BRT de um dia (ano/mesJS0-indexado/dia) convertido pro instante UTC
+// equivalente — BRT é sempre UTC-3 (sem horário de verão desde 2019).
+function brtInstanteUTC(ano, mesJS0, dia){
+  return new Date(Date.UTC(ano, mesJS0, dia, 3, 0, 0)).toISOString();
+}
+// Início (inclusive) e fim (exclusivo) da semana do mês, em UTC — usa
+// Date.UTC pra normalizar sozinho mês/ano quando a semana 4 vira o mês
+// seguinte (ex: dia 32 de agosto vira 1º de setembro automaticamente).
+function limitesSemanaDoMes(semanaIdx, dataRef){
+  const d = dataRef ? new Date(dataRef) : new Date();
+  const ano = parseInt(d.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo',year:'numeric'}),10);
+  const mes = parseInt(d.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo',month:'2-digit'}),10); // 1-12
+  const mesJS0 = mes-1;
+  const iniciosDia = [1,8,15,22];
+  const inicio = brtInstanteUTC(ano, mesJS0, iniciosDia[semanaIdx]);
+  const fimExclusivo = semanaIdx<3
+    ? brtInstanteUTC(ano, mesJS0, iniciosDia[semanaIdx+1])
+    : brtInstanteUTC(ano, mesJS0+1, 1);
+  return {inicio, fimExclusivo};
+}
+// Conta quantos leads foram distribuídos pro vendedor NESSA janela e grava
+// cotas/leads/taxa no Firebase (${raiz}/dados/${vendKey}/conversao). Não
+// derruba a sincronização da cota se falhar — só avisa no console, a cota já
+// foi gravada antes disso rodar.
+async function calcularEAtualizarConversao(fbKey, raiz, vendKey, vendedorUserId, semanaIdx, cotasNaSemana, dataRefVenda){
+  try{
+    if(cotasNaSemana==null || !vendedorUserId) return;
+    const sbCrm = window._crmSb;
+    if(!sbCrm){ console.warn('[FB Ranking] window._crmSb indisponível — conversão não calculada.'); return; }
+    const {inicio, fimExclusivo} = limitesSemanaDoMes(semanaIdx, dataRefVenda);
+    const {count, error} = await sbCrm.from('crm_leads')
+      .select('id',{count:'exact',head:true})
+      .eq('responsavel_id', vendedorUserId)
+      .gte('distribuido_em', inicio)
+      .lt('distribuido_em', fimExclusivo);
+    if(error){ console.warn('[FB Ranking] erro ao contar leads pra conversão:', error.message); return; }
+    const leads = count||0;
+    const taxa = leads>0 ? Math.round((cotasNaSemana/leads)*1000)/10 : 0; // 1 casa decimal, em %
+    const db = getDatabase(getFbApp(fbKey));
+    await set(ref(db, `${raiz}/dados/${vendKey}/conversao`), {
+      taxa, cotas:cotasNaSemana, leads, semana:semanaIdx, atualizadoEm:new Date().toISOString()
+    });
+    console.log(`[FB Ranking] Conversão ${vendKey}: ${cotasNaSemana} cota(s) / ${leads} lead(s) = ${taxa}% (semana ${semanaIdx+1})`);
+  }catch(e){
+    console.warn('[FB Ranking] Erro ao calcular/gravar conversão:', e.message);
+  }
+}
 
 
 // ══════════════════════════════════════════════════════════════
@@ -13652,6 +13716,10 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
       const n=document.getElementById('notify');
       const msg = delta > 0 ? 'Ranking: +1 cota!' : 'Ranking: -1 cota';
       if(n){n.textContent=msg;n.className='notify ok show';setTimeout(()=>n.classList.remove('show'),2500);}
+      // Recalcula a taxa de conversão (cotas ÷ leads da semana) e grava junto
+      // no Firebase — não trava a venda/sync principal se falhar.
+      calcularEAtualizarConversao(fbKey, raiz, ok.vendKey, vendedor.user_id, semanaIdx, ok.novoValorSemana, venda.created_at)
+        .catch(e=>console.warn('[FB Ranking] Erro ao atualizar conversão:', e.message));
     } else {
       console.warn('[FB Ranking] incrementarCotaFirebase retornou falso — sync não confirmado.');
       toast(`Ranking pode não ter atualizado pra ${vendedor.name} — confirme manualmente.`,'err');
