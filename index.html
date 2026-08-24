@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>CRM — GR Consórcio</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<meta name="theme-color" content="#c9a84c">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
@@ -455,6 +458,7 @@ document.addEventListener('DOMContentLoaded', function(){
           </div>
         </div>
       </div>
+      <button class="btn-sm" id="btn-instalar-app" onclick="instalarAppCRM()" style="display:none">⬇ Instalar app</button>
       <div class="user-chip">
         <div class="user-av" id="u-av">?</div>
         <span id="u-name"
@@ -6263,7 +6267,15 @@ async function saveLead(){
   Object.keys(payload).forEach(k=>{if(payload[k]===undefined)delete payload[k];});
   if(editLeadId){
     const leadAntes=allLeads.find(l=>l.id===editLeadId);
-    await sb.from('crm_leads').update(payload).eq('id',editLeadId);
+    // BUGFIX: não checava {error} — uma falha no update (RLS, rede, coluna
+    // inválida) mostrava "Lead atualizado!" e a UI já refletia o novo valor,
+    // mas sumia ao recarregar porque nunca foi salvo de verdade no banco.
+    const{error:errEditLead}=await sb.from('crm_leads').update(payload).eq('id',editLeadId);
+    if(errEditLead){
+      toast('Erro ao atualizar lead: '+errEditLead.message,'err');
+      console.error('[saveLead] falha no update:',errEditLead);
+      return;
+    }
     // Registra no histórico as alterações relevantes
     const alteracoes=[];
     if(leadAntes){
@@ -6473,13 +6485,25 @@ function editTask(id){
   document.getElementById('modal-tarefa').classList.add('on');
 }
 async function toggleTask(id,done){
-  await sb.from('crm_tarefas').update({concluida:!!done}).eq('id',id);
+  // BUGFIX: sem checar {error}, o checkbox ficava marcado na tela (aparentando
+  // concluído) mesmo se o update falhasse e a tarefa continuasse pendente no banco.
+  const{error}=await sb.from('crm_tarefas').update({concluida:!!done}).eq('id',id);
+  if(error){
+    toast('Erro ao atualizar tarefa: '+error.message,'err');
+    console.error('[toggleTask] falha no update:',error);
+    return;
+  }
   const i=allTasks.findIndex(t=>t.id===id);if(i>-1) allTasks[i].concluida=!!done;
   if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
   else renderTarefas();
 }
 async function delTask(id){
-  await sb.from('crm_tarefas').delete().eq('id',id);
+  const{error}=await sb.from('crm_tarefas').delete().eq('id',id);
+  if(error){
+    toast('Erro ao remover tarefa: '+error.message,'err');
+    console.error('[delTask] falha no delete:',error);
+    return;
+  }
   allTasks=allTasks.filter(t=>t.id!==id);
   if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
   else renderTarefas();
@@ -6768,9 +6792,18 @@ async function _saveVendaInner(){
   // ── Atualiza status do lead (só na criação) ──
   if(!existingV){
     const nowFech=new Date().toISOString();
-    await sb.from('crm_leads').update({status:'Fechado',...stageEnteredPayload(nowFech)}).eq('id',vendaLeadId);
-    const li=allLeads.findIndex(l=>l.id===vendaLeadId);
-    if(li>-1){ allLeads[li].status='Fechado'; if(hasStageEnteredAtCol()) allLeads[li].stage_entered_at=nowFech; }
+    // BUGFIX: sem checar {error}, a venda ficava gravada em crm_vendas mas o lead
+    // nunca virava "Fechado" de verdade no banco caso esse update falhasse — só na
+    // memória local. Depois de um reload/realtime ele reaparecia como aberto no
+    // Funil, podendo até ser puxado de novo pelo runAutoReturnRules.
+    const{error:errFechaLead}=await sb.from('crm_leads').update({status:'Fechado',...stageEnteredPayload(nowFech)}).eq('id',vendaLeadId);
+    if(errFechaLead){
+      toast('Venda salva, mas falhou ao marcar o lead como Fechado: '+errFechaLead.message,'err');
+      console.error('[_saveVendaInner] falha ao fechar lead:',errFechaLead);
+    } else {
+      const li=allLeads.findIndex(l=>l.id===vendaLeadId);
+      if(li>-1){ allLeads[li].status='Fechado'; if(hasStageEnteredAtCol()) allLeads[li].stage_entered_at=nowFech; }
+    }
   }
 
   catFiles={foto:[],contrato:[],boleto:[],comprovante:[]};
@@ -7102,7 +7135,15 @@ function openRoleModal(uid,name,role){
 }
 async function saveRole(){
   const role=v('role-select');
-  await sb.from('crm_users').update({role}).eq('user_id',roleUserId);
+  // BUGFIX: sem checar {error}, um update que falhasse deixava a UI mostrando o
+  // papel novo (afetando o que aquele usuário "parece" poder fazer nas telas de
+  // admin) enquanto as RLS/policies no Supabase continuavam usando o papel antigo.
+  const{error}=await sb.from('crm_users').update({role}).eq('user_id',roleUserId);
+  if(error){
+    toast('Erro ao atualizar perfil: '+error.message,'err');
+    console.error('[saveRole] falha no update:',error);
+    return;
+  }
   const i=allUsers.findIndex(u=>u.user_id===roleUserId);
   if(i>-1) allUsers[i].role=role;
   closeModal('role');toast('Perfil atualizado!','ok');renderEquipe();
@@ -7989,15 +8030,33 @@ async function revertVenda(vendaId, leadId){
   for(const d of docs){
     await sb.storage.from('crm-documentos').remove([d.storage_path]).catch(()=>{});
   }
-  await sb.from('crm_documentos').delete().eq('venda_id',vendaId);
-  await sb.from('crm_vendas').delete().eq('id',vendaId);
+  // BUGFIX: as 4 operações abaixo (delete de documentos, delete da venda, update do
+  // lead) rodavam sem checar {error} nenhuma — a função assumia sucesso e já
+  // atualizava allVendas/allLeads localmente. Se o delete de crm_vendas falhasse
+  // (RLS, rede), a venda sumia da tela do admin mas continuava no banco (reaparecia
+  // "do nada" na próxima sincronização/realtime), ou o lead ficava com status
+  // trocado na memória sem bater com o banco. Agora aborta e avisa se o delete da
+  // venda falhar (é o dado principal); os passos seguintes só rodam se ele confirmar.
+  const{error:errDelDocs}=await sb.from('crm_documentos').delete().eq('venda_id',vendaId);
+  if(errDelDocs) console.warn('[revertVenda] falha ao apagar documentos (prosseguindo):',errDelDocs.message);
+  const{error:errDelVenda}=await sb.from('crm_vendas').delete().eq('id',vendaId);
+  if(errDelVenda){
+    toast('Erro ao reverter venda: '+errDelVenda.message,'err');
+    console.error('[revertVenda] falha ao apagar crm_vendas:',errDelVenda);
+    return;
+  }
   allVendas=allVendas.filter(v=>v.id!==vendaId);
   allDocs=allDocs.filter(d=>d.venda_id!==vendaId);
   // Revert lead status
   const nowRev=new Date().toISOString();
-  await sb.from('crm_leads').update({status:'Proposta',...stageEnteredPayload(nowRev)}).eq('id',leadId);
-  const li=allLeads.findIndex(l=>l.id===leadId);
-  if(li>-1){ allLeads[li].status='Proposta'; if(hasStageEnteredAtCol()) allLeads[li].stage_entered_at=nowRev; }
+  const{error:errRevLead}=await sb.from('crm_leads').update({status:'Proposta',...stageEnteredPayload(nowRev)}).eq('id',leadId);
+  if(errRevLead){
+    toast('Venda removida, mas falhou ao reverter o status do lead: '+errRevLead.message,'err');
+    console.error('[revertVenda] falha ao reverter lead:',errRevLead);
+  } else {
+    const li=allLeads.findIndex(l=>l.id===leadId);
+    if(li>-1){ allLeads[li].status='Proposta'; if(hasStageEnteredAtCol()) allLeads[li].stage_entered_at=nowRev; }
+  }
   // Log in history
   await sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'Anotação',descricao:'Venda revertida para lead normal (status: Proposta)',created_at:new Date().toISOString()});
   // BUGFIX: antes buscava a tabela crm_historico INTEIRA (sem filtro nem limite) — em uma
@@ -9321,6 +9380,10 @@ function setupRealtime(){
     allUsers=_normUsers(data);
     populateSelects();
     if(document.getElementById('page-equipe').classList.contains('on')) renderEquipe();
+    // BUGFIX: só recobria a página "Equipe" — se um nome/role de vendedor mudasse
+    // enquanto o admin estivesse em Leads/Distribuição/Funil (páginas que mostram o
+    // nome do responsável), a tela mantinha o nome antigo até trocar de página.
+    else reRenderCurrent();
     // Deslogar 1 usuário (deslogarUsuario()) grava force_logout_at na linha dele —
     // mesma lógica de comparação iat-do-token do force_logout_at global (crm_config),
     // só que checando se a linha alterada é a MINHA.
@@ -9511,8 +9574,10 @@ async function syncVenda(payload){
       if(data) allLeads.push(data);
     }catch(e){ console.warn('[syncVenda] erro ao buscar lead vendido:',e.message); }
   }
-  // Re-render dashboard so Vendas/Cancelados KPIs update in real-time for everyone
-  if(document.getElementById('page-dashboard').classList.contains('on')) renderDashboard().catch(()=>{});
+  // BUGFIX: só re-renderizava o Dashboard — quem estivesse na página "Vendas" (ou
+  // qualquer outra coberta por reRenderCurrent) ficava com a lista presa no estado
+  // antigo até navegar manualmente quando uma venda mudava via Realtime.
+  reRenderCurrent();
   // Re-render open lead detail so the status badge updates live
   if(document.getElementById('page-lead-detail').classList.contains('on')) openDetail(detailLeadId,fromPage);
 }
@@ -9530,6 +9595,12 @@ function reRenderCurrent(){
   // evento até uma navegação manual — dando a impressão de que os leads tinham sumido.
   else if(document.getElementById('page-coord-leads')?.classList.contains('on')) renderCoordLeads();
   else if(_massVendedorId&&document.getElementById('page-funil-vendedor')?.classList.contains('on')) openFunilVendedor(_massVendedorId);
+  // BUGFIX: "Vendas" nunca era recoberta por reRenderCurrent (nem chamada pelo
+  // realtime de crm_vendas) — quem estivesse com essa tela aberta via a lista
+  // presa no estado antigo até navegar manualmente, mesmo com um evento em
+  // tempo real (aprovação/cancelamento/nova venda) ou qualquer outro trigger
+  // de reRenderCurrent acontecendo enquanto a página estava ativa.
+  else if(document.getElementById('page-vendas')?.classList.contains('on')) renderVendasPage();
 }
 
 
@@ -11959,7 +12030,15 @@ async function addMembro(){
 
 async function removeMembro(membroId,equipeId){
   if(!confirm('Remover membro da equipe?'))return;
-  await sb.from('crm_equipe_membros').delete().eq('id',membroId);
+  // BUGFIX: sem checar {error}, uma falha no delete deixava a UI mostrando a
+  // equipe sem esse membro enquanto ele continuava vinculado no banco — podendo
+  // reaparecer após reload/realtime, ou continuar recebendo leads da equipe.
+  const{error}=await sb.from('crm_equipe_membros').delete().eq('id',membroId);
+  if(error){
+    toast('Erro ao remover membro: '+error.message,'err');
+    console.error('[removeMembro] falha no delete:',error);
+    return;
+  }
   allMembroEquipes=allMembroEquipes.filter(m=>m.id!==membroId);
   toast('Membro removido','ok');
   openEquipeDetail(equipeId);
@@ -11980,7 +12059,10 @@ async function saveEquipe(){
   if(!nome){toast('Informe o nome da equipe','err');return;}
   const payload={nome,descricao:v('eq-desc')||null,cor:corSelecionada,criado_por:CU.id};
   if(editEquipeId){
-    await sb.from('crm_equipes').update(payload).eq('id',editEquipeId);
+    // BUGFIX: mesmo caminho de criação (logo abaixo) já checava {error} — só a
+    // edição ficou sem, mostrando "Equipe atualizada!" mesmo com o update falhando.
+    const{error:errEditEq}=await sb.from('crm_equipes').update(payload).eq('id',editEquipeId);
+    if(errEditEq){toast('Erro ao atualizar equipe: '+errEditEq.message,'err');return;}
     const i=allEquipes.findIndex(e=>e.id===editEquipeId);
     if(i>-1) Object.assign(allEquipes[i],payload);
     toast('Equipe atualizada!','ok');
@@ -12009,8 +12091,16 @@ function editEquipe(id){
 
 async function delEquipe(id){
   if(!confirm('Remover equipe e todos os membros?'))return;
-  await sb.from('crm_equipe_membros').delete().eq('equipe_id',id);
-  await sb.from('crm_equipes').delete().eq('id',id);
+  // BUGFIX: mesma classe de bug do removeMembro/saveEquipe — sem checar {error},
+  // a equipe podia continuar no banco (com membros) enquanto a UI já dava como removida.
+  const{error:errDelMembros}=await sb.from('crm_equipe_membros').delete().eq('equipe_id',id);
+  if(errDelMembros) console.warn('[delEquipe] falha ao apagar membros (prosseguindo):',errDelMembros.message);
+  const{error:errDelEq}=await sb.from('crm_equipes').delete().eq('id',id);
+  if(errDelEq){
+    toast('Erro ao remover equipe: '+errDelEq.message,'err');
+    console.error('[delEquipe] falha no delete:',errDelEq);
+    return;
+  }
   allEquipes=allEquipes.filter(e=>e.id!==id);
   allMembroEquipes=allMembroEquipes.filter(m=>m.equipe_id!==id);
   toast('Equipe removida','ok');
@@ -13735,6 +13825,28 @@ window.sincronizarVendaFirebase = async function(lead, venda, vendedor, equipe, 
   }
 };
 
+</script>
+
+<script>
+/* ═══ PWA: instalável no desktop, service worker próprio (mesmo padrão do app Operacional) ═══ */
+let _deferredInstallPromptCRM=null;
+window.addEventListener('beforeinstallprompt',(e)=>{
+  e.preventDefault();
+  _deferredInstallPromptCRM=e;
+  const btn=document.getElementById('btn-instalar-app');
+  if(btn) btn.style.display='inline-flex';
+});
+window.instalarAppCRM=async function(){
+  if(!_deferredInstallPromptCRM) return;
+  _deferredInstallPromptCRM.prompt();
+  await _deferredInstallPromptCRM.userChoice;
+  _deferredInstallPromptCRM=null;
+  const btn=document.getElementById('btn-instalar-app');
+  if(btn) btn.style.display='none';
+};
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
 </script>
 
 </body>
