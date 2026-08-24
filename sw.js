@@ -1,4 +1,4 @@
-const CACHE = 'crm-gr-v3';
+const CACHE = 'crm-gr-v4';
 const SHELL = ['./', './index.html', './manifest.json', './logo.svg', './icon.svg?v=2'];
 
 self.addEventListener('install', (e) => {
@@ -15,6 +15,10 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // BUGFIX: interceptar TUDO (inclusive chamadas cross-origin pro Supabase)
+  // podia quebrar/atrasar dados reais no app instalado. Só a casca do app
+  // (mesmo origin) passa pelo SW; tudo cross-origin vai direto pra rede.
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     fetch(e.request).then((res) => {
       const copy = res.clone();
