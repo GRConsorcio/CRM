@@ -3136,8 +3136,13 @@ async function loadAll(){
               allLeads=fresh;
               rebuildMaps();
               invalidateDDDCache();
-              const pg=document.querySelector('.nav-item.active')?.dataset?.page;
-              if(pg==='meus-leads') renderMeusLeads();
+              // BUGFIX: só re-renderizava se a página ativa fosse 'meus-leads' — o Funil
+              // (onde fica a contagem "Novo (N)") nunca era atualizado por esse polling,
+              // então o vendedor via uma contagem congelada do momento em que a página
+              // carregou, mesmo com allLeads já correto em memória (ex: Rayssa via "60"
+              // com a base já em 25). reRenderCurrent() já existe pra cobrir exatamente
+              // isso (mesmo motivo do bugfix do realtime, ver comentário em reRenderCurrent).
+              reRenderCurrent();
             }
           }catch(e){console.warn('Auto-refresh leads error:',e.message);}
         },90000);
