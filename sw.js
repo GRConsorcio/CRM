@@ -1,5 +1,5 @@
-const CACHE = 'crm-gr-v2';
-const SHELL = ['./', './index.html', './manifest.json', './logo.svg', './icon.svg'];
+const CACHE = 'crm-gr-v3';
+const SHELL = ['./', './index.html', './manifest.json', './logo.svg', './icon.svg?v=2'];
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
