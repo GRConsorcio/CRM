@@ -851,6 +851,16 @@ document.addEventListener('DOMContentLoaded', function(){
         <tbody id="eq-tbody"></tbody></table>
       </div>
     </div>
+    <div class="panel" id="panel-lixeira" style="margin-top:16px">
+      <div class="panel-head">
+        <div class="panel-title">🗑️ Lixeira de usuários</div>
+      </div>
+      <div style="padding:0 18px 4px;font-size:11.5px;color:var(--muted2)">Usuários excluídos ficam aqui por 30 dias, com tudo intacto (leads, vendas, histórico) — dá pra restaurar com 1 clique. Depois de 30 dias, apague definitivamente pra liberar o e-mail.</div>
+      <div class="tbl-wrap">
+        <table><thead><tr><th>Nome</th><th>E-mail</th><th>Excluído em</th><th>Restaurável até</th><th></th></tr></thead>
+        <tbody id="lix-tbody"></tbody></table>
+      </div>
+    </div>
   </div>
   <!-- LOGINS -->
   <div class="page" id="page-login-logs">
@@ -3671,7 +3681,7 @@ function nav(page,el){
       if(podeAprovarBloqueio) renderBypassBloqueioLog();
     }
   }
-  if(page==='equipe') renderEquipe();
+  if(page==='equipe'){ renderEquipe(); renderLixeira(); }
   if(page==='equipes') renderEquipes();
   if(page==='importar') renderImportar();
   if(page==='mesclar') renderMesclar();
@@ -7197,14 +7207,18 @@ async function criarUsuario(){
   }
 }
 
-// Exclusão real: remove o login do usuário no Supabase Auth (não só o perfil).
-// Isso não pode ser feito com a anon key do front — só a service_role key
-// consegue chamar auth.admin.deleteUser(), por isso passa pela Edge Function
-// 'delete-user', que confere de novo (no servidor) se quem está chamando é admin.
+// Exclusão vai pra LIXEIRA por padrão agora (soft-delete): login é banido (não
+// apagado), perfil marcado inativo, nada é reatribuído — fica 100% restaurável
+// por 30 dias. Motivo: um caso real (Adilson Vitor, 2026-08) foi apagado sem
+// querer pelo botão de exclusão do Análises e só deu pra recuperar com uma
+// reconstrução manual de 69 leads + 87 históricos + 81 atribuições. Isso não
+// deve depender de mim pra ser desfeito da próxima vez — a tela de Lixeira
+// abaixo resolve com 1 clique. 'Apagar definitivamente' (na Lixeira) continua
+// chamando o fluxo antigo, de verdade irreversível, pra quando quiser purgar.
 async function delUser(uid,name){
   if(!isAdmin()){toast('Sem permissão','err');return;}
   if(uid===CU.id){toast('Você não pode excluir sua própria conta','err');return;}
-  if(!confirm(`Excluir permanentemente o usuário "${name}"?\n\nIsso remove o login dele do sistema e não pode ser desfeito. Leads fechados (vendidos) por ele vão para o admin geral. Leads em aberto voltam para a base da equipe dele, sem responsável, disponíveis para transferência.`))return;
+  if(!confirm(`Excluir "${name}"?\n\nO login dele é desativado na hora, mas fica na Lixeira por 30 dias com tudo intacto (leads, vendas, histórico) — dá pra restaurar com 1 clique lá embaixo. Depois de 30 dias (ou se você apagar definitivamente na Lixeira), aí sim é irreversível.`))return;
   try{
     const{data:{session}}=await sb.auth.getSession();
     if(!session?.access_token){toast('Sessão expirada, faça login novamente','err');return;}
@@ -7217,9 +7231,71 @@ async function delUser(uid,name){
     if(!resp.ok||!out.success){toast(out.error||'Erro ao excluir usuário','err');return;}
     allUsers=allUsers.filter(u=>u.user_id!==uid);
     renderEquipe();
-    toast('Usuário excluído','ok');
+    renderLixeira();
+    toast('Usuário movido pra Lixeira — restaurável por 30 dias','ok');
   }catch(e){
     toast('Erro ao excluir usuário: '+e.message,'err');
+  }
+}
+
+async function renderLixeira(){
+  const tb=document.getElementById('lix-tbody');
+  if(!tb) return;
+  if(!isAdmin()){ tb.innerHTML=''; return; }
+  const {data,error}=await sb.from('lixeira_usuarios').select('*').eq('restaurado',false).order('deletado_em',{ascending:false});
+  if(error){ tb.innerHTML=`<tr><td colspan="5">Erro ao carregar: ${error.message}</td></tr>`; return; }
+  tb.innerHTML=(data||[]).map(l=>{
+    const diasRestantes=Math.max(0,Math.ceil((new Date(l.restaurar_ate)-new Date())/86400000));
+    return`<tr>
+      <td style="font-weight:700">${l.nome||'—'}</td>
+      <td style="color:var(--muted2);font-size:12px">${l.email||'—'}</td>
+      <td style="font-size:12px">${new Date(l.deletado_em).toLocaleDateString('pt-BR')}</td>
+      <td style="font-size:12px">${diasRestantes} dia(s)</td>
+      <td><button class="act" style="border-color:var(--green);color:var(--green)" onclick="restaurarUsuario('${l.user_id}','${escJs(l.nome||'')}')">↩️ Restaurar</button> <button class="act red" onclick="apagarDefinitivo('${l.user_id}','${escJs(l.nome||'')}')">🗑️ Definitivo</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted2)">Lixeira vazia</td></tr>';
+}
+
+async function restaurarUsuario(uid,name){
+  if(!isAdmin()){toast('Sem permissão','err');return;}
+  if(!confirm(`Restaurar "${name}"? O login volta a funcionar exatamente como estava (mesmos leads, vendas e histórico).`))return;
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    if(!session?.access_token){toast('Sessão expirada, faça login novamente','err');return;}
+    const resp=await fetch(SUPA_URL+'/functions/v1/restore-user',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({user_id:uid})
+    });
+    const out=await resp.json().catch(()=>({}));
+    if(!resp.ok||!out.success){toast(out.error||'Erro ao restaurar usuário','err');return;}
+    toast('Usuário restaurado!','ok');
+    await loadAll();
+    renderEquipe(); renderLixeira();
+  }catch(e){
+    toast('Erro ao restaurar usuário: '+e.message,'err');
+  }
+}
+
+// Apagar de vez, a partir da Lixeira — só aqui o fluxo antigo (irreversível,
+// reatribui leads fechados/vendas pro admin geral) roda de verdade.
+async function apagarDefinitivo(uid,name){
+  if(!isAdmin()){toast('Sem permissão','err');return;}
+  if(!confirm(`Apagar "${name}" DEFINITIVAMENTE?\n\nIsso não pode ser desfeito nunca mais — sai da Lixeira e o login é destruído de vez. Leads fechados/vendas vão para o admin geral.`))return;
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    if(!session?.access_token){toast('Sessão expirada, faça login novamente','err');return;}
+    const resp=await fetch(SUPA_URL+'/functions/v1/delete-user',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({user_id:uid, permanent:true})
+    });
+    const out=await resp.json().catch(()=>({}));
+    if(!resp.ok||!out.success){toast(out.error||'Erro ao apagar usuário','err');return;}
+    toast('Usuário apagado definitivamente','ok');
+    renderLixeira();
+  }catch(e){
+    toast('Erro ao apagar usuário: '+e.message,'err');
   }
 }
 
