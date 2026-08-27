@@ -1369,6 +1369,12 @@ document.addEventListener('DOMContentLoaded', function(){
 
   <!-- MEU FUNIL (vendedor) -->
   <div class="page" id="page-meu-funil">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <input class="inp" id="mf-srch" placeholder="Buscar por nome, telefone, e-mail ou interesse..." oninput="_debouncedRenderMeuFunil()" style="min-width:260px;flex:1">
+      <input class="inp" id="mf-f-data-ini" type="date" title="De" oninput="renderMeuFunil()" style="width:150px">
+      <input class="inp" id="mf-f-data-fim" type="date" title="Até" oninput="renderMeuFunil()" style="width:150px">
+      <button class="btn-outline btn-small" onclick="document.getElementById('mf-srch').value='';document.getElementById('mf-f-data-ini').value='';document.getElementById('mf-f-data-fim').value='';renderMeuFunil()">Limpar</button>
+    </div>
     <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;min-height:200px" id="meu-funil-grid"></div>
   </div>
 
@@ -3322,6 +3328,7 @@ async function forcarResyncCompleto(){
   try{
     clearLastSyncTime();
     await loadAll();
+    checkCursosObrigatoriosCRM();
     toast(`Base atualizada! ${allLeads.length.toLocaleString('pt-BR')} lead(s) carregados.`,'ok');
   }catch(e){
     toast('Erro ao atualizar base: '+e.message,'err');
@@ -3381,7 +3388,7 @@ function renderTaLeadOptions(query, keepId){
     const kl=allLeads.find(l=>l.id===keepId);
     if(kl) base=[kl,...base];
   }
-  const opts='<option value="">Nenhum</option>'+base.map(l=>`<option value="${l.id}">${l.nome}</option>`).join('');
+  const opts='<option value="">Nenhum</option>'+base.map(l=>`<option value="${l.id}">${l.nome||l.email||'(sem nome)'}</option>`).join('');
   const cur=sel_.value;
   sel_.innerHTML=opts;
   if(keepId!==undefined) sel_.value=keepId||'';
@@ -3417,7 +3424,7 @@ function populateSelects(){
   // vinculado apareça como opção, e o campo de busca (ta-lead-srch) permite
   // achar qualquer lead da base carregada, não só os 200 mais recentes.
   renderTaLeadOptions();
-  sel('dm-lead',allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id).slice(0,500).map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
+  sel('dm-lead',allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id).slice(0,500).map(l=>`<option value="${l.id}">${l.nome||l.email||'(sem nome)'}</option>`).join(''));
   // filter selects
   // IMPORTANTE: preserva o valor selecionado antes de recriar as opções.
   // Sem isso, toda vez que populateSelects() roda (a cada evento do Realtime
@@ -3467,6 +3474,7 @@ _debouncedRenderLeads=debounce(function(){renderLeads(true);},280);
 // Funil também busca "Fechados hoje" no Supabase a cada render — sem debounce,
 // cada tecla digitada na busca dispararia uma chamada de rede.
 _debouncedRenderFunil=debounce(function(){renderFunil();},280);
+_debouncedRenderMeuFunil=debounce(function(){renderMeuFunil();},200);
 
 // saveCache lazy — não bloqueia a UI, usa idle time
 let _saveCachePending=false;
@@ -3574,9 +3582,10 @@ function renderNav(){
       <div class="nav-item" onclick="nav('funis-equipe',this)" title="Funil por Vendedor"><span class="nav-icon">${IC.scope}</span><span class="nav-label">Funil por Vendedor</span></div>
       <div class="nav-item" onclick="nav('leads-por-dia',this)" title="Leads por Vendedor/Dia"><span class="nav-icon">${IC.calendar}</span><span class="nav-label">Leads por Dia</span></div>`;
   } else {
-    // Vendedor: apenas seus leads
+    // Vendedor: apenas seus leads. "Meus Leads" (lista plana) foi removida a
+    // pedido do usuário — "Meu Funil" (kanban) passou a ter busca + filtro de
+    // data, cobrindo o mesmo caso de uso num único lugar.
     html+=`<div class="nav-sect">Meus Leads</div>
-      <div class="nav-item" onclick="nav('meus-leads',this)" title="Meus Leads"><span class="nav-icon">${IC.myteam}</span><span class="nav-label">Meus Leads</span></div>
       <div class="nav-item" onclick="nav('meu-funil',this)" title="Meu Funil"><span class="nav-icon">${IC.funil}</span><span class="nav-label">Meu Funil</span></div>
       <div class="nav-item" onclick="nav('busca-base',this);renderBuscaBase()" title="Buscar na Base"><span class="nav-icon">${IC.search}</span><span class="nav-label">Buscar na Base</span></div>
       <div class="nav-item" onclick="nav('importar',this)" title="Importar Leads"><span class="nav-icon">${IC.import}</span><span class="nav-label">Importar Leads</span></div>
@@ -4035,7 +4044,7 @@ function renderLeads(resetPage){
       const isChecked=_selectedLeadIds.has(l.id);
       return`<tr>
         <td class="lead-chk-td" style="width:36px;${showChk?'':'display:none'}"><input type="checkbox" class="lead-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" ${isChecked?'checked':''} onchange="onLeadChkChange(this)"></td>
-        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads')">${l.nome}</td>
+        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','leads')">${l.nome||l.email||'(sem nome)'}</td>
         <td>${l.telefone||'—'}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(l.observacoes||'').replace(/"/g,'&quot;')}">${l.observacoes||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
         <td>${u?`<span style="font-size:11px">${u.name}</span>`:'<span style="color:var(--orange);font-size:11px">Sem vendedor</span>'}</td>
@@ -4235,7 +4244,7 @@ function _renderBuscaCompletaResult(q,data,body){
           const temDono=!!l.responsavel_id;
           const podeTomar=!temDono||isAdminOrCoord();
           return`<tr>
-            <td style="font-weight:700;color:var(--gold2)">${l.nome}</td>
+            <td style="font-weight:700;color:var(--gold2)">${l.nome||l.email||'(sem nome)'}</td>
             <td>${l.telefone||'—'}</td>
             <td>${l.interesse||'—'}</td>
             <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
@@ -4309,7 +4318,7 @@ function renderMeusLeads(){
   document.getElementById('ml-tbody').innerHTML=f.length===0
     ?`<tr><td colspan="7"><div class="empty"><div class="ei">👤</div>Nenhum lead atribuído a você</div></td></tr>`
     :f.map(l=>`<tr>
-        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','meus-leads')">${l.nome}</td>
+        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','meus-leads')">${l.nome||l.email||'(sem nome)'}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
@@ -4988,7 +4997,7 @@ function renderDistribuicao(){
   document.getElementById('dist-tbody').innerHTML=semVend.length===0
     ?`<tr><td colspan="5"><div class="empty"><div class="ei">✅</div>Todos os leads têm vendedor</div></td></tr>`
     :semVend.map(l=>`<tr>
-        <td style="font-weight:700">${l.nome}</td>
+        <td style="font-weight:700">${l.nome||l.email||'(sem nome)'}</td>
         <td>${l.telefone||'—'}</td>
         <td>${l.interesse||'—'}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
@@ -6174,7 +6183,7 @@ function openModal(type){
   }
   if(type==='dist-manual'){
     const semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
-    sel('dm-lead',semVend.map(l=>`<option value="${l.id}">${l.nome}</option>`).join(''));
+    sel('dm-lead',semVend.map(l=>`<option value="${l.id}">${l.nome||l.email||'(sem nome)'}</option>`).join(''));
   }
   if(type==='equipe') openModal_equipe();
   document.getElementById('modal-'+type).classList.add('on');
@@ -8978,7 +8987,7 @@ async function openAvaliarPerdidos(){
       const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
       return`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid rgba(74,222,128,0.1);font-size:12px">
         <div style="flex:1">
-          <span style="font-weight:700;color:var(--text)">${l.nome}</span>
+          <span style="font-weight:700;color:var(--text)">${l.nome||l.email||'(sem nome)'}</span>
           <span style="color:var(--muted2);font-size:11px"> · ${l.telefone||'—'}</span>
           ${resp?`<span style="color:var(--muted);font-size:11px"> · ${resp.name}</span>`:''}
         </div>
@@ -9003,7 +9012,7 @@ async function openAvaliarPerdidos(){
         <input type="checkbox" class="av-com-chk" data-id="${l.id}" style="margin-top:3px;accent-color:var(--gold);flex-shrink:0" onchange="toggleComComentario('${l.id}',this.checked)">
         <div style="flex:1;min-width:0">
           <div>
-            <span style="font-weight:700;color:var(--text)">${l.nome}</span>
+            <span style="font-weight:700;color:var(--text)">${l.nome||l.email||'(sem nome)'}</span>
             <span style="color:var(--muted2);font-size:11px"> · ${l.telefone||'—'}</span>
             ${resp?`<span style="color:var(--muted);font-size:11px"> · ${resp.name}</span>`:''}
           </div>
@@ -10237,6 +10246,22 @@ function renderMeuFunil(){
   } else {
     leads=allLeads.filter(l=>l.responsavel_id===CU.id);
   }
+  // Busca (nome/telefone/e-mail/interesse) + filtro de data (por criado_em) —
+  // pedido do usuário pra cobrir em "Meu Funil" o que antes só dava pra achar
+  // em "Meus Leads" (aba removida).
+  const mfQ=(document.getElementById('mf-srch')?.value||'').toLowerCase().trim();
+  const mfQd=mfQ.replace(/[^0-9]/g,'');
+  const mfDataIni=document.getElementById('mf-f-data-ini')?.value||'';
+  const mfDataFim=document.getElementById('mf-f-data-fim')?.value||'';
+  leads=leads.filter(l=>{
+    if(mfQ){
+      const match=(l.nome||'').toLowerCase().includes(mfQ)||(l.interesse||'').toLowerCase().includes(mfQ)||(l.email||'').toLowerCase().includes(mfQ)||(l.observacoes||'').toLowerCase().includes(mfQ)||(mfQd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(mfQd));
+      if(!match)return false;
+    }
+    if(mfDataIni&&(!l.created_at||l.created_at<mfDataIni))return false;
+    if(mfDataFim&&(!l.created_at||l.created_at>mfDataFim+'T23:59:59'))return false;
+    return true;
+  });
   document.getElementById('meu-funil-grid').innerHTML=STAGES.map(s=>{
     const ls=ordenarFilaFunil(leads.filter(l=>l.status===s));
     return`<div class="funil-col-wrap" data-stage="${s}"
@@ -10510,7 +10535,7 @@ async function renderCoordLeads(){
       const isChecked=_coordSelectedIds.has(l.id);
       return`<tr>
         <td><input type="checkbox" class="coord-chk" data-id="${l.id}" style="accent-color:var(--gold);width:15px;height:15px" ${isChecked?'checked':''} onchange="onCoordChkChange(this)"></td>
-        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','coord-leads')">${l.nome}</td>
+        <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','coord-leads')">${l.nome||l.email||'(sem nome)'}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
         <td style="font-size:11.5px">${u?.name||'<span style="color:var(--orange)">Sem vendedor</span>'}</td>
@@ -10768,7 +10793,7 @@ async function renderCoordDist(){
   document.getElementById('coord-dist-tbody').innerHTML=semVend.length===0
     ?`<tr><td colspan="5"><div class="empty"><div class="ei">✅</div>Todos têm vendedor</div></td></tr>`
     :semVend.map(l=>`<tr>
-        <td style="font-weight:700">${l.nome}</td>
+        <td style="font-weight:700">${l.nome||l.email||'(sem nome)'}</td>
         <td>${l.telefone||'—'}</td><td>${l.interesse||'—'}</td>
         <td style="font-size:11px;color:var(--muted2)">${fmtDt(l.created_at)}</td>
         <td><button class="act" onclick="openDistPicker('${l.id}')">Atribuir</button></td>
@@ -11414,7 +11439,7 @@ function renderLeadsCeo(){
       const u=allUsers.find(u=>u.user_id===l.responsavel_id);
       const eq=allEquipes.find(e=>e.id===equipeIdParaLeadCeo(l));
       return`<tr>
-        <td style="font-weight:700">${l.nome}</td>
+        <td style="font-weight:700">${l.nome||l.email||'(sem nome)'}</td>
         <td>${l.telefone||'—'}</td>
         <td>${sBadge(l.status,l.tipo_lead)}</td>
         <td>${u?u.name:'<span style="color:var(--orange)">Sem vendedor</span>'}</td>
@@ -11816,7 +11841,7 @@ function renderRecolherList(){
             style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer;flex-shrink:0"
             onchange="updateRecolherCount()">
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.nome}</div>
+            <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.nome||l.email||'(sem nome)'}</div>
             <div style="font-size:10.5px;color:var(--muted2);margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${sBadge(l.status,l.tipo_lead)} <span>${meta}</span></div>
           </div>
         </label>`;
@@ -12131,7 +12156,7 @@ async function openEquipeDetail(id){
               const u=allUsers.find(u=>u.user_id===l.responsavel_id);
               const isExterno=u&&!membroIds.has(u.user_id);
               return`<tr>
-                <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','equipe-detail')">${l.nome}</td>
+                <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${l.id}','equipe-detail')">${l.nome||l.email||'(sem nome)'}</td>
                 <td>${l.interesse||'—'}</td><td>${sBadge(l.status,l.tipo_lead,l.id,l.proposta_quente)}</td>
                 <td style="font-size:11.5px">${u?.name||'—'}${isExterno?'<span style="font-size:9px;margin-left:5px;background:rgba(251,146,60,.15);color:var(--orange);border:1px solid rgba(251,146,60,.3);border-radius:3px;padding:1px 5px">externo</span>':''}</td>
               </tr>`;
@@ -12377,7 +12402,7 @@ function renderMesclarTable(){
     const ddd=extractDDD(l.telefone)||'—';
     return`<tr>
       <td><input type="checkbox" class="mesclar-chk" data-id="${l.id}" style="accent-color:var(--gold);width:14px;height:14px" ${_mesclarSelected.has(l.id)?'checked':''} onchange="onMesclarChk(this)"></td>
-      <td style="font-weight:600">${l.nome}</td>
+      <td style="font-weight:600">${l.nome||l.email||'(sem nome)'}</td>
       <td style="color:var(--muted2);font-size:11.5px">${l.telefone||'—'}</td>
       <td><span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700">${ddd}</span></td>
       <td>${l.tipo_lead==='Remalho'?'<span style="color:#c084fc;font-size:11px">Remalho</span>':'<span style="color:var(--blue);font-size:11px">Novo</span>'}</td>
@@ -12830,7 +12855,7 @@ function _renderBuscaBasePage(){
         acao=`<button class="act green" onclick="abrirSolicitacao('${l.id}')">Solicitar</button>`;
       }
       return`<tr>
-        <td style="font-weight:600">${l.nome}</td>
+        <td style="font-weight:600">${l.nome||l.email||'(sem nome)'}</td>
         <td>${l.telefone||'—'}</td>
         <td style="color:var(--muted2);font-size:11.5px">${l.interesse||'—'}</td>
         <td>${badgeLead(l.status)}</td>
@@ -12867,7 +12892,7 @@ function abrirSolicitacao(leadId){
   window._solLeadCache=l;
   const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
   document.getElementById('sol-lead-info').innerHTML=`
-    <div style="font-weight:700;font-size:14px;margin-bottom:6px">${l.nome}</div>
+    <div style="font-weight:700;font-size:14px;margin-bottom:6px">${l.nome||l.email||'(sem nome)'}</div>
     <div style="font-size:11.5px;color:var(--muted2)">${l.telefone||'—'} &nbsp;·&nbsp; ${l.interesse||'—'}</div>
     <div style="font-size:11px;color:var(--muted);margin-top:4px">Responsável atual: ${resp?resp.name:'Sem responsável'}</div>`;
   document.getElementById('sol-motivo').value='';
