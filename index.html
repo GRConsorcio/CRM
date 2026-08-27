@@ -1689,6 +1689,21 @@ document.addEventListener('DOMContentLoaded', function(){
   </div>
 </div>
 
+<div class="modal-bg" id="modal-senha">
+  <div class="modal" style="max-width:340px">
+    <div class="modal-title">Trocar Senha</div>
+    <div style="font-size:12.5px;color:var(--muted2);margin-bottom:14px">Usuário: <strong id="senha-user-name" style="color:var(--gold2)">—</strong></div>
+    <div class="fld"><label>Nova senha</label>
+      <input class="inp" id="senha-nova" type="text" placeholder="Mínimo 6 caracteres">
+    </div>
+    <div id="senha-erro" style="color:var(--red);font-size:12px;margin-top:6px"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('senha')">Cancelar</button>
+      <button class="btn-save" onclick="salvarSenhaUsuario()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Novo usuário (admin cria login) -->
 <div class="modal-bg" id="modal-novo-usuario">
   <div class="modal" style="max-width:380px">
@@ -5173,7 +5188,7 @@ function renderEquipe(){
       <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-gold':u.role==='supervisor'?'b-coord':u.role==='ceo'?'b-ceo':'b-vend'}">${u.role}</span></td>
       <td>${leads}</td>
       <td style="color:var(--green)">${fechs}</td>
-      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button> <button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="deslogarUsuario('${u.user_id}','${escJs(u.name)}')" title="Deslogar agora">🔒</button> <button class="act red" onclick="delUser('${u.user_id}','${escJs(u.name)}')" title="Excluir usuário">🗑️</button>`:'—'}</td>
+      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button> <button class="act" onclick="openSenhaModal('${u.user_id}','${escJs(u.name)}')" title="Trocar senha">🔑</button> <button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="deslogarUsuario('${u.user_id}','${escJs(u.name)}')" title="Deslogar agora">🔒</button> <button class="act red" onclick="delUser('${u.user_id}','${escJs(u.name)}')" title="Excluir usuário">🗑️</button>`:'—'}</td>
     </tr>`;
   }).join('');
 }
@@ -7157,6 +7172,38 @@ async function saveRole(){
   const i=allUsers.findIndex(u=>u.user_id===roleUserId);
   if(i>-1) allUsers[i].role=role;
   closeModal('role');toast('Perfil atualizado!','ok');renderEquipe();
+}
+
+/* ═══ TROCAR SENHA (admin define senha de outra pessoa) ═══
+   Trocar a senha de outra pessoa exige auth.admin.updateUserById, que só
+   funciona com a service_role key — por isso passa pela Edge Function
+   'update-user' (mesma usada pelo Análises), que confere admin no servidor
+   antes de fazer qualquer coisa. Aqui só mandamos password (nome/e-mail
+   ficam de fora, essa tela é só pra senha). */
+let senhaUserId=null;
+function openSenhaModal(uid,name){
+  senhaUserId=uid;
+  document.getElementById('senha-user-name').textContent=name;
+  document.getElementById('senha-nova').value='';
+  document.getElementById('senha-erro').textContent='';
+  document.getElementById('modal-senha').classList.add('on');
+}
+async function salvarSenhaUsuario(){
+  const senha=v('senha-nova').trim();
+  const errEl=document.getElementById('senha-erro');
+  errEl.textContent='';
+  if(senha.length<6){errEl.textContent='Senha mínima de 6 caracteres.';return;}
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const resp=await fetch(SUPA_URL+'/functions/v1/update-user',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify({user_id:senhaUserId,password:senha})
+    });
+    const out=await resp.json().catch(()=>({}));
+    if(!resp.ok||out.error){errEl.textContent=out.error||'Erro ao salvar.';return;}
+    closeModal('senha');toast('Senha atualizada!','ok');
+  }catch(e){errEl.textContent='Erro: '+e.message;}
 }
 
 /* ═══ NOVO USUÁRIO (admin cria login) ═══
