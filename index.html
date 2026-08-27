@@ -631,7 +631,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <!-- MEUS LEADS (vendedor) -->
   <div class="page" id="page-meus-leads">
     <div class="filter-bar">
-      <input class="inp" id="ml-srch" placeholder="Buscar..." oninput="renderMeusLeads()">
+      <input class="inp" id="ml-srch" placeholder="Buscar por nome, telefone, e-mail ou interesse..." oninput="renderMeusLeads()">
       <select id="ml-f-status" onchange="renderMeusLeads()">
         <option value="">Todos os status</option>
         <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
@@ -657,6 +657,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
   <!-- FUNIL (admin/coord) -->
   <div class="page" id="page-funil">
+    <div style="margin-bottom:12px"><input class="inp" id="funil-srch" placeholder="Buscar por nome, telefone, e-mail ou interesse..." oninput="_debouncedRenderFunil()" style="min-width:280px"></div>
     <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;min-height:200px" id="funil-grid"></div>
   </div>
 
@@ -3463,6 +3464,9 @@ function sel(id,html){const e=document.getElementById(id);if(e)e.innerHTML=html;
 function debounce(fn,ms){let t;return function(...a){clearTimeout(t);t=setTimeout(()=>fn.apply(this,a),ms);};}
 // Substitui o placeholder pela versão debounced real (280ms)
 _debouncedRenderLeads=debounce(function(){renderLeads(true);},280);
+// Funil também busca "Fechados hoje" no Supabase a cada render — sem debounce,
+// cada tecla digitada na busca dispararia uma chamada de rede.
+_debouncedRenderFunil=debounce(function(){renderFunil();},280);
 
 // saveCache lazy — não bloqueia a UI, usa idle time
 let _saveCachePending=false;
@@ -4287,7 +4291,11 @@ function renderMeusLeads(){
   const fs=document.getElementById('ml-f-status')?.value;
   let f=allLeads.filter(l=>{
     if(l.responsavel_id!==CU.id)return false;
-    if(q&&!(l.nome||'').toLowerCase().includes(q)&&!(l.telefone||'').replace(/[^0-9]/g,'').includes(q.replace(/[^0-9]/g,'')))return false;
+    if(q){
+      const qd=q.replace(/[^0-9]/g,'');
+      const match=(l.nome||'').toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q)||(l.email||'').toLowerCase().includes(q)||(l.observacoes||'').toLowerCase().includes(q)||(qd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(qd));
+      if(!match)return false;
+    }
     if(fs&&l.status!==fs)return false;
     return true;
   });
@@ -4835,11 +4843,14 @@ async function renderFunil(){
   const fechadosLocaisIds=new Set(fechadosLocais.map(l=>l.id));
   const fechadosCombo=[...fechadosLocais,...fechadosHoje.filter(l=>!fechadosLocaisIds.has(l.id))];
 
+  const funilQ=(document.getElementById('funil-srch')?.value||'').toLowerCase().trim();
+  const funilQd=funilQ.replace(/[^0-9]/g,'');
+  const passaFunilBusca=l=>!funilQ||(l.nome||'').toLowerCase().includes(funilQ)||(l.interesse||'').toLowerCase().includes(funilQ)||(l.email||'').toLowerCase().includes(funilQ)||(l.observacoes||'').toLowerCase().includes(funilQ)||(funilQd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(funilQd));
   document.getElementById('funil-grid').innerHTML=STAGES.map(s=>{
     // Vendedor só vê os próprios leads; admin vê todos
     const ls = s==='Fechado'
-      ? ordenarFilaFunil(fechadosCombo.filter(l=>isAdmin||l.responsavel_id===CU.id))
-      : ordenarFilaFunil(allLeads.filter(l=>l.status===s&&(isAdmin||l.responsavel_id===CU.id)));
+      ? ordenarFilaFunil(fechadosCombo.filter(l=>(isAdmin||l.responsavel_id===CU.id)&&passaFunilBusca(l)))
+      : ordenarFilaFunil(allLeads.filter(l=>l.status===s&&(isAdmin||l.responsavel_id===CU.id)&&passaFunilBusca(l)));
     return`<div class="funil-col-wrap" data-stage="${s}"
       style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:120px;min-width:220px;flex:1;transition:all .15s"
       ondragover="event.preventDefault();this.classList.add('drag-over')"
@@ -4876,7 +4887,7 @@ async function renderFunil(){
               ${isSel?'checked':''}
               onclick="event.stopPropagation()" onchange="onMassChkChange(this)">
             <div style="flex:1">
-              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
+              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome||l.email||'(sem nome)'}</div>
               ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="opacity:.7">📞</span>${l.telefone}</div>`:''}
               <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
               ${resp?`<div style="font-size:9.5px;color:var(--muted)">${resp.name}</div>`:''}
@@ -10249,7 +10260,7 @@ function renderMeuFunil(){
         style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s"
         onmouseover="this.style.borderColor='var(--gold-dim)'"
         onmouseout="this.style.borderColor='var(--border)'">
-        <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome||l.email||'(sem nome)'}</div>
         ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${l.telefone}</div>`:''}
         <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
         ${resp?`<div style="font-size:9.5px;color:var(--muted)">${resp.name}</div>`:''}
@@ -10602,7 +10613,7 @@ async function renderCoordFunil(){
               ${isSel?'checked':''}
               onclick="event.stopPropagation()" onchange="onCfChkChange(this)">
             <div style="flex:1">
-              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
+              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome||l.email||'(sem nome)'}</div>
               ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${l.telefone}</div>`:''}
               <div style="font-size:10.5px;color:var(--muted2)">${l.interesse||'—'}</div>
               ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">${u.name}</div>`:''}
@@ -11340,7 +11351,7 @@ function renderFunilCeo(){
               ${ls.map(l=>{
                 const u=allUsers.find(u=>u.user_id===l.responsavel_id);
                 return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
-                  <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome}</div>
+                  <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome||l.email||'(sem nome)'}</div>
                   <div style="font-size:10.5px;color:var(--muted2)">${l.interesse||'—'}</div>
                   ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">${u.name}</div>`:'<div style="font-size:9.5px;color:var(--orange);margin-top:2px">Sem vendedor</div>'}
                 </div>`;
@@ -11482,7 +11493,7 @@ async function openFunilVendedor(userId){
                 ${isSel?'checked':''}
                 onclick="event.stopPropagation()" onchange="onMassChkChange(this)">
               <div style="flex:1">
-                <div style="font-size:11.5px;font-weight:700;margin-bottom:2px">${l.nome}</div>
+                <div style="font-size:11.5px;font-weight:700;margin-bottom:2px">${l.nome||l.email||'(sem nome)'}</div>
                 <div style="font-size:10px;color:var(--muted2)">${l.interesse||'—'}</div>
                 ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">${prazo.label}</div>`:''}
               </div>
