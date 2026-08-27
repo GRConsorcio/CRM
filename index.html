@@ -4414,9 +4414,9 @@ async function openDetail(id,from){
 
   let html=`<div class="panel">
     <div class="detail-header">
-      <div class="detail-av">${lead.nome[0].toUpperCase()}</div>
+      <div class="detail-av">${(lead.nome||'?').charAt(0).toUpperCase()}</div>
       <div style="flex:1">
-        <div class="detail-name">${lead.nome}</div>
+        <div class="detail-name">${lead.nome||'(sem nome)'}</div>
         <div class="detail-meta">${lead.origem||'—'} · ${sBadge(lead.status,lead.tipo_lead,lead.id,lead.proposta_quente)}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
