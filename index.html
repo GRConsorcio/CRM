@@ -9978,7 +9978,7 @@ function parseCSV(text){
 
   // Map columns
   const colMap={
-    nome:headers.findIndex(h=>h.includes('nome')||h.includes('name')),
+    nome:headers.findIndex(h=>h.includes('nome')||h.includes('name')||h.includes('client')),
     telefone:headers.findIndex(h=>h.includes('tel')||h.includes('fone')||h.includes('phone')||h.includes('cel')||h.includes('whats')),
     email:headers.findIndex(h=>h.includes('email')||h.includes('mail')),
     interesse:headers.findIndex(h=>h.includes('inter')||h.includes('prod')||h.includes('item')||h.includes('credito')||h.includes('valor')),
