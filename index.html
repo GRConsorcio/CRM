@@ -4887,7 +4887,7 @@ async function renderFunil(){
           onclick="${_massMode?'toggleMassCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'funil\')'}"
           style="background:${cardBg};border:${cardBorder};border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s;cursor:pointer;position:relative"
           onmouseover="if(!${isAprov}&&!${isCanc})this.style.borderColor='var(--gold-dim)'"
-          onmouseout="if(!${isAprov}&&!${isCanc}){this.style.borderColor=document.querySelector('.mass-chk[data-id=\'${l.id}\']')?.checked?'var(--gold)':'var(--border)'}">
+          onmouseout="if(!${isAprov}&&!${isCanc}){this.style.borderColor=document.querySelector('.mass-chk[data-id=\\'${l.id}\\']')?.checked?'var(--gold)':'var(--border)'}">
           ${isCanc?`<div style="position:absolute;top:6px;right:8px;width:20px;height:20px;border-radius:50%;background:#e55;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#fff;line-height:1;z-index:2">✕</div>`:''}
           ${isAprov?`<div style="position:absolute;top:6px;right:8px;width:20px;height:20px;border-radius:50%;background:#4ade80;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#0a0a0a;line-height:1;z-index:2">✓</div>`:''}
           <div style="display:flex;align-items:center;gap:8px">
@@ -10631,7 +10631,7 @@ async function renderCoordFunil(){
           onclick="${_cfMassMode?'toggleCfCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'coord-leads\')'}"
           style="background:${cardBg};border:${cardBorder};border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s;cursor:pointer;position:relative"
           onmouseover="if(!${isAprov}&&!${isCanc})this.style.borderColor='var(--gold-dim)'"
-          onmouseout="if(!${isAprov}&&!${isCanc})this.style.borderColor=document.querySelector('.cf-chk[data-id=\'${l.id}\']')?.checked?'var(--gold)':'var(--border)'">
+          onmouseout="if(!${isAprov}&&!${isCanc})this.style.borderColor=document.querySelector('.cf-chk[data-id=\\'${l.id}\\']')?.checked?'var(--gold)':'var(--border)'">
           <div style="display:flex;align-items:center;gap:8px">
             <input type="checkbox" class="cf-chk" data-id="${l.id}"
               style="accent-color:var(--gold);width:16px;height:16px;flex-shrink:0;display:${_cfMassMode?'block':'none'}"
@@ -11511,7 +11511,7 @@ async function openFunilVendedor(userId){
             return`<div data-lead-id="${l.id}" id="fve-card-${l.id}" onclick="${_massMode?'toggleMassCard(event,\''+l.id+'\')':'openDetail(\''+l.id+'\',\'funis-equipe\')'}"
             style="background:var(--surface);border:1px solid ${isSel?'var(--gold)':'var(--border)'};border-radius:8px;padding:9px;margin-bottom:7px;cursor:pointer;transition:all .13s"
             onmouseover="this.style.borderColor='var(--gold-dim)'"
-            onmouseout="this.style.borderColor=document.querySelector('.mass-chk[data-id=\'${l.id}\']')?.checked?'var(--gold)':'var(--border)'">
+            onmouseout="this.style.borderColor=document.querySelector('.mass-chk[data-id=\\'${l.id}\\']')?.checked?'var(--gold)':'var(--border)'">
             <div style="display:flex;align-items:center;gap:8px">
               <input type="checkbox" class="mass-chk" data-id="${l.id}"
                 style="accent-color:var(--gold);width:16px;height:16px;flex-shrink:0;display:${_massMode?'block':'none'}"
