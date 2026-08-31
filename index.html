@@ -523,8 +523,9 @@ document.addEventListener('DOMContentLoaded', function(){
       <input class="inp" id="l-srch" placeholder="Buscar por nome, telefone, e-mail ou interesse..." oninput="_debouncedRenderLeads()" style="min-width:260px">
       <select id="l-f-status" onchange="renderLeads(true)">
         <option value="">Todos os status</option>
-        <option>Novo</option><option>Em Negociação</option><option>Proposta</option>
+        <option>Novo</option><option>Sem Contato</option><option>Em Negociação</option><option>Proposta</option>
         <option>Fechado</option><option>Perdido</option>
+        <option value="__remarketing__">🎯 Perdido 3d+ (remarketing)</option>
       </select>
       <select id="l-f-resp" onchange="renderLeads(true)">
         <option value="">Todos os vendedores</option>
@@ -620,7 +621,8 @@ document.addEventListener('DOMContentLoaded', function(){
         <table><thead><tr>
           <th id="l-chk-head" style="width:32px"></th>
           <th>Nome</th><th>Telefone</th><th>Observações</th>
-          <th>Status</th><th>Vendedor</th><th>Origem</th><th>Data</th><th></th>
+          <th>Status</th><th>Vendedor</th><th>Origem</th><th>Data</th>
+          <th title="Dias desde a última atualização deste lead — só pra acompanhamento, não move nem rotaciona nada sozinho">Sem contato</th><th></th>
         </tr></thead>
         <tbody id="l-tbody"></tbody></table>
       </div>
@@ -3989,7 +3991,8 @@ function renderLeads(resetPage){
   const fdFim=document.getElementById('l-f-data-fim')?.value||'';
   const f=allLeads.filter(l=>{
     if(q){const qd=q.replace(/[^0-9]/g,'');const match=(l.nome||'').toLowerCase().includes(q)||(l.interesse||'').toLowerCase().includes(q)||(l.email||'').toLowerCase().includes(q)||(l.observacoes||'').toLowerCase().includes(q)||(qd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(qd));if(!match)return false;}
-    if(fs&&l.status!==fs)return false;
+    if(fs==='__remarketing__'){ if(!ehRemarketingPerdido(l))return false; }
+    else if(fs&&l.status!==fs)return false;
     if(fr==='__sem__'&&l.responsavel_id!=null)return false;
     if(fr==='__admin__'&&!isRespAdmin(l.responsavel_id))return false;
     if(fr&&fr!=='__sem__'&&fr!=='__admin__'&&l.responsavel_id!==fr)return false;
@@ -4038,7 +4041,7 @@ function renderLeads(resetPage){
 
   const showChk=_leadsMassMode;
   document.getElementById('l-tbody').innerHTML=pageItems.length===0
-    ?`<tr><td colspan="9"><div class="empty"><div class="ei">👥</div>${q?'Nenhum lead encontrado na sua base local.':'Nenhum lead'}</div></td></tr>`
+    ?`<tr><td colspan="10"><div class="empty"><div class="ei">👥</div>${q?'Nenhum lead encontrado na sua base local.':'Nenhum lead'}</div></td></tr>`
     :pageItems.map(l=>{
       const u=findUser(l.responsavel_id);
       const isChecked=_selectedLeadIds.has(l.id);
@@ -4050,6 +4053,7 @@ function renderLeads(resetPage){
         <td>${u?`<span style="font-size:11px">${u.name}</span>`:'<span style="color:var(--orange);font-size:11px">Sem vendedor</span>'}</td>
         <td style="color:var(--muted2);font-size:11px">${l.origem||'—'}</td>
         <td style="color:var(--muted2);font-size:11px">${fmtDt(l.created_at)}</td>
+        <td>${diasSemContatoBadge(l)}</td>
         <td><div style="display:flex;gap:5px">
           <button class="act" onclick="editLead('${l.id}')">✏️</button>
           ${isAdmin()?`<button class="act red" onclick="delLead('${l.id}')">🗑️</button>`:''}
@@ -4761,41 +4765,33 @@ function ordenarFilaFunil(leads){
 }
 
 /* Calcula quanto tempo falta até o lead ser rotacionado automaticamente (mesmas
-   regras do runAutoReturnRules: Perdido=3d, Em Negociação/Proposta=10d, Novo/Sem Contato=7d).
-   Retorna null se não aplicável (sem vendedor, Fechado, ou ainda sem data de atribuição). */
-const ROTACAO_LIMITE_DIAS={'Em Negociação':10,'Proposta':10,'Novo':7,'Sem Contato':7};
-// Regra específica de Perdido (substitui o antigo limite fixo de 3 dias):
-// reciclado se já foi Perdido 10+ vezes na vida do lead (vezes_perdido), OU se
-// já passou de 30 dias ÚTEIS desde que foi criado no CRM (created_at, não
-// atribuido_em — o que importa aqui é a idade do lead na base, não há quanto
-// tempo está com o vendedor atual).
-const PERDIDO_LIMITE_VEZES=10;
-const PERDIDO_LIMITE_DIAS_UTEIS=30;
-function businessDaysSince(dateStr){
-  if(!dateStr) return 0;
-  const start=new Date(dateStr); start.setHours(0,0,0,0);
-  const now=new Date(); now.setHours(0,0,0,0);
-  let dias=0;
-  const cur=new Date(start);
-  while(cur<now){
-    cur.setDate(cur.getDate()+1);
-    const dow=cur.getDay();
-    if(dow!==0&&dow!==6) dias++;
-  }
-  return dias;
-}
+   regras do runAutoReturnRules). Retorna null se não aplicável (sem vendedor,
+   status sem regra nesse teste, ou ainda sem data de referência).
+   TESTE (a pedido do GR, 2026-08-31): pra girar a base toda mais rápido —
+   Sem Contato=2 dias, Perdido=2h. Novo, Em Negociação, Proposta e Fechado
+   ficam DE FORA da rotação automática por enquanto (protegidos nesse teste;
+   antes eram Em Negociação/Proposta=10d e Novo/Sem Contato=7d juntos — pra
+   voltar ao normal, restaurar esses valores aqui). */
+const ROTACAO_LIMITE_DIAS={'Sem Contato':2};
+// Perdido recicla PERDIDO_LIMITE_HORAS depois de virar Perdido (stage_entered_at).
+// A cada PERDIDO_COOLDOWN_MULTIPLO-ésima vez que isso acontece pro MESMO lead
+// (vezes_perdido múltiplo de 3), ele fica PERDIDO_COOLDOWN_DIAS dias fora da
+// fila de distribuição (bloqueado_distribuicao_ate) — ver reciclarLeadParaPool.
+const PERDIDO_LIMITE_HORAS=2;
+const PERDIDO_COOLDOWN_MULTIPLO=3;
+const PERDIDO_COOLDOWN_DIAS=3;
 function prazoRotacaoInfo(lead){
   if(!lead.responsavel_id) return null;
   if(lead.status==='Perdido'){
-    const vezes=lead.vezes_perdido||0;
-    if(vezes>=PERDIDO_LIMITE_VEZES) return {diasRestantes:0,label:'Atrasado — será rotacionado',cor:'var(--red)'};
-    const diasUteis=businessDaysSince(lead.created_at);
-    const restam=PERDIDO_LIMITE_DIAS_UTEIS-diasUteis;
-    if(restam<=0) return {diasRestantes:0,label:'Atrasado — será rotacionado',cor:'var(--red)'};
-    return {diasRestantes:restam,label:`${vezes}/${PERDIDO_LIMITE_VEZES}x perdido · ${restam}d úteis para rotação`,cor:restam<=2?'var(--orange)':'var(--muted2)'};
+    const refDate=lead.stage_entered_at||lead.updated_at||lead.atribuido_em||lead.distribuido_em||lead.created_at;
+    if(!refDate) return null;
+    const horasDesde=(Date.now()-new Date(refDate).getTime())/(1000*60*60);
+    const horasRestantes=Math.ceil(PERDIDO_LIMITE_HORAS-horasDesde);
+    if(horasRestantes<=0) return {diasRestantes:0,label:'Atrasado — será rotacionado',cor:'var(--red)'};
+    return {diasRestantes:horasRestantes/24,label:`${horasRestantes}h para rotação`,cor:horasRestantes<=1?'var(--orange)':'var(--muted2)'};
   }
   const limite=ROTACAO_LIMITE_DIAS[lead.status];
-  if(!limite) return null; // status sem regra de rotação (ex: Fechado)
+  if(!limite) return null; // status sem regra de rotação nesse teste (Novo, Em Negociação, Proposta, Fechado)
   const refDate=lead.atribuido_em||lead.distribuido_em;
   if(!refDate) return null; // ainda sem data — será zerada no próximo ciclo do admin
   const diasDesdeAtribuicao=(Date.now()-new Date(refDate).getTime())/(1000*60*60*24);
@@ -4805,6 +4801,38 @@ function prazoRotacaoInfo(lead){
   else if(diasRestantes>0){ label=`${diasRestantes} dia${diasRestantes!==1?'s':''} para rotação`; cor='var(--orange)'; }
   else{ label='Atrasado — será rotacionado'; cor='var(--red)'; }
   return{diasRestantes,label,cor};
+}
+
+// Pedido do usuário (2026-08-31): contador de "dias sem contato" visível pro
+// admin em TODOS os leads — puramente informativo, não entra em nenhuma regra
+// de runAutoReturnRules (não move nem rotaciona o lead sozinho). Conta a
+// partir do último toque real no registro (updated_at — muda em qualquer
+// edição/mudança de status), com fallback em cascata pra quando esse campo
+// ainda não existe/nunca mudou.
+function diasSemContato(lead){
+  const ref=lead.updated_at||lead.stage_entered_at||lead.atribuido_em||lead.distribuido_em||lead.created_at;
+  if(!ref) return null;
+  return Math.floor((Date.now()-new Date(ref).getTime())/(1000*60*60*24));
+}
+function diasSemContatoBadge(lead){
+  if(lead.status==='Fechado') return '<span style="color:var(--muted2);font-size:11px">—</span>';
+  const dias=diasSemContato(lead);
+  if(dias===null) return '<span style="color:var(--muted2);font-size:11px">—</span>';
+  const cor=dias>=15?'var(--red)':dias>=7?'var(--orange)':'var(--muted2)';
+  const peso=dias>=7?700:400;
+  return `<span style="color:${cor};font-size:11px;font-weight:${peso}">${dias}d</span>`;
+}
+
+// Remarketing: Perdido que ficou parado 3+ dias SEM ser reciclado pelo retorno
+// automático (ex: nenhum admin logado por um tempo pra rodar runAutoReturnRules,
+// ou bloqueado por palavra-chave) — filtro em "Leads", não uma lista separada
+// (pedido do usuário: "essa lista pode ser um filtro também").
+const REMARKETING_PERDIDO_DIAS=3;
+function ehRemarketingPerdido(lead){
+  if(lead.status!=='Perdido') return false;
+  const ref=lead.stage_entered_at||lead.updated_at||lead.atribuido_em||lead.distribuido_em||lead.created_at;
+  if(!ref) return false;
+  return (Date.now()-new Date(ref).getTime())/(1000*60*60*24) >= REMARKETING_PERDIDO_DIAS;
 }
 
 const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Em Negociação':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
@@ -5053,6 +5081,8 @@ function renderAdminTotaisLeads(){
 }
 
 async function quickDist(leadId){
+  const leadAlvo=allLeads.find(l=>l.id===leadId);
+  if(!_leadDistribuivelAgora(leadAlvo)){toast('Lead reincidente bloqueado pra distribuição até '+fmtDt(leadAlvo.bloqueado_distribuicao_ate),'err');return;}
   const vends=allUsers.filter(u=>u.role==='vendedor').sort((a,b)=>a.user_id.localeCompare(b.user_id));
   if(!vends.length){toast('Nenhum vendedor disponível','err');return;}
   const{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
@@ -8556,7 +8586,15 @@ async function reciclarLeadParaPool(lead, opts={}){
   // Conta quantas vezes ESSE lead especificamente saiu de Perdido pro pool —
   // usado pela regra de reciclagem de Perdidos (ver runAutoReturnRules).
   if(lead.status==='Perdido'){
-    payload.vezes_perdido = (lead.vezes_perdido||0) + 1;
+    const vezesPerdidoNovo = (lead.vezes_perdido||0) + 1;
+    payload.vezes_perdido = vezesPerdidoNovo;
+    // TESTE (2026-08-31, a pedido do GR): a cada 3ª vez que ESSE lead volta do
+    // Perdido pro pool, ele fica alguns dias fora da fila de distribuição —
+    // sem isso um lead "difícil" ficaria só dando ping-pong entre vendedores
+    // em vez de deixar espaço pra base nunca-rodada (32k+ leads) ser distribuída.
+    if(vezesPerdidoNovo>0 && vezesPerdidoNovo%PERDIDO_COOLDOWN_MULTIPLO===0){
+      payload.bloqueado_distribuicao_ate = new Date(Date.now()+PERDIDO_COOLDOWN_DIAS*24*60*60*1000).toISOString();
+    }
   }
   const{error}=await sb.from('crm_leads').update(payload).eq('id',lead.id);
   if(error) return {ok:false,error};
@@ -8631,31 +8669,34 @@ async function runAutoReturnRules(){
     // o status esteja dizendo. .some() (não .find) porque o lead pode ter mais
     // de uma venda — a Aprovada pode não ser a primeira da lista.
     if(allVendas.some(v=>v.lead_id===l.id&&v.status_venda==='Aprovado')) continue;
+    // TESTE (2026-08-31, a pedido do GR): Perdido usa uma referência de tempo
+    // diferente dos outros status (stage_entered_at — quando ENTROU em Perdido
+    // — não atribuido_em/distribuido_em), então é checado separado e não
+    // depende de refDate existir.
+    if(l.status==='Perdido'){
+      const refDatePerdido=l.stage_entered_at||l.updated_at||l.atribuido_em||l.distribuido_em||l.created_at;
+      if(refDatePerdido){
+        const horasDesdePerdido=(now-new Date(refDatePerdido))/(1000*60*60);
+        if(horasDesdePerdido>=PERDIDO_LIMITE_HORAS){
+          // Mesma lista de bloqueio usada em "Avaliar Perdidos" (PALAVRAS_BLOQUEIO_RECICL).
+          // Antes o retorno automático ignorava essa lista — um lead marcado ex:
+          // "Cliente Fiat" era reciclado do mesmo jeito que qualquer outro Perdido.
+          if(temPalavraBloqueiaNaObs(l)){
+            bloqueados3.push({id:l.id,label:getLabelBloqueioPorLead(l)});
+          } else {
+            retornar3.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,vezesPerdido:l.vezes_perdido||0,horas:Math.floor(horasDesdePerdido)});
+          }
+        }
+      }
+      continue; // Perdido não passa pela checagem de dias-desde-atribuição/14d abaixo
+    }
     const refDate=l.atribuido_em||l.distribuido_em;
     if(!refDate) continue; // ainda sem data (será zerado acima na próxima execução)
     const diasDesdeAtribuicao=(now-new Date(refDate))/(1000*60*60*24);
-    if(l.status==='Perdido'){
-      // Regra nova (substitui o antigo limite fixo de 3 dias): recicla se o
-      // lead já foi Perdido 10+ vezes na vida dele, OU se já passou de 30 dias
-      // ÚTEIS desde que foi criado no CRM (created_at — idade do lead na base,
-      // não há quanto tempo está com o vendedor atual).
-      const vezesPerdido=l.vezes_perdido||0;
-      const diasUteisCriacao=businessDaysSince(l.created_at);
-      const bateuVezes=vezesPerdido>=PERDIDO_LIMITE_VEZES;
-      const bateu30dUteis=diasUteisCriacao>PERDIDO_LIMITE_DIAS_UTEIS;
-      if(bateuVezes||bateu30dUteis){
-        // Mesma lista de bloqueio usada em "Avaliar Perdidos" (PALAVRAS_BLOQUEIO_RECICL).
-        // Antes o retorno automático ignorava essa lista — um lead marcado ex:
-        // "Cliente Fiat" era reciclado do mesmo jeito que qualquer outro Perdido.
-        if(temPalavraBloqueiaNaObs(l)){
-          bloqueados3.push({id:l.id,label:getLabelBloqueioPorLead(l)});
-        } else {
-          retornar3.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,motivoPerdido:bateuVezes?'vezes':'30d_uteis',vezesPerdido,diasUteisCriacao});
-        }
-      }
-    } else if(['Em Negociação','Proposta'].includes(l.status)&&diasDesdeAtribuicao>=10){
-      retornar10.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
-    } else if(['Novo','Sem Contato'].includes(l.status)&&diasDesdeAtribuicao>=7){
+    // Em Negociação/Proposta e Novo ficam FORA da rotação automática nesse
+    // teste (só Sem Contato e Perdido rodam) — pra reativar, replicar aqui o
+    // bloco removido que empurrava pra retornar10/retornar7 por esses status.
+    if(l.status==='Sem Contato'&&diasDesdeAtribuicao>=ROTACAO_LIMITE_DIAS['Sem Contato']){
       retornar7.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
     }
     // Regra dos 14 dias: independe do status acima — é uma rede de segurança extra.
@@ -8768,11 +8809,9 @@ async function runAutoReturnRules(){
     const vendedorNome=allUsers.find(u=>u.user_id===item.vendedor_id)?.name||'vendedor';
     let motivo;
     if(item.status==='Perdido'){
-      motivo=item.motivoPerdido==='vezes'
-        ? `Retorno automático: lead "Perdido" já foi reciclado ${item.vezesPerdido}x a partir desse status (limite: ${PERDIDO_LIMITE_VEZES}x)`
-        : `Retorno automático: lead "Perdido" há ${item.diasUteisCriacao} dias úteis na base desde a criação (limite: ${PERDIDO_LIMITE_DIAS_UTEIS}d úteis)`;
+      motivo=`Retorno automático: lead "Perdido" há ${item.horas}h (limite: ${PERDIDO_LIMITE_HORAS}h) — ${item.vezesPerdido}ª vez que volta desse status`;
     } else {
-      const limite=['Em Negociação','Proposta'].includes(item.status)?10:7;
+      const limite=ROTACAO_LIMITE_DIAS[item.status]||2;
       motivo=`Retorno automático: lead "${item.status}" há ${item.dias} dias (limite: ${limite}d)`;
     }
     const payload={
@@ -8810,9 +8849,9 @@ async function runAutoReturnRules(){
   const n7=retornar7.filter(x=>okIds.has(x.id)).length;
   const n3=retornar3.filter(x=>okIds.has(x.id)).length;
   const msg=[];
-  if(n10) msg.push(`${n10} lead(s) retornado(s) após 10 dias`);
-  if(n7)  msg.push(`${n7} lead(s) retornado(s) após 7 dias`);
-  if(n3)  msg.push(`${n3} perdido(s) reciclado(s) após 3 dias`);
+  if(n10) msg.push(`${n10} lead(s) retornado(s)`); // retornar10 desativado nesse teste (Em Negociação/Proposta protegidos) — fica sempre 0
+  if(n7)  msg.push(`${n7} "Sem Contato" retornado(s) após ${ROTACAO_LIMITE_DIAS['Sem Contato']} dias`);
+  if(n3)  msg.push(`${n3} perdido(s) reciclado(s) após ${PERDIDO_LIMITE_HORAS}h`);
   if(bloqueados3.length) msg.push(`${bloqueados3.length} bloqueado(s) por palavra-chave`);
   if(falhasUpdate.length) msg.push(`${falhasUpdate.length} falharam ao atualizar`);
   toast(msg.join(' · ')||'Nenhuma alteração','ok');
@@ -10340,6 +10379,18 @@ function getDistVendors(){
   }
 }
 
+// TESTE (2026-08-31, a pedido do GR): lead que virou Perdido 3x (ou 6x, 9x...)
+// fica alguns dias fora da fila de distribuição (ver reciclarLeadParaPool) —
+// checado em todo ponto que efetivamente atribui um lead a alguém.
+function _leadDistribuivelAgora(l){
+  return !l?.bloqueado_distribuicao_ate || new Date(l.bloqueado_distribuicao_ate)<=new Date();
+}
+// Fila de distribuição: nunca-perdidos (vezes_perdido=0) primeiro, depois por
+// quantas vezes já voltou de Perdido (menos primeiro) — reincidente não fura
+// a frente dos 32k+ leads que nunca foram tocados.
+function _ordenarFilaDistribuicao(leads){
+  return [...leads].sort((a,b)=>(a.vezes_perdido||0)-(b.vezes_perdido||0));
+}
 function openDistPicker(leadId){
   _distPickerLeadId=leadId;
   const lead=allLeads.find(l=>l.id===leadId);
@@ -10353,6 +10404,8 @@ function openDistPicker(leadId){
 async function confirmDistPicker(){
   const vendId=document.getElementById('dist-picker-vend').value;
   if(!vendId||!_distPickerLeadId){toast('Selecione um vendedor','err');return;}
+  const leadAlvo=allLeads.find(l=>l.id===_distPickerLeadId);
+  if(!_leadDistribuivelAgora(leadAlvo)){toast('Lead reincidente bloqueado pra distribuição até '+fmtDt(leadAlvo.bloqueado_distribuicao_ate),'err');return;}
   const{error}=await sb.from('crm_leads').update(buildAssignPayload(vendId,new Date().toISOString())).eq('id',_distPickerLeadId);
   if(error){toast('Erro: '+error.message,'err');return;}
   const i=allLeads.findIndex(l=>l.id===_distPickerLeadId);
@@ -10408,6 +10461,11 @@ async function confirmDistAll(){
     vends.forEach(v=>getVendorEquipeIds(v.user_id).forEach(eq=>equipesComVendedor.add(eq)));
     semVend=allLeads.filter(l=>!l.responsavel_id&&l.equipe_id&&equipesComVendedor.has(l.equipe_id));
   }
+  // TESTE 2026-08-31: reincidentes bloqueados saem da fila, e quem nunca foi
+  // Perdido fica na frente — importa principalmente quando "qty" limita quantos
+  // saem distribuídos por rodada (senão os mesmos "difíceis" furariam a frente
+  // dos 32k+ leads virgens só por estarem há mais tempo na tabela).
+  semVend=_ordenarFilaDistribuicao(semVend.filter(_leadDistribuivelAgora));
   if(qty) semVend=semVend.slice(0,qty);
   if(!semVend.length){toast('Nenhum lead sem vendedor na(s) equipe(s) selecionada(s)','err');return;}
   let{data:dc}=await sb.from('crm_distribuicao').select('*').limit(1).maybeSingle();
