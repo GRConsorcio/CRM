@@ -2922,8 +2922,12 @@ async function loadAll(){
         const loadingToast=showLoadingProgress(1000);
         (async()=>{
           try{
-            // Conta total de registros
-            const{count}=await sb.from('crm_leads').select('*',{count:'exact',head:true});
+            // Conta total de registros. 'estimated' em vez de 'exact': um COUNT(*)
+            // exato varre a tabela inteira (127mil+ linhas, com a política de
+            // segurança avaliada por linha) — usado só pra decidir quantos lotes
+            // buscar, não precisa ser exato (ver refreshLeadCountsExact abaixo,
+            // que tem o mesmo motivo pro mesmo problema real de timeout).
+            const{count}=await sb.from('crm_leads').select('*',{count:'estimated',head:true});
             const total=count||0;
             // Não busca mais que o teto definido (ADMIN_LEADS_CAP) — controla custo/espaço.
             // Os mais antigos continuam acessíveis via "Buscar na Base Completa".
@@ -3279,18 +3283,35 @@ const ADMIN_LEADS_CAP=12000;
 // Teto de leads carregados/exibidos pro perfil CEO — mesma lógica do ADMIN_LEADS_CAP
 // (controla custo/memória), mas menor porque o CEO só vê Anúncio GR (volume menor).
 const CEO_LEADS_CAP=1000;
-// Contagem REAL de leads (não capada pelo ADMIN_LEADS_CAP) pro dashboard do
+// Contagem de leads (não capada pelo ADMIN_LEADS_CAP) pro dashboard do
 // admin/coordenador. Usa head:true — pede só o número pro Postgres, não traz
 // nenhuma linha, então é bem mais barato que buscar os leads de verdade.
 // Isso resolve o "Total de Leads" mostrando no máximo 12.000 quando a base
 // tem mais que isso: o cache (allLeads) continua limitado por custo, mas o
 // KPI passa a refletir o total de verdade.
+//
+// FIX 2026-09-01 — "CRM não carrega a base": count:'exact' virou
+// count:'estimated'. A causa RAIZ de verdade era uma policy de RLS em
+// crm_leads (crm_leads_select_busca_vendedor) chamando crm_current_role()
+// sem o wrapper (select ...) que as outras policies usam — sem isso o
+// Postgres reavalia a função por LINHA em vez de 1x por query, virando um
+// Seq Scan de ~2.5s nas 127mil+ linhas em qualquer consulta ampla (corrigido
+// direto no Supabase, projeto prquggwhjcvenzuziaox — ver histórico/migração
+// fix_crm_leads_busca_vendedor_rls_perf; mesmo bug também existia em
+// crm_audit_log, corrigido junto). Confirmado com EXPLAIN ANALYZE: caiu de
+// 2462ms pra 47ms. Essa troca de 'exact' pra 'estimated' aqui é só reforço:
+// mesmo com a policy consertada, um COUNT(*) exato ainda decide reavaliar o
+// resultado pra valer, e isso roda pra CADA admin com o dashboard aberto a
+// cada mudança em qualquer lead do sistema (scheduleLeadCountsRefresh, 1.5s
+// de debounce) — 'estimated' usa a estatística do planejador em vez de
+// contar de verdade, não é mais 100% exato mas é de graça pra um número de
+// KPI.
 let _leadCountsFetchTimer=null;
 async function refreshLeadCountsExact(fechadosCount){
   try{
     const[{count:totalReal,error:e1},{count:semVendReal,error:e2}]=await Promise.all([
-      sb.from('crm_leads').select('*',{count:'exact',head:true}),
-      sb.from('crm_leads').select('*',{count:'exact',head:true}).is('responsavel_id',null)
+      sb.from('crm_leads').select('*',{count:'estimated',head:true}),
+      sb.from('crm_leads').select('*',{count:'estimated',head:true}).is('responsavel_id',null)
     ]);
     if(e1||e2){ console.warn('[dashboard] erro ao contar leads real:',(e1||e2).message); return; }
     const totalEl=document.getElementById('kpi-total-leads');
