@@ -106,10 +106,11 @@ td.col-actions{width:36px;text-align:center}
         <select id="opt-modo" style="background:var(--s2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:12px">
           <option value="limpa">Impressa, limpa</option>
           <option value="rabiscada" selected>Impressa com rabiscos/marcações à mão em cima</option>
+          <option value="ficha_lead">Print de ficha de lead (app) — 1 contato por imagem, com nome+telefone+detalhes</option>
         </select>
       </label>
     </div>
-    <div class="drop-sub" style="margin-top:8px">No modo "com rabiscos", cada palavra reconhecida fica marcada por confiança (verde = confiável, vermelho = duvidosa) — é onde provavelmente caiu em cima de um rabisco. Revise essas antes de exportar.</div>
+    <div class="drop-sub" style="margin-top:8px">No modo "com rabiscos", cada palavra reconhecida fica marcada por confiança (verde = confiável, vermelho = duvidosa) — é onde provavelmente caiu em cima de um rabisco. Revise essas antes de exportar.<br>No modo "print de ficha de lead", cada imagem vira 1 registro: nome (título no topo), telefone (campo "Telefone") e as perguntas/respostas de "Detalhes da solicitação", tudo junto numa coluna à parte. Revise sempre — é extração automática.</div>
     <div class="queue" id="queue"></div>
   </div>
 
@@ -123,7 +124,7 @@ td.col-actions{width:36px;text-align:center}
         <button class="btn-sm" onclick="addRow()">+ Linha manual</button>
         <button class="btn-sm" onclick="removerDuplicados()">🧹 Remover duplicados</button>
         <button class="btn-sm" onclick="limparTudo()" style="color:var(--red)">🗑️ Limpar tudo</button>
-        <button class="btn-outline" onclick="copiarTexto()">📋 Copiar (Nome | Telefone | E-mail)</button>
+        <button class="btn-outline" onclick="copiarTexto()">📋 Copiar (Nome | Telefone | E-mail | Detalhes)</button>
         <button class="btn-outline" onclick="exportarCSV()">Exportar .csv</button>
         <button class="btn-primary" onclick="exportarXLSX()">⬇ Exportar .xlsx</button>
       </div>
@@ -287,7 +288,8 @@ async function processarImagem(file, id){
     // na imagem (agrupando por linha física, não por linha de texto) —
     // ver extrairRegistrosPorPosicao. Só cai pro texto corrido (parseTexto)
     // se a imagem não trouxer coordenadas de palavra por algum motivo.
-    const novos = palavras.length ? extrairRegistrosPorPosicao(palavras) : parseTexto(texto);
+    const novos = modo === 'ficha_lead' ? parseFichaLead(texto, palavras)
+      : (palavras.length ? extrairRegistrosPorPosicao(palavras) : parseTexto(texto));
     // Sem nome na folha (ex: lista só de e-mail + telefone) mas com e-mail
     // detectado: usa o e-mail como nome também, em vez de deixar em branco —
     // dá pra identificar/importar o registro sem precisar de um nome separado.
@@ -566,6 +568,143 @@ function marcarEmailsConfiaveis(linhasParseadas, palavrasFlat){
   });
 }
 
+/* ── Print de "ficha de lead" (app tipo Meta/Instagram/CRM) ──
+   Tela de detalhe de UM lead só, layout fixo em coluna única: nome grande no
+   topo, depois rótulos "Telefone"/"Nome de usuário"/"Email" cada um com o
+   valor logo abaixo (ou na mesma linha), e por fim um bloco
+   "Detalhes da solicitação" com pares pergunta/resposta. Como é coluna
+   única, a ORDEM do texto que o Tesseract devolve já é a ordem de leitura
+   (diferente da extração por posição usada pras listas em tabela), então
+   nome/telefone são lidos linha por linha do texto corrido. Já o bloco de
+   detalhes usa a POSIÇÃO (y) de cada linha na imagem pra separar um campo do
+   próximo — ver extrairDetalhesPorPosicao mais abaixo. */
+function normalizar(s){
+  return s.toLowerCase()
+    .replace(/[áàâã]/g,'a').replace(/[éèê]/g,'e').replace(/[íìî]/g,'i')
+    .replace(/[óòôõ]/g,'o').replace(/[úùû]/g,'u').replace(/ç/g,'c')
+    .replace(/\s+/g,' ').trim();
+}
+const ROTULOS_FICHA_IGNORADOS = new Set([
+  'dados do lead','informacoes de contato','estagio','ligar','email','e-mail',
+  'nao contatados','nome de usuario','telefone'
+]);
+function parseFichaLead(texto, palavras){
+  const linhas = texto.split('\n').map(l=>l.trim()).filter(Boolean);
+  let nome = '', telefone = '', idxDetalhes = -1;
+
+  for(let i=0; i<linhas.length; i++){
+    const l = linhas[i];
+    const norm = normalizar(l);
+    if(norm === 'detalhes da solicitacao'){ idxDetalhes = i; break; }
+
+    if(!nome && !ROTULOS_FICHA_IGNORADOS.has(norm) && !l.includes('@')
+       && !/^\+?[\d\s().-]+$/.test(l) && !/^\d{1,2}[:\/]/.test(l)
+       && /^\p{L}[\p{L}'.-]*(\s+\p{L}[\p{L}'.-]*){1,4}$/u.test(l)){
+      nome = l;
+    }
+
+    if(!telefone && (norm === 'telefone' || norm.startsWith('telefone '))){
+      const restoMesmaLinha = l.replace(/^[^:]*telefone[:\s]*/i,'').trim();
+      const candidato = restoMesmaLinha || linhas[i+1] || '';
+      const digitos = candidato.replace(/\D/g,'');
+      if(digitos.length>=10 && digitos.length<=13) telefone = candidato.replace(/[^\d+]/g,'');
+    }
+  }
+  // rótulo "Telefone" não foi lido certo pelo OCR — procura qualquer linha
+  // com cara de telefone (+DDI) antes do bloco de detalhes, como fallback
+  if(!telefone){
+    const limite = idxDetalhes>=0 ? idxDetalhes : linhas.length;
+    for(let i=0; i<limite; i++){
+      const digitos = linhas[i].replace(/\D/g,'');
+      if(/^\+/.test(linhas[i]) && digitos.length>=10 && digitos.length<=13){
+        telefone = linhas[i].replace(/[^\d+]/g,''); break;
+      }
+    }
+  }
+
+  const detalhes = idxDetalhes>=0 ? extrairDetalhes(linhas, idxDetalhes, palavras) : '';
+
+  if(!nome && !telefone && !detalhes) return [];
+  return [{ nome, telefone, email:'', detalhes }];
+}
+
+/* Nem toda "pergunta" da ficha termina com "?" (ex: "Digite o valor máximo
+   de parcela que pode pagar" é um comando, não pergunta) — então não dá pra
+   confiar só no "?" pra separar campo de campo. Em vez disso, usa a posição
+   real das linhas na imagem: o espaço vertical ENTRE um campo e o próximo é
+   sempre maior que o espaço entre a pergunta e a resposta dentro do mesmo
+   campo (é assim que o print é desenhado). Cai pro método por "?" só se não
+   tiver coordenadas de palavra disponíveis por algum motivo. */
+function extrairDetalhes(linhasTexto, idxDetalhesTexto, palavras){
+  if(palavras && palavras.length){
+    const linhasFisicas = agruparPalavrasEmLinhas(palavras.filter(w => w.text && w.text.trim() && w.bbox))
+      .map(l => ({ y: l.y, altura: l.altura, texto: l.words.map(w=>w.text.trim()).join(' ') }));
+    const idxPos = linhasFisicas.findIndex(l => normalizar(l.texto) === 'detalhes da solicitacao');
+    if(idxPos >= 0) return extrairDetalhesPorPosicao(linhasFisicas, idxPos+1).join(' | ');
+  }
+  return extrairPerguntasResposta(linhasTexto, idxDetalhesTexto).map(p => `${p.pergunta} ${p.resposta}`.trim()).join(' | ');
+}
+function extrairDetalhesPorPosicao(linhasFisicas, idxInicio){
+  const campos = [];
+  let grupoAtual = [];
+  let yAnterior = null;
+  for(let i=idxInicio; i<linhasFisicas.length; i++){
+    const l = linhasFisicas[i];
+    if(yAnterior !== null && grupoAtual.length && (l.y - yAnterior) > l.altura * 1.7){
+      campos.push(grupoAtual);
+      grupoAtual = [];
+    }
+    grupoAtual.push(l);
+    yAnterior = l.y;
+  }
+  if(grupoAtual.length) campos.push(grupoAtual);
+  return campos.map(separarPerguntaResposta).filter(Boolean);
+}
+/* Dentro de um campo, a resposta é escrita maior/mais forte que a pergunta
+   (negrito preto vs texto cinza menor, no print original) — perde-se a cor
+   no texto do OCR, mas a ALTURA da caixa de cada linha (que o Tesseract mede
+   por palavra) ainda reflete esse tamanho de fonte diferente. Usa esse salto
+   de altura pra achar onde a pergunta termina e a resposta começa, mesmo
+   quando os dois quebram em mais de uma linha física. Sem um salto de altura
+   claro (ex: campo com só 1 linha de cada), assume a última linha como
+   resposta — é o caso mais comum. */
+function separarPerguntaResposta(grupo){
+  if(grupo.length <= 1) return (grupo[0] && grupo[0].texto || '').trim();
+  const alturas = grupo.map(l => l.altura);
+  const maxA = Math.max(...alturas), minA = Math.min(...alturas);
+  let corte = grupo.length - 1;
+  if(maxA > minA * 1.12){
+    const meio = (maxA + minA) / 2;
+    const idx = grupo.findIndex(l => l.altura >= meio);
+    if(idx > 0) corte = idx;
+  }
+  const pergunta = grupo.slice(0, corte).map(l=>l.texto).join(' ');
+  const resposta = grupo.slice(corte).map(l=>l.texto).join(' ');
+  return `${pergunta} ${resposta}`.trim();
+}
+/* Método por "?" — usado só como fallback de extrairDetalhes quando não há
+   coordenadas de palavra (sem bbox não dá pra medir espaçamento vertical). */
+function extrairPerguntasResposta(linhas, iniciaApos){
+  const itens = [];
+  let bufferPergunta = [];
+  let atual = null; // {pergunta, resposta:[]}
+  for(let i=iniciaApos+1; i<linhas.length; i++){
+    const l = linhas[i];
+    if(l.includes('?')){
+      if(atual) itens.push({pergunta: atual.pergunta, resposta: atual.resposta.join(' ').trim()});
+      bufferPergunta.push(l);
+      atual = { pergunta: bufferPergunta.join(' ').trim(), resposta: [] };
+      bufferPergunta = [];
+    } else if(atual){
+      atual.resposta.push(l);
+    } else {
+      bufferPergunta.push(l); // pergunta ainda quebrada em mais de uma linha, antes do "?" aparecer
+    }
+  }
+  if(atual) itens.push({pergunta: atual.pergunta, resposta: atual.resposta.join(' ').trim()});
+  return itens;
+}
+
 /* ── Reconhecimento de padrões: nome / telefone / e-mail ──
    Tenta primeiro separadores explícitos de coluna (a folha em papel muitas
    vezes já tem "Nome - Telefone - Email" ou colunas bem espaçadas — OCR
@@ -634,17 +773,18 @@ function renderTable(){
     return;
   }
   wrap.innerHTML = `<table>
-    <thead><tr><th style="width:34%">Nome</th><th style="width:23%">Telefone</th><th style="width:33%">E-mail</th><th></th></tr></thead>
+    <thead><tr><th style="width:18%">Nome</th><th style="width:14%">Telefone</th><th style="width:18%">E-mail</th><th style="width:41%">Detalhes da solicitação</th><th></th></tr></thead>
     <tbody>${rows.map((r,i)=>`<tr>
       <td><input class="cell-input" value="${escapeAttr(r.nome)}" oninput="rows[${i}].nome=this.value" onchange="salvarLocal()"></td>
       <td><input class="cell-input ${r.telefone && r.telefone.replace(/\D/g,'').length<8?'warn':''}" value="${escapeAttr(r.telefone)}" oninput="rows[${i}].telefone=this.value" onchange="salvarLocal()"></td>
       <td><input class="cell-input ${r.email && !r.email.includes('@')?'warn':''}" value="${escapeAttr(r.email)}" oninput="rows[${i}].email=this.value" onchange="salvarLocal()"></td>
+      <td><textarea class="cell-input" rows="2" style="resize:vertical" oninput="rows[${i}].detalhes=this.value" onchange="salvarLocal()">${escapeHtml(r.detalhes||'')}</textarea></td>
       <td class="col-actions"><button class="btn-sm" onclick="removerLinha(${i})" title="Remover">✕</button></td>
     </tr>`).join('')}</tbody>
   </table>`;
 }
 function removerLinha(i){ rows.splice(i,1); renderTable(); }
-function addRow(){ rows.push({nome:'',telefone:'',email:''}); renderTable(); }
+function addRow(){ rows.push({nome:'',telefone:'',email:'',detalhes:''}); renderTable(); }
 
 // A mesma pessoa aparece mais de uma vez com frequência quando dá pra somar
 // várias folhas/fotos (ou a própria folha já tinha repetição). Considera
@@ -679,21 +819,21 @@ function limparTudo(){
 /* ── Exportação ── */
 function copiarTexto(){
   if(!rows.length){ toast('Nada pra copiar ainda','err'); return; }
-  const texto = rows.map(r => [r.nome, r.telefone, r.email].filter(Boolean).join(' | ')).join('\n');
+  const texto = rows.map(r => [r.nome, r.telefone, r.email, r.detalhes].filter(Boolean).join(' | ')).join('\n');
   navigator.clipboard.writeText(texto)
     .then(()=>toast(`${rows.length} linha(s) copiada(s) — cole direto no importador de leads`,'ok'))
     .catch(()=>toast('Não consegui copiar automaticamente — selecione o texto manualmente','err'));
 }
 function exportarCSV(){
   if(!rows.length){ toast('Nada pra exportar ainda','err'); return; }
-  const linhas = [['Nome','Telefone','Email'], ...rows.map(r=>[r.nome,r.telefone,r.email])];
+  const linhas = [['Nome','Telefone','Email','Detalhes da solicitação'], ...rows.map(r=>[r.nome,r.telefone,r.email,r.detalhes||''])];
   const csv = linhas.map(l => l.map(c => `"${(c||'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
   baixarArquivo(new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'}), 'lista.csv');
 }
 function exportarXLSX(){
   if(!rows.length){ toast('Nada pra exportar ainda','err'); return; }
-  const ws = XLSX.utils.json_to_sheet(rows.map(r=>({Nome:r.nome, Telefone:r.telefone, Email:r.email})));
-  ws['!cols'] = [{wch:28},{wch:18},{wch:28}];
+  const ws = XLSX.utils.json_to_sheet(rows.map(r=>({Nome:r.nome, Telefone:r.telefone, Email:r.email, 'Detalhes da solicitação':r.detalhes||''})));
+  ws['!cols'] = [{wch:28},{wch:18},{wch:28},{wch:60}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Lista');
   XLSX.writeFile(wb, 'lista.xlsx');
