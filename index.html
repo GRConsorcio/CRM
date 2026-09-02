@@ -4800,7 +4800,7 @@ const ROTACAO_LIMITE_DIAS={'Sem Contato':2};
 // fila de distribuição (bloqueado_distribuicao_ate) — ver reciclarLeadParaPool.
 const PERDIDO_LIMITE_HORAS=2;
 const PERDIDO_COOLDOWN_MULTIPLO=3;
-const PERDIDO_COOLDOWN_DIAS=3;
+const PERDIDO_COOLDOWN_DIAS=30;
 function prazoRotacaoInfo(lead){
   if(!lead.responsavel_id) return null;
   if(lead.status==='Perdido'){
