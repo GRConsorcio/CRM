@@ -4787,13 +4787,12 @@ function ordenarFilaFunil(leads){
 
 /* Calcula quanto tempo falta até o lead ser rotacionado automaticamente (mesmas
    regras do runAutoReturnRules). Retorna null se não aplicável (sem vendedor,
-   status sem regra nesse teste, ou ainda sem data de referência).
-   TESTE (a pedido do GR, 2026-08-31): pra girar a base toda mais rápido —
-   Sem Contato=2 dias, Perdido=2h. Novo, Em Negociação, Proposta e Fechado
-   ficam DE FORA da rotação automática por enquanto (protegidos nesse teste;
-   antes eram Em Negociação/Proposta=10d e Novo/Sem Contato=7d juntos — pra
-   voltar ao normal, restaurar esses valores aqui). */
-const ROTACAO_LIMITE_DIAS={'Sem Contato':2};
+   status sem regra, ou ainda sem data de referência).
+   Sem Contato=2 dias (reduzido do padrão de 7d a pedido do GR, 2026-08-31,
+   pra girar a base mais rápido). Novo=7 dias, Em Negociação/Proposta=10 dias
+   (reativados em 2026-09-02 — tinham ficado de fora temporariamente nesse
+   mesmo teste). Fechado nunca rotaciona. */
+const ROTACAO_LIMITE_DIAS={'Sem Contato':2,'Novo':7,'Em Negociação':10,'Proposta':10};
 // Perdido recicla PERDIDO_LIMITE_HORAS depois de virar Perdido (stage_entered_at).
 // A cada PERDIDO_COOLDOWN_MULTIPLO-ésima vez que isso acontece pro MESMO lead
 // (vezes_perdido múltiplo de 3), ele fica PERDIDO_COOLDOWN_DIAS dias fora da
@@ -4812,7 +4811,7 @@ function prazoRotacaoInfo(lead){
     return {diasRestantes:horasRestantes/24,label:`${horasRestantes}h para rotação`,cor:horasRestantes<=1?'var(--orange)':'var(--muted2)'};
   }
   const limite=ROTACAO_LIMITE_DIAS[lead.status];
-  if(!limite) return null; // status sem regra de rotação nesse teste (Novo, Em Negociação, Proposta, Fechado)
+  if(!limite) return null; // status sem regra de rotação (Fechado)
   const refDate=lead.atribuido_em||lead.distribuido_em;
   if(!refDate) return null; // ainda sem data — será zerada no próximo ciclo do admin
   const diasDesdeAtribuicao=(Date.now()-new Date(refDate).getTime())/(1000*60*60*24);
@@ -8714,11 +8713,10 @@ async function runAutoReturnRules(){
     const refDate=l.atribuido_em||l.distribuido_em;
     if(!refDate) continue; // ainda sem data (será zerado acima na próxima execução)
     const diasDesdeAtribuicao=(now-new Date(refDate))/(1000*60*60*24);
-    // Em Negociação/Proposta e Novo ficam FORA da rotação automática nesse
-    // teste (só Sem Contato e Perdido rodam) — pra reativar, replicar aqui o
-    // bloco removido que empurrava pra retornar10/retornar7 por esses status.
-    if(l.status==='Sem Contato'&&diasDesdeAtribuicao>=ROTACAO_LIMITE_DIAS['Sem Contato']){
+    if((l.status==='Sem Contato'||l.status==='Novo')&&diasDesdeAtribuicao>=ROTACAO_LIMITE_DIAS[l.status]){
       retornar7.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
+    } else if((l.status==='Em Negociação'||l.status==='Proposta')&&diasDesdeAtribuicao>=ROTACAO_LIMITE_DIAS[l.status]){
+      retornar10.push({id:l.id,status:l.status,vendedor_id:l.responsavel_id,dias:Math.floor(diasDesdeAtribuicao)});
     }
     // Regra dos 14 dias: independe do status acima — é uma rede de segurança extra.
     // NÃO devolve o lead pro pool nem mexe no vendedor/status, só marca tipo_lead
@@ -8870,8 +8868,8 @@ async function runAutoReturnRules(){
   const n7=retornar7.filter(x=>okIds.has(x.id)).length;
   const n3=retornar3.filter(x=>okIds.has(x.id)).length;
   const msg=[];
-  if(n10) msg.push(`${n10} lead(s) retornado(s)`); // retornar10 desativado nesse teste (Em Negociação/Proposta protegidos) — fica sempre 0
-  if(n7)  msg.push(`${n7} "Sem Contato" retornado(s) após ${ROTACAO_LIMITE_DIAS['Sem Contato']} dias`);
+  if(n10) msg.push(`${n10} "Em Negociação/Proposta" retornado(s) após ${ROTACAO_LIMITE_DIAS['Proposta']} dias`);
+  if(n7)  msg.push(`${n7} "Novo/Sem Contato" retornado(s)`);
   if(n3)  msg.push(`${n3} perdido(s) reciclado(s) após ${PERDIDO_LIMITE_HORAS}h`);
   if(bloqueados3.length) msg.push(`${bloqueados3.length} bloqueado(s) por palavra-chave`);
   if(falhasUpdate.length) msg.push(`${falhasUpdate.length} falharam ao atualizar`);
