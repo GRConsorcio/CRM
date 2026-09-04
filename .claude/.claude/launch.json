@@ -1,0 +1,53 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "portal-gr-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\html\\_static_server.ps1", "-Port", "8902"],
+      "port": 8902
+    },
+    {
+      "name": "ponto-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\html\\Ponto\\_static_server.ps1", "-Port", "8793"],
+      "port": 8793
+    },
+    {
+      "name": "demandas-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\DemandasGR\\_static_server.ps1", "-Port", "8795"],
+      "port": 8795
+    },
+    {
+      "name": "crm-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\HTML Claude\\_static_server.ps1", "-Port", "8792"],
+      "port": 8792
+    },
+    {
+      "name": "qualidade-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\Qualidade\\_static_server.ps1", "-Port", "8794"],
+      "port": 8794
+    },
+    {
+      "name": "operacional-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\Operacional\\_static_server.ps1", "-Port", "8901"],
+      "port": 8901
+    },
+    {
+      "name": "demandas-supabase-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\Demandas\\_static_server.ps1", "-Port", "8798"],
+      "port": 8798
+    },
+    {
+      "name": "basegr-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\BaseGR\\_static_server.ps1", "-Port", "8796"],
+      "port": 8796
+    }
+  ]
+}

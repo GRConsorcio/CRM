@@ -12,6 +12,24 @@
       "runtimeExecutable": "powershell.exe",
       "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\HTML Claude\\_static_server.ps1", "-Port", "8792"],
       "port": 8792
+    },
+    {
+      "name": "operacional-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\Operacional\\_static_server.ps1", "-Port", "8793"],
+      "port": 8793
+    },
+    {
+      "name": "demandas-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\Demandas\\_static_server.ps1", "-Port", "8794"],
+      "port": 8794
+    },
+    {
+      "name": "basegr-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\BaseGR\\_static_server.ps1", "-Port", "8797"],
+      "port": 8797
     }
   ]
 }
