@@ -6256,20 +6256,23 @@ async function saveLead(){
   
   // VERIFICAÇÃO DE DUPLICATA (Nome + Telefone)
   if(!editLeadId){
-    // Busca por telefone (mais confiável) ou nome exato
+    // Busca por telefone (normalizado — tolera DDI/9º dígito/formatação
+    // diferentes) ou nome parecido + telefone igual.
     const telDigits = telefone.replace(/\D/g,'');
-    let duplicado = allLeads.find(l =>
-      (telDigits.length >= 8 && (l.telefone||'').replace(/\D/g,'') === telDigits) ||
-      (l.nome.toLowerCase() === nome.toLowerCase() && (l.telefone||'').replace(/\D/g,'') === telDigits)
-    );
+    const telNorm = normalizarTelefone(telefone);
+    let duplicado = allLeads.find(l => {
+      const lTelNorm = normalizarTelefone(l.telefone);
+      return (telNorm.length>=8 && lTelNorm===telNorm) ||
+        (lTelNorm===telNorm && nomesSaoParecidos(l.nome,nome));
+    });
     // Admin/coordenador agora usam cache local incremental/parcial (ver sincronização
     // incremental) — então "não achei no cache local" não significa mais "não existe na
     // base". Antes de criar um lead novo pra esses perfis, confirma direto no banco pelo
     // telefone (busca rápida e específica, bem mais barata que recarregar a base toda).
     if(!duplicado && telDigits.length>=8 && (isAdmin()||isCoordenador())){
       try{
-        const{data:remoto}=await sb.from('crm_leads').select('id,nome,telefone,status,responsavel_id').ilike('telefone',`%${telDigits}%`).limit(5);
-        duplicado = (remoto||[]).find(l=>(l.telefone||'').replace(/\D/g,'')===telDigits) || null;
+        const{data:remoto}=await sb.from('crm_leads').select('id,nome,telefone,status,responsavel_id').ilike('telefone',`%${telNorm}%`).limit(5);
+        duplicado = (remoto||[]).find(l=>normalizarTelefone(l.telefone)===telNorm) || null;
       }catch(e){ console.warn('Checagem remota de duplicata falhou:',e.message); }
     }
     if(duplicado){
@@ -9218,6 +9221,7 @@ function leadTemVenda(leadId){
 }
 
 let _dupGruposAtual=[]; // grupos "colisão" (com lead_ids resolvidos), indexados p/ os botões de ação
+let _dupIdenticasAtual=[]; // grupos "idêntica" atuais, indexados p/ mesclagem em massa
 async function openDuplicatas(){
   if(!isAdmin()) return;
   document.getElementById('modal-duplicatas').classList.add('on');
@@ -9245,11 +9249,15 @@ async function _renderDuplicatasResult(grupos){
   }
   let html='';
   if(identicas.length){
-    html+=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text);margin:4px 0 8px">Duplicata idêntica — ${identicas.length} grupo(s)</div>`;
+    _dupIdenticasAtual=identicas; // índice usado pela mesclagem em massa
+    html+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:4px 0 8px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text)">Duplicata idêntica — ${identicas.length} grupo(s)</div>
+      <button class="act" id="btn-mesclar-todas-identicas" style="border-color:var(--green);color:var(--green)" onclick="mesclarTodasIdenticas(this)">Mesclar todas (${identicas.length})</button>
+    </div>`;
     html+=identicas.map((g,i)=>{
       const keeperId=g.lead_ids[0];
       const loserIds=g.lead_ids.slice(1);
-      return`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      return`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px" id="dupidentica_${i}">
         <div style="flex:1;min-width:0">
           <div style="font-size:12.5px;font-weight:700;color:var(--text)">${escJs(g.nomes[0])}</div>
           <div style="font-size:11px;color:var(--muted2)">${g.qtd} cadastros com esse nome e telefone — mantém 1 (o com mais histórico), apaga o resto</div>
@@ -9437,11 +9445,49 @@ async function mesclarGrupoDuplicata(keeperId,loserIds,btn){
     saveCache();
     renderLeads(true);
     btn.closest('div').remove();
+    _dupIdenticasAtual=_dupIdenticasAtual.filter(g=>g.lead_ids[0]!==keeperId);
+    const btnTodas=document.getElementById('btn-mesclar-todas-identicas');
+    if(btnTodas) btnTodas.textContent=`Mesclar todas (${_dupIdenticasAtual.length})`;
     toast('Duplicata mesclada','ok');
   }catch(e){
     toast('Erro ao mesclar: '+e.message,'err');
     btn.disabled=false; btn.textContent='Mesclar';
   }
+}
+
+// Mescla TODOS os grupos "idêntica" (mesmo nome+telefone) de uma vez, um por
+// um em sequência — o backend só expõe crm_merge_leads por grupo, então não
+// dá pra mandar tudo numa chamada só. Segue mesmo assim mesmo se um grupo
+// falhar (ex: já foi mesclado por outra aba), pra não travar o lote inteiro
+// por causa de um erro isolado.
+async function mesclarTodasIdenticas(btn){
+  const grupos=_dupIdenticasAtual;
+  if(!grupos.length) return;
+  if(!confirm(`Mesclar os ${grupos.length} grupos de duplicata idêntica de uma vez? Em cada um, mantém o cadastro com mais histórico e apaga o resto. Não dá pra desfazer.`)) return;
+  btn.disabled=true;
+  let ok=0,falhas=0;
+  for(let i=0;i<grupos.length;i++){
+    const g=grupos[i];
+    btn.textContent=`Mesclando ${i+1}/${grupos.length}...`;
+    const keeperId=g.lead_ids[0];
+    const loserIds=g.lead_ids.slice(1);
+    try{
+      const{error}=await sb.rpc('crm_merge_leads',{p_keeper_id:keeperId,p_loser_ids:loserIds});
+      if(error) throw error;
+      allLeads=allLeads.filter(l=>!loserIds.includes(l.id));
+      const row=document.getElementById('dupidentica_'+i);
+      if(row) row.remove();
+      ok++;
+    }catch(e){
+      console.warn(`[mesclarTodasIdenticas] grupo ${i} falhou:`,e.message);
+      falhas++;
+    }
+  }
+  saveCache();
+  renderLeads(true);
+  _dupIdenticasAtual=[];
+  btn.remove();
+  toast(falhas?`${ok} grupo(s) mesclado(s), ${falhas} falharam.`:`${ok} grupo(s) mesclado(s)!`, falhas?'err':'ok');
 }
 
 /* ═══ REALTIME SUBSCRIPTIONS ═══ */
@@ -10191,20 +10237,21 @@ async function importLeads(leadsBrutos,fonte){
   }
 
   for(const lead of leads){
-    // VERIFICAÇÃO DE DUPLICATA NO IMPORT
+    // VERIFICAÇÃO DE DUPLICATA NO IMPORT — lead "igual ou semelhante" (nome
+    // exato/parecido + telefone normalizado igual, tolerando DDI/9º dígito/
+    // formatação diferentes) já existente na base NÃO entra. Telefone igual
+    // com nome bem diferente continua passando — isso é uma "colisão" (pode
+    // ser gente diferente com o mesmo telefone fixo/comercial) e fica pra
+    // revisão manual em Duplicatas, não é bloqueado aqui.
     const nomeLead = lead.nome.trim();
-    const telLead = (lead.telefone || '').replace(/\D/g,'');
+    const telNormLead = normalizarTelefone(lead.telefone);
 
-    const isDup = allLeads.some(l =>
-      l.nome.toLowerCase() === nomeLead.toLowerCase() &&
-      (l.telefone || '').replace(/\D/g,'') === telLead
-    ) || batch.some(b =>
-      b.nome.toLowerCase() === nomeLead.toLowerCase() &&
-      (b.telefone || '').replace(/\D/g,'') === telLead
-    ) || dbMatches.some(m =>
-      (m.nome||'').toLowerCase() === nomeLead.toLowerCase() &&
-      m.tel_norm === telLead
-    );
+    const bateComoDuplicata = (nomeOutro,telOutroNorm) =>
+      telOutroNorm && telOutroNorm===telNormLead && nomesSaoParecidos(nomeOutro,nomeLead);
+
+    const isDup = allLeads.some(l => bateComoDuplicata(l.nome,normalizarTelefone(l.telefone)))
+      || batch.some(b => bateComoDuplicata(b.nome,normalizarTelefone(b.telefone)))
+      || dbMatches.some(m => bateComoDuplicata(m.nome,m.tel_norm));
 
     if(isDup){
       dups++;
