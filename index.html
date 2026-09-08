@@ -608,6 +608,8 @@ document.addEventListener('DOMContentLoaded', function(){
     </div>
     <!-- Smart search banner: shown when local search has no results -->
     <div id="leads-search-banner" style="display:none"></div>
+    <!-- Aviso de cache incompleto ao filtrar por equipe (ver carregarEquipeCompleta) -->
+    <div id="leads-equipe-cache-banner" style="display:none"></div>
 
     <div class="panel">
       <div class="panel-head">
@@ -4036,6 +4038,36 @@ function renderLeads(resetPage){
   const dddLabel=fd?` · DDD ${fd}`:'';
   document.getElementById('l-title').textContent=`Leads — ${f.length.toLocaleString('pt-BR')} registro${f.length!==1?'s':''}${dddLabel}`;
 
+  // ── AVISO DE CACHE INCOMPLETO AO FILTRAR POR EQUIPE ──
+  // BUGFIX: allLeads (admin) é capado em ADMIN_LEADS_CAP (12000) e ordenado
+  // pelos mais recentes. Como a imensa maioria dos leads da base NÃO tem
+  // equipe_id (leads avulsos/antigos), eles ocupam quase toda a janela dos
+  // 12k mais recentes e empurram leads de equipe mais antigos pra fora do
+  // cache — o filtro "Leads da equipe X" mostrava só uma fração do real,
+  // sem nenhum aviso. Agora, ao filtrar por uma equipe específica, oferece
+  // carregar TODOS os leads dela direto do Supabase (sem depender do cache).
+  const equipeCacheBanner=document.getElementById('leads-equipe-cache-banner');
+  if(equipeCacheBanner){
+    if(isAdmin() && fe && fe!=='__sem__' && !_equipesCarregadasCompletas.has(fe)){
+      const nomeEq=(window._allEquipes||[]).find(e=>e.id===fe)?.nome||'selecionada';
+      equipeCacheBanner.innerHTML=`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:12px 18px;background:rgba(201,168,76,0.05);border:1px solid rgba(201,168,76,0.18);border-radius:10px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:20px">⚠️</span>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--text)">Esta lista pode estar incompleta.</div>
+              <div style="font-size:11.5px;color:var(--muted2);margin-top:2px">O cache local só carrega os leads mais recentes da base inteira — leads mais antigos da equipe "<strong style="color:var(--gold2)">${nomeEq}</strong>" podem não aparecer aqui.</div>
+            </div>
+          </div>
+          <button class="btn-primary" id="btn-carregar-equipe-completa" onclick="carregarEquipeCompleta('${fe}')" style="flex-shrink:0">Carregar todos os leads desta equipe</button>
+        </div>`;
+      equipeCacheBanner.style.display='';
+    } else {
+      equipeCacheBanner.style.display='none';
+      equipeCacheBanner.innerHTML='';
+    }
+  }
+
   // Smart search banner: only show when there's a search query and no local results
   const searchBanner=document.getElementById('leads-search-banner');
   if(searchBanner){
@@ -4189,6 +4221,33 @@ function goLeadsPage(p){
 
 /* ═══ BUSCA NA BASE COMPLETA (Supabase) ═══ */
 const _srchCompletaCache=new Map();
+// IDs de equipe cujos leads completos já foram carregados nesta sessão
+// (evita repetir a busca no Supabase toda vez que renderLeads roda).
+const _equipesCarregadasCompletas=new Set();
+
+// Busca TODOS os leads de uma equipe direto no Supabase (sem o teto do
+// cache local ADMIN_LEADS_CAP) e mescla no allLeads — ver comentário do
+// BUGFIX em renderLeads (banner leads-equipe-cache-banner).
+async function carregarEquipeCompleta(equipeId){
+  const btn=document.getElementById('btn-carregar-equipe-completa');
+  if(btn){btn.disabled=true;btn.textContent='Carregando...';}
+  try{
+    const leadsEquipe=await fetchAllPages(
+      sb.from('crm_leads').select(getLeadListCols()).eq('equipe_id',equipeId).order('created_at',{ascending:false}),
+      1000
+    );
+    const localIds=new Set(allLeads.map(l=>l.id));
+    const novos=leadsEquipe.filter(l=>!localIds.has(l.id));
+    if(novos.length) allLeads=[...allLeads,...novos];
+    _equipesCarregadasCompletas.add(equipeId);
+    toast(`${leadsEquipe.length} lead(s) da equipe carregado(s) (${novos.length} novo(s) que não estavam no cache).`,'ok');
+    renderLeads();
+  }catch(e){
+    toast('Erro ao carregar leads da equipe: '+e.message,'err');
+    if(btn){btn.disabled=false;btn.textContent='Carregar todos os leads desta equipe';}
+  }
+}
+
 async function buscarNaBaseCompleta(){
   const q=(document.getElementById('l-srch')?.value||'').trim();
   if(!q){toast('Digite algo para buscar','err');return;}
