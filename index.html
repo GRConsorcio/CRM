@@ -10286,7 +10286,13 @@ async function importLeads(leadsBrutos,fonte){
   // allLeads (cache local, capado em ~12k) e dentro do próprio arquivo, então
   // um CSV podia reintroduzir leads que já existiam fora do cache do admin.
   // Uma chamada só pro banco com todos os telefones do arquivo de uma vez.
-  const telsParaChecar=[...new Set(leads.map(l=>(l.telefone||'').replace(/\D/g,'')).filter(t=>t.length>=8))];
+  // BUGFIX: mandava dígitos completos (11-13) pro RPC, que devolvia tel_norm
+  // também completo — mas a comparação abaixo usa normalizarTelefone() (só os
+  // últimos 8 dígitos, mesmo padrão do resto do sistema). Full != últimos-8
+  // nunca batia, então essa checagem contra o banco inteiro nunca bloqueava
+  // nada. RPC agora já normaliza pra últimos-8 dos dois lados (tel_norm e
+  // phones), então manda normalizarTelefone() igual ao resto do código.
+  const telsParaChecar=[...new Set(leads.map(l=>normalizarTelefone(l.telefone)).filter(t=>t.length>=8))];
   let dbMatches=[];
   if(telsParaChecar.length){
     try{
