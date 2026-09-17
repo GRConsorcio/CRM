@@ -29,6 +29,13 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .auth-tab.on{background:var(--gold);color:#0a0a0a}
 .inp{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 14px;font-size:13px;font-family:inherit;outline:none;margin-bottom:10px;transition:border-color .13s}
 .inp:focus{border-color:var(--gold-dim)}
+/* Edge/IE desenham seu PRÓPRIO ícone nativo de "mostrar senha" (::-ms-reveal) em
+   cima do campo type="password" — ele fica sobreposto ao olhinho SVG customizado
+   (#a-pass-eye), dando a impressão de "dois olhinhos": o nativo do navegador (que
+   funciona, é do próprio Edge) e o nosso (que parece não fazer nada porque o clique
+   cai no elemento nativo por cima). Escondendo o nativo, sobra só o nosso. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear{display:none}
 .btn-gold{width:100%;background:var(--gold);color:#0a0a0a;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .13s;margin-top:4px}
 .btn-gold:hover{background:var(--gold2)}
 .auth-err{font-size:11.5px;color:var(--red);margin-top:8px;min-height:16px}
