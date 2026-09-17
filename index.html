@@ -5003,10 +5003,10 @@ async function renderFunil(){
               ${isSel?'checked':''}
               onclick="event.stopPropagation()" onchange="onMassChkChange(this)">
             <div style="flex:1">
-              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome||l.email||'(sem nome)'}</div>
-              ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="opacity:.7">📞</span>${l.telefone}</div>`:''}
-              <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
-              ${resp?`<div style="font-size:9.5px;color:var(--muted)">${resp.name}</div>`:''}
+              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${escHtml(l.nome||l.email||'(sem nome)')}</div>
+              ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px;display:flex;align-items:center;gap:4px"><span style="opacity:.7">📞</span>${escHtml(l.telefone)}</div>`:''}
+              <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${escHtml(l.interesse||'—')}</div>
+              ${resp?`<div style="font-size:9.5px;color:var(--muted)">${escHtml(resp.name)}</div>`:''}
               ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">${prazo.label}</div>`:''}
             </div>
           </div>
@@ -7486,6 +7486,16 @@ function sv(id,val){const e=document.getElementById(id);if(e)e.value=val;}
 // quebra o atributo inline e gera "Uncaught SyntaxError: missing ) after argument list",
 // travando a página inteira silenciosamente para quem abrir aquele card/lead.
 function escJs(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+
+// Escapa valores antes de embutir como TEXTO dentro de innerHTML — sem isso, um
+// nome/interesse de lead com "<" ou ">" (comum em base importada de anúncio/
+// WhatsApp, ex: nome "Ne <c" ou "<><><>") é interpretado como tag HTML pelo
+// navegador. No Funil isso corrompe a árvore do DOM inteira: o "<" fecha a div
+// do card/coluna fora de hora, e todas as colunas seguintes (Sem Contato, Em
+// Negociação, Proposta, Fechado, Perdido) deixam de ser filhas do container
+// flex #funil-grid — o navegador as re-encaixa como blocos soltos, empilhados
+// um embaixo do outro em vez de lado a lado ("funil com um balão só").
+function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ── Normalização de telefone e nome para detecção de duplicata ──
 // Usado para checar se um número/nome já está bloqueado como "Venda Sem
@@ -10455,10 +10465,10 @@ function renderMeuFunil(){
         style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;transition:all .13s"
         onmouseover="this.style.borderColor='var(--gold-dim)'"
         onmouseout="this.style.borderColor='var(--border)'">
-        <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome||l.email||'(sem nome)'}</div>
-        ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${l.telefone}</div>`:''}
-        <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${l.interesse||'—'}</div>
-        ${resp?`<div style="font-size:9.5px;color:var(--muted)">${resp.name}</div>`:''}
+        <div style="font-size:12px;font-weight:700;margin-bottom:3px">${escHtml(l.nome||l.email||'(sem nome)')}</div>
+        ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${escHtml(l.telefone)}</div>`:''}
+        <div style="font-size:10.5px;color:var(--muted2);margin-bottom:4px">${escHtml(l.interesse||'—')}</div>
+        ${resp?`<div style="font-size:9.5px;color:var(--muted)">${escHtml(resp.name)}</div>`:''}
         ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">${prazo.label}</div>`:''}
         <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:8px">
           ${STAGES.filter(x=>x!==s).map(x=>`<button onclick="event.stopPropagation();moveStageAndRefreshMeuFunil('${l.id}','${x}')"
@@ -10827,10 +10837,10 @@ async function renderCoordFunil(){
               ${isSel?'checked':''}
               onclick="event.stopPropagation()" onchange="onCfChkChange(this)">
             <div style="flex:1">
-              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${l.nome||l.email||'(sem nome)'}</div>
-              ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${l.telefone}</div>`:''}
-              <div style="font-size:10.5px;color:var(--muted2)">${l.interesse||'—'}</div>
-              ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">${u.name}</div>`:''}
+              <div style="font-size:12px;font-weight:700;margin-bottom:3px">${escHtml(l.nome||l.email||'(sem nome)')}</div>
+              ${l.telefone?`<div style="font-size:10.5px;color:var(--gold2);margin-bottom:2px">${escHtml(l.telefone)}</div>`:''}
+              <div style="font-size:10.5px;color:var(--muted2)">${escHtml(l.interesse||'—')}</div>
+              ${u?`<div style="font-size:9.5px;color:var(--muted);margin-top:2px">${escHtml(u.name)}</div>`:''}
             </div>
           </div>
         </div>`;
@@ -11707,8 +11717,8 @@ async function openFunilVendedor(userId){
                 ${isSel?'checked':''}
                 onclick="event.stopPropagation()" onchange="onMassChkChange(this)">
               <div style="flex:1">
-                <div style="font-size:11.5px;font-weight:700;margin-bottom:2px">${l.nome||l.email||'(sem nome)'}</div>
-                <div style="font-size:10px;color:var(--muted2)">${l.interesse||'—'}</div>
+                <div style="font-size:11.5px;font-weight:700;margin-bottom:2px">${escHtml(l.nome||l.email||'(sem nome)')}</div>
+                <div style="font-size:10px;color:var(--muted2)">${escHtml(l.interesse||'—')}</div>
                 ${prazo?`<div style="font-size:9.5px;color:${prazo.cor};margin-top:2px">${prazo.label}</div>`:''}
               </div>
             </div>
