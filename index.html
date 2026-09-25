@@ -772,6 +772,20 @@ document.addEventListener('DOMContentLoaded', function(){
       <button class="btn-sm" id="nvd-import-btn" style="display:none" onclick="openNvdImportModal()">Importar Lista</button>
       <button class="btn-sm" id="nvd-funil-editar-btn" style="display:none" onclick="openEstagiosEditor('nvd')">⚙ Editar Funil</button>
     </div>
+    <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input class="inp" id="nvd-funil-f-data-ini" type="date" title="De" oninput="renderNvdFunil()" style="width:150px">
+      <input class="inp" id="nvd-funil-f-data-fim" type="date" title="Até" oninput="renderNvdFunil()" style="width:150px">
+      <select id="nvd-funil-f-segmento" class="inp" style="width:auto" onchange="renderNvdFunil()">
+        <option value="">Todos os segmentos</option>
+      </select>
+      <select id="nvd-funil-f-regiao" class="inp" style="width:auto" onchange="renderNvdFunil()">
+        <option value="">Todas as regiões</option>
+      </select>
+      <select id="nvd-funil-f-status" class="inp" style="width:auto" onchange="renderNvdFunil()">
+        <option value="">Todos os status</option>
+      </select>
+      <button class="btn-outline btn-small" onclick="document.getElementById('nvd-funil-srch').value='';document.getElementById('nvd-funil-f-data-ini').value='';document.getElementById('nvd-funil-f-data-fim').value='';document.getElementById('nvd-funil-f-segmento').value='';document.getElementById('nvd-funil-f-regiao').value='';document.getElementById('nvd-funil-f-status').value='';renderNvdFunil()">Limpar</button>
+    </div>
     <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;min-height:200px" id="nvd-funil-grid"></div>
   </div>
 
@@ -8803,6 +8817,7 @@ async function loadNvdEstagios(){
 }
 async function loadAndRenderNvd(){
   await Promise.all([loadNvdLeads(),loadNvdEstagios()]);
+  populateNvdFunilFilters();
   renderNvdFunil();
   const impBtn=document.getElementById('nvd-import-btn');
   if(impBtn) impBtn.style.display=isAdmin()?'':'none';
@@ -8814,14 +8829,55 @@ async function loadAndRenderNvd(){
 
 function nvdVendedores(){ return (allUsers||[]).filter(u=>u.role==='vendedor_nvd'); }
 
+// Preenche os selects de segmento/região/status do Funil NVD com os valores
+// realmente presentes na base (segmento e cidade variam por importação, e os
+// estágios de status são customizáveis via editor de funil, então não dá pra
+// hardcodar as opções). Preserva o valor já selecionado ao repopular.
+function populateNvdFunilFilters(){
+  const segSel=document.getElementById('nvd-funil-f-segmento');
+  if(segSel){
+    const segAtual=segSel.value;
+    const segmentos=[...new Set(allLeadsNvd.map(l=>l.segmento).filter(Boolean))].sort();
+    segSel.innerHTML='<option value="">Todos os segmentos</option>'+segmentos.map(s=>`<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+    segSel.value=segAtual;
+  }
+  const regSel=document.getElementById('nvd-funil-f-regiao');
+  if(regSel){
+    const regAtual=regSel.value;
+    // Não existe coluna "região" na base NVD — usa a cidade da loja como
+    // proxy geográfico, que é o único dado de localização disponível.
+    const regioes=[...new Set(allLeadsNvd.map(l=>l.cidade).filter(Boolean))].sort();
+    regSel.innerHTML='<option value="">Todas as regiões</option>'+regioes.map(r=>`<option value="${escHtml(r)}">${escHtml(r)}</option>`).join('');
+    regSel.value=regAtual;
+  }
+  const statusSel=document.getElementById('nvd-funil-f-status');
+  if(statusSel){
+    const statusAtual=statusSel.value;
+    statusSel.innerHTML='<option value="">Todos os status</option>'+STAGES_NVD.map(s=>`<option>${escHtml(s)}</option>`).join('');
+    statusSel.value=statusAtual;
+  }
+}
+
 function renderNvdFunil(){
   const q=(document.getElementById('nvd-funil-srch')?.value||'').toLowerCase().trim();
   const qd=q.replace(/[^0-9]/g,'');
-  const passa=l=>!q||(l.loja||'').toLowerCase().includes(q)||(l.cidade||'').toLowerCase().includes(q)||(l.bairro||'').toLowerCase().includes(q)||(l.segmento||'').toLowerCase().includes(q)||(qd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(qd));
+  const fDataIni=document.getElementById('nvd-funil-f-data-ini')?.value||'';
+  const fDataFim=document.getElementById('nvd-funil-f-data-fim')?.value||'';
+  const fSeg=document.getElementById('nvd-funil-f-segmento')?.value||'';
+  const fRegiao=document.getElementById('nvd-funil-f-regiao')?.value||'';
+  const fStatus=document.getElementById('nvd-funil-f-status')?.value||'';
+  const passa=l=>{
+    if(q&&!((l.loja||'').toLowerCase().includes(q)||(l.cidade||'').toLowerCase().includes(q)||(l.bairro||'').toLowerCase().includes(q)||(l.segmento||'').toLowerCase().includes(q)||(qd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(qd)))) return false;
+    if(fDataIni&&(!l.created_at||l.created_at<fDataIni)) return false;
+    if(fDataFim&&(!l.created_at||l.created_at>fDataFim+'T23:59:59')) return false;
+    if(fSeg&&l.segmento!==fSeg) return false;
+    if(fRegiao&&l.cidade!==fRegiao) return false;
+    return true;
+  };
   const admin=isAdmin();
   const grid=document.getElementById('nvd-funil-grid');
   if(!grid) return;
-  grid.innerHTML=STAGES_NVD.map(s=>{
+  grid.innerHTML=STAGES_NVD.filter(s=>!fStatus||s===fStatus).map(s=>{
     const ls=allLeadsNvd.filter(l=>l.status===s&&(admin||l.responsavel_id===CU.id)&&passa(l));
     return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:120px;min-width:220px;flex:1">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${SCOL[s]};margin-bottom:10px">
