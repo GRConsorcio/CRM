@@ -665,7 +665,7 @@ document.addEventListener('DOMContentLoaded', function(){
         <input class="inp" id="lnvd-srch" placeholder="Buscar por loja, cidade, bairro ou telefone..." oninput="renderLeadsNvdTable()" style="min-width:260px">
         <select id="lnvd-f-status" onchange="renderLeadsNvdTable()">
           <option value="">Todos os status</option>
-          <option>Novo</option><option>Sem Contato</option><option>Em Negociação</option><option>Proposta</option>
+          <option>Novo</option><option>Aguardando</option><option>Sem Contato</option><option>Em Negociação</option><option>Proposta</option>
           <option>Fechado</option><option>Perdido</option>
         </select>
         <select id="lnvd-f-segmento" onchange="renderLeadsNvdTable()">
@@ -1725,9 +1725,20 @@ document.addEventListener('DOMContentLoaded', function(){
     <div style="font-size:11.5px;color:var(--muted2);margin-bottom:16px">Lead: <strong id="venda-lead-nome" style="color:var(--gold2)">—</strong></div>
 
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:10px">Dados do Cliente</div>
+    <div class="fld" style="margin-bottom:10px">
+      <label>Tipo de Pessoa</label>
+      <div style="display:flex;gap:14px;margin-top:4px">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--muted2)">
+          <input type="radio" name="v-tipo-pessoa" id="v-tipo-pf" value="PF" checked onchange="updateVendaTipoPessoa()" style="accent-color:var(--gold);width:14px;height:14px"> Física (CPF)
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--muted2)">
+          <input type="radio" name="v-tipo-pessoa" id="v-tipo-pj" value="PJ" onchange="updateVendaTipoPessoa()" style="accent-color:var(--gold);width:14px;height:14px"> Jurídica (CNPJ)
+        </label>
+      </div>
+    </div>
     <div class="fld-row">
-      <div class="fld"><label>CPF * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-cpf" placeholder="000.000.000-00" maxlength="14"></div>
-      <div class="fld"><label>Data de Nascimento * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-nasc" type="date"></div>
+      <div class="fld"><label id="v-cpf-label">CPF * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-cpf" placeholder="000.000.000-00" maxlength="14"></div>
+      <div class="fld"><label id="v-nasc-label">Data de Nascimento * <span style="color:var(--red)">obrigatório</span></label><input class="inp" id="v-nasc" type="date"></div>
     </div>
 
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin:14px 0 10px">Dados do Consórcio</div>
@@ -4755,7 +4766,7 @@ async function openDetail(id,from){
     html+=`<div style="padding:16px 18px;border-bottom:1px solid var(--border)">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':venda.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${venda.status_venda==='SemRetorno'?'Cancelados':venda.status_venda==='Cancelado'?'Reprovado':(venda.status_venda||'Pendente')}</span></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12.5px">
-        <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">CPF</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
+        <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">${venda.tipo_pessoa==='PJ'?'CNPJ':'CPF'}</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Nascimento</div><strong>${venda.data_nascimento?fmtDateStr(venda.data_nascimento):'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Grupo / Cota</div><strong>${venda.grupo||'—'} / ${venda.cota||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Vencimento (Base GR/GRO)</div><strong>${venda.dia_vencimento_base?'Dia '+venda.dia_vencimento_base:'—'}</strong></div>
@@ -5087,7 +5098,7 @@ function ehRemarketingPerdido(lead){
   return (Date.now()-new Date(ref).getTime())/(1000*60*60*24) >= REMARKETING_PERDIDO_DIAS;
 }
 
-const SCOL={'Novo':'var(--blue)','Sem Contato':'#64748b','Em Negociação':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
+const SCOL={'Novo':'var(--blue)','Aguardando':'var(--orange)','Sem Contato':'#64748b','Em Negociação':'var(--purple)','Proposta':'var(--gold2)','Fechado':'var(--green)','Perdido':'var(--red)'};
 // REGRA: um lead fechado só aparece na coluna "Fechado" do Funil NO DIA em que foi
 // vendido — no dia seguinte ele já não aparece mais aqui, só em Vendas/Clientes
 // Vendidos. Por isso a coluna "Fechado" não usa allLeads (que pode nem ter leads
@@ -6389,6 +6400,9 @@ function openModal(type){
     const existingVenda=vendaEditId?allVendas.find(v=>v.id===vendaEditId):null;
     if(existingVenda){
       // Pre-fill with existing data
+      document.getElementById('v-tipo-pf').checked=(existingVenda.tipo_pessoa||'PF')==='PF';
+      document.getElementById('v-tipo-pj').checked=existingVenda.tipo_pessoa==='PJ';
+      updateVendaTipoPessoa();
       sv('v-cpf',existingVenda.cpf||'');
       sv('v-nasc',existingVenda.data_nascimento||'');
       sv('v-grupo',existingVenda.grupo||'');
@@ -6404,11 +6418,14 @@ function openModal(type){
       // Check if user can edit: admin, coordenador, supervisor only
       const canEditVenda=isAdmin()||isCoordenador()||isSupervisor()||(CUProfile?.role==='vendedor'&&existingVenda?.vendedor_id===CU.id);
       document.querySelector('#modal-venda .btn-save').style.display=canEditVenda?'':'none';
-      ['v-cpf','v-nasc','v-grupo','v-cota','v-credito','v-parcela','v-obs','v-qtd-cotas','v-redutor','v-dia-base'].forEach(id=>{
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-credito','v-parcela','v-obs','v-qtd-cotas','v-redutor','v-dia-base','v-tipo-pf','v-tipo-pj'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.disabled=!canEditVenda;
       });
     } else {
+      document.getElementById('v-tipo-pf').checked=true;
+      document.getElementById('v-tipo-pj').checked=false;
+      updateVendaTipoPessoa();
       ['v-cpf','v-grupo','v-cota','v-obs','v-credito','v-parcela'].forEach(id=>document.getElementById(id).value='');
       document.getElementById('v-nasc').value='';
       sv('v-qtd-cotas',1);
@@ -6416,7 +6433,7 @@ function openModal(type){
       sv('v-dia-base','');
       document.querySelector('#modal-venda .btn-save').textContent='Salvar Venda';
       document.querySelector('#modal-venda .btn-save').style.display='';
-      ['v-cpf','v-nasc','v-grupo','v-cota','v-credito','v-parcela','v-obs','v-redutor','v-dia-base'].forEach(id=>{
+      ['v-cpf','v-nasc','v-grupo','v-cota','v-credito','v-parcela','v-obs','v-redutor','v-dia-base','v-tipo-pf','v-tipo-pj'].forEach(id=>{
         const el=document.getElementById(id);
         if(el) el.disabled=false;
       });
@@ -6913,9 +6930,12 @@ async function saveVenda(){
   }
 }
 async function _saveVendaInner(){
+  const tipoPessoa=document.getElementById('v-tipo-pj')?.checked?'PJ':'PF';
   const cpf=v('v-cpf').replace(/\D/g,'');
-  if(!cpf){toast('Informe o CPF','err');return;}
-  if(!v('v-nasc')){toast('Informe a Data de Nascimento','err');return;}
+  if(!cpf){toast(tipoPessoa==='PJ'?'Informe o CNPJ':'Informe o CPF','err');return;}
+  if(tipoPessoa==='PJ'&&cpf.length!==14){toast('CNPJ inválido — deve ter 14 dígitos','err');return;}
+  if(tipoPessoa==='PF'&&cpf.length!==11){toast('CPF inválido — deve ter 11 dígitos','err');return;}
+  if(tipoPessoa==='PF'&&!v('v-nasc')){toast('Informe a Data de Nascimento','err');return;}
   if(!v('v-grupo')){toast('Informe o Grupo','err');return;}
   if(!v('v-cota')){toast('Informe a Cota','err');return;}
   if(!v('v-credito')){toast('Informe o Valor do Crédito','err');return;}
@@ -6992,7 +7012,7 @@ async function _saveVendaInner(){
   // Fallback final: usa quem está logado (só se realmente não tiver vendedor no lead)
   if(!vendedorId) vendedorId = CU.id;
   const updatePayload={
-    cpf:v('v-cpf'),data_nascimento:v('v-nasc')||null,
+    cpf:v('v-cpf'),data_nascimento:v('v-nasc')||null,tipo_pessoa:tipoPessoa,
     grupo:v('v-grupo')||null,cota:v('v-cota')||null,
     valor_credito:parseBrl(v('v-credito'))||null,
     parcela:parseBrl(v('v-parcela'))||null,
@@ -8024,7 +8044,12 @@ function parseBrl(str){
 function fmtBrlInput(el){
   el.value=el.value.replace(/[^\d.,]/g,"");
 }
-function fmtCPF(c){if(!c)return'';const d=c.replace(/\D/g,'');return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');}
+function fmtCPF(c){
+  if(!c)return'';
+  const d=c.replace(/\D/g,'');
+  if(d.length===14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');
+  return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');
+}
 function sBadge(s,tipo,leadId,proposta_quente){
   const m={Novo:"b-novo","Em Negociação":"b-contato",Proposta:"b-proposta",Fechado:"b-fechado",Perdido:"b-perdido"};
   // Lead Novo (status) + Remalho (tipo) ao mesmo tempo mostrava os dois badges
@@ -8704,7 +8729,7 @@ function goToCeoFunil(){
 /* ═══ NVD — clube de descontos, base de leads separada da GR (crm_leads_nvd) ═══
    Vendedor dedicado NVD só enxerga os próprios; admin enxerga e controla tudo
    (mesma regra aplicada no RLS do Supabase, ver policies de crm_leads_nvd). */
-const STAGES_NVD=['Novo','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
+const STAGES_NVD=['Novo','Aguardando','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
 let allLeadsNvd=[];
 let editNvdLeadId=null;
 
@@ -13375,10 +13400,30 @@ document.querySelectorAll('.modal-bg').forEach(bg=>{
   bg.addEventListener('click',e=>{if(e.target===bg)bg.classList.remove('on');});
 });
 
-// CPF mask
+// CPF/CNPJ mask — troca de formato conforme o Tipo de Pessoa selecionado
+function updateVendaTipoPessoa(){
+  const pj=document.getElementById('v-tipo-pj').checked;
+  const cpfInp=document.getElementById('v-cpf');
+  document.getElementById('v-cpf-label').innerHTML=pj
+    ?'CNPJ * <span style="color:var(--red)">obrigatório</span>'
+    :'CPF * <span style="color:var(--red)">obrigatório</span>';
+  cpfInp.placeholder=pj?'00.000.000/0000-00':'000.000.000-00';
+  cpfInp.maxLength=pj?18:14;
+  document.getElementById('v-nasc-label').innerHTML=pj
+    ?'Data de Abertura <span style="color:var(--muted)">(opcional)</span>'
+    :'Data de Nascimento * <span style="color:var(--red)">obrigatório</span>';
+  cpfInp.value='';
+}
 document.getElementById('v-cpf').addEventListener('input',function(){
-  let v=this.value.replace(/\D/g,'').slice(0,11);
-  v=v.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+  const pj=document.getElementById('v-tipo-pj')?.checked;
+  let v=this.value.replace(/\D/g,'');
+  if(pj){
+    v=v.slice(0,14);
+    v=v.replace(/(\d{2})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1/$2').replace(/(\d{4})(\d{1,2})$/,'$1-$2');
+  } else {
+    v=v.slice(0,11);
+    v=v.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+  }
   this.value=v;
 });
 
