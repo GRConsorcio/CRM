@@ -1250,6 +1250,17 @@ document.addEventListener('DOMContentLoaded', function(){
       </div>
     </div>
 
+    <!-- Destino NVD: mesma tela de importação, mas pra base de lojas NVD (formato diferente do GR) -->
+    <div class="panel">
+      <div class="panel-head"><div class="panel-title">Importar para o NVD (lojas/estabelecimentos)</div></div>
+      <div class="panel-body">
+        <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.7">
+          Os painéis acima importam leads para a base <strong style="color:var(--gold2)">GR</strong>. Se a lista for de lojas/estabelecimentos pro <strong style="color:var(--gold2)">NVD</strong> (cidade, segmento, loja, bairro, endereço, telefone), use o botão abaixo em vez de colar aqui.
+        </div>
+        <button class="btn-primary" style="width:100%" onclick="openNvdImportModal()">Importar Lista NVD</button>
+      </div>
+    </div>
+
     <!-- Import log -->
     <div class="panel">
       <div class="panel-head">
