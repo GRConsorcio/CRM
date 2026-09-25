@@ -675,18 +675,54 @@ document.addEventListener('DOMContentLoaded', function(){
           <option value="">Todos os vendedores</option>
           <option value="__sem__">Sem vendedor</option>
         </select>
+        <button class="btn-sm" id="lnvd-mass-btn" onclick="openNvdMass()" style="border-color:var(--gold-dim);color:var(--gold2)">Selecionar</button>
+      </div>
+      <div id="lnvd-action-bar" style="display:none;background:var(--surface2);border:1px solid var(--border-gold);border-radius:10px;padding:10px 14px;margin-bottom:12px;gap:10px;align-items:center;flex-wrap:wrap">
+        <span id="lnvd-sel-count" style="font-size:12.5px;font-weight:700;color:var(--gold2);min-width:80px">0 selecionados</span>
+        <button class="btn-sm" onclick="nvdMassSelectAll(true)" style="border-color:var(--gold-dim);color:var(--gold2)">Todos</button>
+        <button class="btn-sm" onclick="nvdMassSelectAll(false)">☐ Nenhum</button>
+        <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+        <select id="lnvd-mass-resp" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 10px;font-size:12px;font-family:inherit;outline:none;flex:1;min-width:160px">
+          <option value="">Atribuir para vendedor...</option>
+        </select>
+        <button class="btn-sm" style="border-color:var(--gold);color:var(--gold2)" onclick="nvdMassTransfer()">↗ Atribuir</button>
+        <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+        <button class="btn-sm" onclick="nvdMassRemove()">Remover vendedor</button>
+        <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="closeNvdMass()">✕ Fechar</button>
       </div>
       <div class="panel">
         <div class="panel-head">
           <div class="panel-title">Leads NVD</div>
-          <button class="btn-sm" onclick="openNvdLeadModal(null)">+ Nova Loja</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn-sm" onclick="openNvdAutoDist()" title="Distribui em revezamento os que estão sem vendedor">Distribuir automático</button>
+            <button class="btn-sm" onclick="openNvdLeadModal(null)">+ Nova Loja</button>
+          </div>
         </div>
         <div class="tbl-wrap">
           <table><thead><tr>
+            <th id="lnvd-chk-head" style="width:32px;display:none"><input type="checkbox" id="lnvd-chk-all" onchange="nvdMassSelectAll(this.checked)"></th>
             <th>Loja</th><th>Segmento</th><th>Cidade</th><th>Bairro</th><th>Telefone</th>
             <th>Status</th><th>Vendedor</th><th>Data</th>
           </tr></thead>
           <tbody id="lnvd-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Distribuir automático (NVD) -->
+    <div class="modal-bg" id="modal-nvd-dist-auto">
+      <div class="modal">
+        <div class="modal-title">Distribuição Automática — NVD</div>
+        <div style="font-size:12.5px;color:var(--muted2);margin-bottom:18px;line-height:1.7">
+          Pega as lojas sem vendedor e distribui em <strong style="color:var(--gold2)">revezamento</strong> entre os vendedores NVD ativos.<br><br>
+          <span id="nvd-auto-count"></span>
+        </div>
+        <div class="fld"><label>Quantidade a distribuir</label>
+          <input class="inp" id="nvd-da-qtd" type="number" placeholder="Deixe vazio para distribuir todas" min="1">
+        </div>
+        <div class="modal-btns">
+          <button class="btn-cancel" onclick="closeModal('nvd-dist-auto')">Cancelar</button>
+          <button class="btn-save" onclick="nvdDistAuto()">Distribuir</button>
         </div>
       </div>
     </div>
@@ -8884,7 +8920,9 @@ function renderLeadsNvdTable(){
   }).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   document.getElementById('lnvd-tbody').innerHTML=rows.map(l=>{
     const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
-    return`<tr style="cursor:pointer" onclick="openNvdLeadModal('${l.id}')">
+    const isSel=_nvdSelectedIds.has(l.id);
+    return`<tr style="cursor:pointer" onclick="${_nvdMassMode?'':'openNvdLeadModal(\''+l.id+'\')'}">
+      <td class="lnvd-chk-td" style="display:${_nvdMassMode?'table-cell':'none'}" onclick="event.stopPropagation()"><input type="checkbox" class="lnvd-chk" data-id="${l.id}" ${isSel?'checked':''} onchange="onNvdChkChange(this)"></td>
       <td style="font-weight:700">${escHtml(l.loja||'—')}</td>
       <td>${escHtml(l.segmento||'—')}</td>
       <td>${escHtml(l.cidade||'—')}</td>
@@ -8894,7 +8932,133 @@ function renderLeadsNvdTable(){
       <td>${resp?escHtml(resp.name):'<span style="color:var(--muted)">Sem vendedor</span>'}</td>
       <td>${l.created_at?new Date(l.created_at).toLocaleDateString('pt-BR'):'—'}</td>
     </tr>`;
-  }).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Nenhuma loja encontrada</td></tr>';
+  }).join('')||`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Nenhuma loja encontrada</td></tr>`;
+  initNvdDragSelect();
+}
+
+/* ═══ Seleção em massa da Base NVD — checkbox + "arrastar pra selecionar"
+   (mesmo padrão de _leadsMassMode/initDragSelect da tabela GR: segura o
+   mouse num checkbox e arrasta sobre as linhas pra marcar várias de uma vez;
+   no toque (mobile) cai naturalmente pro toque individual em cada checkbox,
+   que já é grande o bastante pra usar com o dedo). ═══ */
+let _nvdMassMode=false;
+let _nvdSelectedIds=new Set();
+function openNvdMass(){
+  _nvdMassMode=true;
+  _nvdSelectedIds.clear();
+  document.getElementById('lnvd-action-bar').style.display='flex';
+  document.getElementById('lnvd-mass-btn').style.display='none';
+  document.getElementById('lnvd-chk-head').style.display='table-cell';
+  document.getElementById('lnvd-mass-resp').innerHTML='<option value="">Atribuir para vendedor...</option>'+nvdVendedores().map(u=>`<option value="${u.user_id}">${escHtml(u.name)}</option>`).join('');
+  renderLeadsNvdTable();
+}
+function closeNvdMass(){
+  _nvdMassMode=false;
+  _nvdSelectedIds.clear();
+  document.getElementById('lnvd-action-bar').style.display='none';
+  document.getElementById('lnvd-mass-btn').style.display='';
+  document.getElementById('lnvd-chk-head').style.display='none';
+  renderLeadsNvdTable();
+}
+function onNvdChkChange(chk){
+  if(chk.checked) _nvdSelectedIds.add(chk.dataset.id);
+  else _nvdSelectedIds.delete(chk.dataset.id);
+  updateNvdMassCount();
+}
+function nvdMassSelectAll(sel){
+  document.querySelectorAll('.lnvd-chk').forEach(c=>{
+    c.checked=sel;
+    if(sel) _nvdSelectedIds.add(c.dataset.id); else _nvdSelectedIds.delete(c.dataset.id);
+  });
+  const all=document.getElementById('lnvd-chk-all');
+  if(all) all.checked=sel;
+  updateNvdMassCount();
+}
+function updateNvdMassCount(){
+  const n=_nvdSelectedIds.size;
+  const el=document.getElementById('lnvd-sel-count');
+  if(el) el.textContent=n+' selecionado'+(n!==1?'s':'');
+}
+let _nvdDragSelecting=false, _nvdDragSelectVal=null;
+document.addEventListener('mouseup',()=>{_nvdDragSelecting=false;_nvdDragSelectVal=null;});
+function initNvdDragSelect(){
+  const tbody=document.getElementById('lnvd-tbody');
+  if(!tbody||tbody._dragInit) return;
+  tbody._dragInit=true;
+  tbody.addEventListener('mousedown',e=>{
+    if(!_nvdMassMode) return;
+    const chk=e.target.closest('tr')?.querySelector('.lnvd-chk');
+    if(!chk) return;
+    _nvdDragSelecting=true;
+    _nvdDragSelectVal=!chk.checked;
+    chk.checked=_nvdDragSelectVal;
+    onNvdChkChange(chk);
+    e.preventDefault();
+  });
+  tbody.addEventListener('mouseover',e=>{
+    if(!_nvdDragSelecting||!_nvdMassMode) return;
+    const chk=e.target.closest('tr')?.querySelector('.lnvd-chk');
+    if(chk&&chk.checked!==_nvdDragSelectVal){
+      chk.checked=_nvdDragSelectVal;
+      onNvdChkChange(chk);
+    }
+  });
+}
+async function nvdMassTransfer(){
+  const ids=[..._nvdSelectedIds];
+  const vendId=document.getElementById('lnvd-mass-resp')?.value;
+  if(!ids.length){toast('Selecione pelo menos uma loja','err');return;}
+  if(!vendId){toast('Selecione um vendedor','err');return;}
+  const{error}=await sb.from('crm_leads_nvd').update({responsavel_id:vendId,updated_at:new Date().toISOString()}).in('id',ids);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  ids.forEach(id=>{const l=allLeadsNvd.find(x=>x.id===id); if(l) l.responsavel_id=vendId;});
+  const vend=allUsers.find(u=>u.user_id===vendId);
+  toast(`${ids.length} loja(s) atribuída(s) a ${vend?.name||'vendedor'}!`,'ok');
+  closeNvdMass();
+}
+async function nvdMassRemove(){
+  const ids=[..._nvdSelectedIds];
+  if(!ids.length){toast('Selecione pelo menos uma loja','err');return;}
+  const{error}=await sb.from('crm_leads_nvd').update({responsavel_id:null,updated_at:new Date().toISOString()}).in('id',ids);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  ids.forEach(id=>{const l=allLeadsNvd.find(x=>x.id===id); if(l) l.responsavel_id=null;});
+  toast(`${ids.length} loja(s) sem vendedor`,'ok');
+  closeNvdMass();
+}
+
+/* ═══ Distribuição automática NVD (revezamento, mesmo padrão do distAuto() da base GR) ═══ */
+function openNvdAutoDist(){
+  const semVend=allLeadsNvd.filter(l=>!l.responsavel_id);
+  document.getElementById('nvd-auto-count').textContent=semVend.length+' loja(s) sem vendedor no momento.';
+  document.getElementById('nvd-da-qtd').value='';
+  document.getElementById('modal-nvd-dist-auto').classList.add('on');
+}
+async function nvdDistAuto(){
+  const vends=nvdVendedores().sort((a,b)=>a.user_id.localeCompare(b.user_id));
+  if(!vends.length){toast('Nenhum vendedor NVD cadastrado','err');return;}
+  let semVend=allLeadsNvd.filter(l=>!l.responsavel_id);
+  const qtd=parseInt(document.getElementById('nvd-da-qtd').value)||semVend.length;
+  semVend=semVend.slice(0,qtd);
+  if(!semVend.length){toast('Nenhuma loja sem vendedor','err');return;}
+  const{data:dc}=await sb.from('crm_distribuicao_nvd').select('*').limit(1).maybeSingle();
+  let idx=dc?.ultimo_vendedor_idx||0;
+  let sucesso=0;const falhas=[];
+  for(const lead of semVend){
+    const vend=vends[idx%vends.length];
+    const{error}=await sb.from('crm_leads_nvd').update({responsavel_id:vend.user_id,updated_at:new Date().toISOString()}).eq('id',lead.id);
+    idx++;
+    if(error){falhas.push(error);continue;}
+    lead.responsavel_id=vend.user_id;
+    sucesso++;
+  }
+  if(dc) await sb.from('crm_distribuicao_nvd').update({ultimo_vendedor_idx:idx,updated_at:new Date().toISOString()}).eq('id',dc.id);
+  closeModal('nvd-dist-auto');
+  if(falhas.length){
+    toast(`${sucesso} distribuída(s), ${falhas.length} falharam: ${falhas[0].message}`,'err');
+  } else {
+    toast(`${sucesso} loja(s) distribuída(s)!`,'ok');
+  }
+  renderLeadsNvdTable();
 }
 
 function saveCache(){
