@@ -9009,19 +9009,31 @@ async function nvdMassTransfer(){
   const vendId=document.getElementById('lnvd-mass-resp')?.value;
   if(!ids.length){toast('Selecione pelo menos uma loja','err');return;}
   if(!vendId){toast('Selecione um vendedor','err');return;}
-  const{error}=await sb.from('crm_leads_nvd').update({responsavel_id:vendId,updated_at:new Date().toISOString()}).in('id',ids);
-  if(error){toast('Erro: '+error.message,'err');return;}
-  ids.forEach(id=>{const l=allLeadsNvd.find(x=>x.id===id); if(l) l.responsavel_id=vendId;});
   const vend=allUsers.find(u=>u.user_id===vendId);
+  if(ids.length>100) toast(`Atribuindo ${ids.length} loja(s), aguarde...`,'ok');
+  // BUGFIX: .in('id',ids) bota a lista inteira na URL da requisição — com
+  // seleção grande (ex: "Todos" numa base de centenas de lojas) a URL passava
+  // do limite e a API respondia 400 Bad Request sem atribuir nada. Mesmo
+  // ajuste já feito em leadsMassTransfer() pra base GR: lotes de 100.
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
+    const{error}=await sb.from('crm_leads_nvd').update({responsavel_id:vendId,updated_at:new Date().toISOString()}).in('id',batch);
+    if(error){toast('Erro: '+error.message,'err');return;}
+    batch.forEach(id=>{const l=allLeadsNvd.find(x=>x.id===id); if(l) l.responsavel_id=vendId;});
+  }
   toast(`${ids.length} loja(s) atribuída(s) a ${vend?.name||'vendedor'}!`,'ok');
   closeNvdMass();
 }
 async function nvdMassRemove(){
   const ids=[..._nvdSelectedIds];
   if(!ids.length){toast('Selecione pelo menos uma loja','err');return;}
-  const{error}=await sb.from('crm_leads_nvd').update({responsavel_id:null,updated_at:new Date().toISOString()}).in('id',ids);
-  if(error){toast('Erro: '+error.message,'err');return;}
-  ids.forEach(id=>{const l=allLeadsNvd.find(x=>x.id===id); if(l) l.responsavel_id=null;});
+  if(ids.length>100) toast(`Removendo vendedor de ${ids.length} loja(s), aguarde...`,'ok');
+  for(let i=0;i<ids.length;i+=100){
+    const batch=ids.slice(i,i+100);
+    const{error}=await sb.from('crm_leads_nvd').update({responsavel_id:null,updated_at:new Date().toISOString()}).in('id',batch);
+    if(error){toast('Erro: '+error.message,'err');return;}
+    batch.forEach(id=>{const l=allLeadsNvd.find(x=>x.id===id); if(l) l.responsavel_id=null;});
+  }
   toast(`${ids.length} loja(s) sem vendedor`,'ok');
   closeNvdMass();
 }
