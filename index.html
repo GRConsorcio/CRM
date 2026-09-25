@@ -757,7 +757,10 @@ document.addEventListener('DOMContentLoaded', function(){
 
   <!-- FUNIL (admin/coord) -->
   <div class="page" id="page-funil">
-    <div style="margin-bottom:12px"><input class="inp" id="funil-srch" placeholder="Buscar por nome, telefone, e-mail ou interesse..." oninput="_debouncedRenderFunil()" style="min-width:280px"></div>
+    <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <input class="inp" id="funil-srch" placeholder="Buscar por nome, telefone, e-mail ou interesse..." oninput="_debouncedRenderFunil()" style="min-width:280px">
+      <button class="btn-sm" id="funil-editar-btn" style="display:none" onclick="openEstagiosEditor('gr')">⚙ Editar Funil</button>
+    </div>
     <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;min-height:200px" id="funil-grid"></div>
   </div>
 
@@ -767,6 +770,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <input class="inp" id="nvd-funil-srch" placeholder="Buscar por loja, cidade, bairro ou telefone..." oninput="renderNvdFunil()" style="min-width:280px">
       <button class="btn-gold" style="width:auto;padding:8px 16px" onclick="openNvdLeadModal(null)">+ Nova Loja</button>
       <button class="btn-sm" id="nvd-import-btn" style="display:none" onclick="openNvdImportModal()">Importar Lista</button>
+      <button class="btn-sm" id="nvd-funil-editar-btn" style="display:none" onclick="openEstagiosEditor('nvd')">⚙ Editar Funil</button>
     </div>
     <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;min-height:200px" id="nvd-funil-grid"></div>
   </div>
@@ -1586,6 +1590,23 @@ document.addEventListener('DOMContentLoaded', function(){
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('lead')">Cancelar</button>
       <button class="btn-save" onclick="saveLead()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Editor de estágios do funil (compartilhado GR/NVD) -->
+<div class="modal-bg" id="modal-estagios-editor">
+  <div class="modal" style="width:520px">
+    <div class="modal-title" id="estagios-editor-title">Editar Funil</div>
+    <div style="font-size:11.5px;color:var(--muted2);margin-bottom:14px" id="estagios-editor-hint"></div>
+    <div id="estagios-editor-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:360px;overflow-y:auto"></div>
+    <div class="fld-row">
+      <input class="inp" id="estagios-novo-nome" placeholder="Nome do novo estágio" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstagioRow();}">
+      <button class="btn-sm" style="border-color:var(--gold-dim);color:var(--gold2);flex-shrink:0" onclick="addEstagioRow()">+ Adicionar</button>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('estagios-editor')">Cancelar</button>
+      <button class="btn-save" onclick="saveEstagiosEditor()">Salvar</button>
     </div>
   </div>
 </div>
@@ -2965,12 +2986,13 @@ async function loadAll(){
     : sb.from('crm_historico').select('*, crm_leads!inner(responsavel_id)')
         .in('crm_leads.responsavel_id', isSupervisor()?getMeusMembroIds():[CU.id]);
 
-  const [lu,lh,lt,lv,ld]=await Promise.all([
+  const [lu,lh,lt,lv,ld,le]=await Promise.all([
     safe(sb.from('crm_users').select('*').eq('ativo',true)),
     safe(histQuery.order('created_at',{ascending:false}).limit(2000)),
     safe(sb.from('crm_tarefas').select('*').or(`responsavel_id.eq.${CU.id},user_id.eq.${CU.id}`).order('prazo',{ascending:true})),
     safe(sb.from('crm_vendas').select('*').order('created_at',{ascending:false})),
     safe(sb.from('crm_documentos').select('*').order('created_at',{ascending:false}).limit(1000)),
+    safe(sb.from('crm_estagios').select('*').order('ordem')),
   ]);
 
   allUsers=_normUsers(lu.data);
@@ -2978,6 +3000,11 @@ async function loadAll(){
   allTasks=lt.data||[];
   allVendas=lv.data||[];
   allDocs=ld.data||[];
+  if(le.data&&le.data.length){
+    STAGES=le.data.map(e=>e.nome);
+    _stagesProtegidos=new Set(le.data.filter(e=>e.protegido).map(e=>e.nome));
+  }
+  ensureStageColors(STAGES);
   rebuildMaps();
 
   if(lu.error?.message?.includes('does not exist')){
@@ -4963,7 +4990,21 @@ function goBackLeads(){
 }
 
 /* ═══ FUNIL ═══ */
-const STAGES=['Novo','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
+// STAGES agora é carregado de crm_estagios (ver loadAll()) — o array literal
+// aqui é só o fallback usado antes do primeiro load terminar. Os 6 estágios
+// originais ficam com protegido=true (ver _stagesProtegidos) porque nomes
+// exatos deles estão espalhados pelo código: rotação automática de leads
+// parados (ROTACAO_LIMITE_DIAS), dashboards, bloqueio de "recolher fechado"
+// etc. — renomear/apagar um desses silenciosamente quebraria tudo isso.
+// Estágios novos que o admin criar no editor do funil (nav('funil')→Editar
+// Funil) não têm essa amarração e podem ser renomeados/reordenados/apagados
+// livremente.
+let STAGES=['Novo','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
+let _stagesProtegidos=new Set(STAGES);
+const STAGE_COLOR_PALETTE=['var(--blue)','var(--purple)','var(--gold2)','var(--orange)','#64748b','#14b8a6','#ec4899','#22c55e','#eab308','#f97316'];
+function ensureStageColors(stagesArr){
+  stagesArr.forEach((s,i)=>{ if(!SCOL[s]) SCOL[s]=STAGE_COLOR_PALETTE[i%STAGE_COLOR_PALETTE.length]; });
+}
 
 // ═══ FUNIL: fila de atendimento ═══
 // Detecta se a coluna updated_at existe de fato na tabela (pode não existir
@@ -5134,6 +5175,8 @@ async function getFechadosHoje(forceRefresh){
 }
 
 async function renderFunil(){
+  const editBtn=document.getElementById('funil-editar-btn');
+  if(editBtn) editBtn.style.display=(CUProfile?.role==='admin')?'':'none';
   const isAdmin=isAdminOrCoord();
   const fechadosHoje=await getFechadosHoje();
   // Funde os fechados de hoje com qualquer um que já esteja em allLeads (evita
@@ -8729,7 +8772,11 @@ function goToCeoFunil(){
 /* ═══ NVD — clube de descontos, base de leads separada da GR (crm_leads_nvd) ═══
    Vendedor dedicado NVD só enxerga os próprios; admin enxerga e controla tudo
    (mesma regra aplicada no RLS do Supabase, ver policies de crm_leads_nvd). */
-const STAGES_NVD=['Novo','Aguardando','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
+// Igual STAGES (GR) — carregado de crm_nvd_estagios, isso aqui é só o fallback
+// antes do primeiro load. No NVD nenhum estágio é protegido: renomear/apagar/
+// reordenar livremente é seguro porque não há regra de comissão/rotação
+// amarrada ao nome deles (ao contrário da base GR).
+let STAGES_NVD=['Novo','Aguardando','Sem Contato','Em Negociação','Proposta','Fechado','Perdido'];
 let allLeadsNvd=[];
 let editNvdLeadId=null;
 
@@ -8749,11 +8796,18 @@ async function loadNvdLeads(){
   if(error){ console.warn('[loadNvdLeads] erro:',error.message); toast('Erro ao carregar leads NVD: '+error.message,'err'); return; }
   allLeadsNvd=data||[];
 }
+async function loadNvdEstagios(){
+  const{data}=await sb.from('crm_nvd_estagios').select('*').order('ordem');
+  if(data&&data.length) STAGES_NVD=data.map(e=>e.nome);
+  ensureStageColors(STAGES_NVD);
+}
 async function loadAndRenderNvd(){
-  await loadNvdLeads();
+  await Promise.all([loadNvdLeads(),loadNvdEstagios()]);
   renderNvdFunil();
   const impBtn=document.getElementById('nvd-import-btn');
   if(impBtn) impBtn.style.display=isAdmin()?'':'none';
+  const editBtn=document.getElementById('nvd-funil-editar-btn');
+  if(editBtn) editBtn.style.display=isAdmin()?'':'none';
   const respWrap=document.getElementById('nvd-resp-wrap');
   if(respWrap) respWrap.style.display=isAdmin()?'':'none';
 }
@@ -8897,6 +8951,140 @@ async function deleteNvdLead(id){
   await loadAndRenderNvd();
 }
 
+/* ═══ Editor de estágios do funil (admin) — compartilhado entre o Funil de
+   Vendas GR e o Funil NVD. No GR os 6 estágios originais vêm com
+   protegido=true (ver crm_estagios) e não podem ser renomeados/apagados —
+   só reordenados — porque a rotação automática de leads parados
+   (ROTACAO_LIMITE_DIAS), o bloqueio de "recolher lead fechado" e vários
+   dashboards comparam o status do lead com o texto exato desses nomes. No
+   NVD nada é protegido. ═══ */
+async function loadGrEstagios(){
+  const{data}=await sb.from('crm_estagios').select('*').order('ordem');
+  if(data&&data.length){
+    STAGES=data.map(e=>e.nome);
+    _stagesProtegidos=new Set(data.filter(e=>e.protegido).map(e=>e.nome));
+  }
+  ensureStageColors(STAGES);
+}
+let _estagiosEditKind=null; // 'gr' | 'nvd'
+let _estagiosEditState=[]; // [{id, nome, protegido, _novo}]
+let _estagiosEditOriginal=[]; // snapshot do banco no momento de abrir, pra diff no save
+async function openEstagiosEditor(kind){
+  _estagiosEditKind=kind;
+  const table=kind==='gr'?'crm_estagios':'crm_nvd_estagios';
+  const{data,error}=await sb.from(table).select('*').order('ordem');
+  if(error){toast('Erro ao carregar estágios: '+error.message,'err');return;}
+  _estagiosEditOriginal=data||[];
+  _estagiosEditState=(data||[]).map(e=>({id:e.id,nome:e.nome,protegido:!!e.protegido,_novo:false}));
+  document.getElementById('estagios-editor-title').textContent=kind==='gr'?'Editar Funil — Vendas GR':'Editar Funil — NVD';
+  document.getElementById('estagios-editor-hint').textContent=kind==='gr'
+    ?'Os estágios com 🔒 não podem ser renomeados nem apagados — muita regra do sistema (rotação automática, dashboards, comissão) depende do nome exato deles. Dá pra reordenar todos e adicionar/remover/renomear os que você criar.'
+    :'Reordene, renomeie, adicione ou remova estágios livremente.';
+  document.getElementById('estagios-novo-nome').value='';
+  renderEstagiosEditorRows();
+  document.getElementById('modal-estagios-editor').classList.add('on');
+}
+function renderEstagiosEditorRows(){
+  document.getElementById('estagios-editor-list').innerHTML=_estagiosEditState.map((e,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px">
+      <div style="display:flex;flex-direction:column;gap:1px">
+        <button class="btn-sm" style="padding:1px 7px;font-size:10px" ${i===0?'disabled':''} onclick="moveEstagioRow(${i},-1)">▲</button>
+        <button class="btn-sm" style="padding:1px 7px;font-size:10px" ${i===_estagiosEditState.length-1?'disabled':''} onclick="moveEstagioRow(${i},1)">▼</button>
+      </div>
+      ${e.protegido
+        ?`<span style="flex:1;font-weight:700">${escHtml(e.nome)}</span>`
+        :`<input class="inp" style="flex:1;padding:6px 8px" value="${escHtml(e.nome)}" oninput="_estagiosEditState[${i}].nome=this.value">`}
+      ${e.protegido?'<span title="Protegido — não pode ser renomeado/apagado" style="font-size:14px">🔒</span>'
+        :`<button class="btn-sm" style="border-color:var(--red);color:var(--red);padding:5px 9px" onclick="removeEstagioRow(${i})">✕</button>`}
+    </div>`).join('');
+}
+function moveEstagioRow(i,dir){
+  const j=i+dir;
+  if(j<0||j>=_estagiosEditState.length) return;
+  [_estagiosEditState[i],_estagiosEditState[j]]=[_estagiosEditState[j],_estagiosEditState[i]];
+  renderEstagiosEditorRows();
+}
+function removeEstagioRow(i){
+  if(_estagiosEditState[i].protegido) return;
+  _estagiosEditState.splice(i,1);
+  renderEstagiosEditorRows();
+}
+function addEstagioRow(){
+  const inp=document.getElementById('estagios-novo-nome');
+  const nome=inp.value.trim();
+  if(!nome){toast('Digite o nome do novo estágio','err');return;}
+  if(_estagiosEditState.some(e=>e.nome.toLowerCase()===nome.toLowerCase())){toast('Já existe um estágio com esse nome','err');return;}
+  _estagiosEditState.push({id:null,nome,protegido:false,_novo:true});
+  inp.value='';
+  renderEstagiosEditorRows();
+}
+async function saveEstagiosEditor(){
+  const kind=_estagiosEditKind;
+  const table=kind==='gr'?'crm_estagios':'crm_nvd_estagios';
+  const leadsTable=kind==='gr'?'crm_leads':'crm_leads_nvd';
+  const nomes=_estagiosEditState.map(e=>e.nome.trim());
+  if(nomes.some(n=>!n)){toast('Nenhum estágio pode ficar com nome vazio','err');return;}
+  if(new Set(nomes.map(n=>n.toLowerCase())).size!==nomes.length){toast('Tem nomes de estágio repetidos','err');return;}
+
+  // Descobre o que sumiu da lista original (removidos) — bloqueia se ainda tiver
+  // lead nesse status, porque senão o lead ficaria "órfão" com um status que
+  // não existe mais em nenhuma coluna do funil.
+  const idsAtuais=new Set(_estagiosEditState.filter(e=>e.id).map(e=>e.id));
+  const removidos=_estagiosEditOriginal.filter(o=>!idsAtuais.has(o.id));
+  for(const rem of removidos){
+    const{count,error}=await sb.from(leadsTable).select('id',{count:'exact',head:true}).eq('status',rem.nome);
+    if(error){toast('Erro ao checar leads do estágio "'+rem.nome+'": '+error.message,'err');return;}
+    if(count>0){toast(`Não dá pra apagar "${rem.nome}" — ainda tem ${count} lead(s) nesse estágio. Mova-os pra outra coluna primeiro.`,'err');return;}
+  }
+
+  // Renomeações: id existente com nome diferente do original — precisa
+  // migrar os leads que estão com o status antigo pro nome novo.
+  for(const e of _estagiosEditState){
+    if(!e.id) continue;
+    const orig=_estagiosEditOriginal.find(o=>o.id===e.id);
+    if(orig&&orig.nome!==e.nome){
+      const{error:errUpd}=await sb.from(leadsTable).update({status:e.nome}).eq('status',orig.nome);
+      if(errUpd){toast('Erro ao renomear "'+orig.nome+'": '+errUpd.message,'err');return;}
+    }
+  }
+
+  // Apaga os removidos (já confirmado que não tem lead usando)
+  if(removidos.length){
+    const{error:errDel}=await sb.from(table).delete().in('id',removidos.map(r=>r.id));
+    if(errDel){toast('Erro ao remover estágio(s): '+errDel.message,'err');return;}
+  }
+
+  // Upsert com a ordem final (1..N) — atualiza nome/ordem dos existentes e
+  // insere os novos.
+  for(let i=0;i<_estagiosEditState.length;i++){
+    const e=_estagiosEditState[i];
+    if(e.id){
+      const{error:errU}=await sb.from(table).update({nome:e.nome,ordem:i+1000}).eq('id',e.id); // +1000 evita colidir com a unique(ordem) durante a troca
+      if(errU){toast('Erro ao salvar: '+errU.message,'err');return;}
+    }
+  }
+  for(let i=0;i<_estagiosEditState.length;i++){
+    const e=_estagiosEditState[i];
+    if(e.id){
+      await sb.from(table).update({ordem:i+1}).eq('id',e.id);
+    } else {
+      const{data:ins,error:errI}=await sb.from(table).insert({nome:e.nome,ordem:i+1}).select().maybeSingle();
+      if(errI){toast('Erro ao criar estágio "'+e.nome+'": '+errI.message,'err');return;}
+      e.id=ins?.id;
+    }
+  }
+
+  closeModal('estagios-editor');
+  toast('Funil atualizado!','ok');
+  if(kind==='gr'){
+    await loadGrEstagios();
+    await loadAll();
+    renderFunil();
+  } else {
+    await loadAndRenderNvd();
+  }
+}
+
 /* ═══ "Todos os Leads" — toggle Base GR / Base NVD (lista plana) ═══ */
 async function switchLeadsBase(base){
   const grBtn=document.getElementById('leads-base-gr-btn');
@@ -8907,7 +9095,7 @@ async function switchLeadsBase(base){
     grWrap.style.display='none'; nvdWrap.style.display='';
     grBtn.style.borderColor='var(--border)'; grBtn.style.color='var(--text)';
     nvdBtn.style.borderColor='var(--gold)'; nvdBtn.style.color='var(--gold2)';
-    await loadNvdLeads();
+    await Promise.all([loadNvdLeads(),loadNvdEstagios()]);
     populateLeadsNvdFilters();
     renderLeadsNvdTable();
   } else {
@@ -8918,6 +9106,10 @@ async function switchLeadsBase(base){
 }
 
 function populateLeadsNvdFilters(){
+  const statusSel=document.getElementById('lnvd-f-status');
+  const statusAtual=statusSel.value;
+  statusSel.innerHTML='<option value="">Todos os status</option>'+STAGES_NVD.map(s=>`<option>${escHtml(s)}</option>`).join('');
+  statusSel.value=statusAtual;
   const segSel=document.getElementById('lnvd-f-segmento');
   const segAtual=segSel.value;
   const segmentos=[...new Set(allLeadsNvd.map(l=>l.segmento).filter(Boolean))].sort();
