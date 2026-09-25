@@ -541,6 +541,11 @@ document.addEventListener('DOMContentLoaded', function(){
 
   <!-- LEADS (admin/coord) -->
   <div class="page" id="page-leads">
+    <div style="display:flex;gap:6px;margin-bottom:10px" id="leads-base-toggle">
+      <button class="btn-sm" id="leads-base-gr-btn" onclick="switchLeadsBase('gr')" style="border-color:var(--gold);color:var(--gold2)">Base GR</button>
+      <button class="btn-sm" id="leads-base-nvd-btn" onclick="switchLeadsBase('nvd')">Base NVD</button>
+    </div>
+    <div id="leads-gr-wrap">
     <div class="filter-bar">
       <input class="inp" id="l-srch" placeholder="Buscar por nome, telefone, e-mail ou interesse..." oninput="_debouncedRenderLeads()" style="min-width:260px">
       <select id="l-f-status" onchange="renderLeads(true)">
@@ -651,6 +656,39 @@ document.addEventListener('DOMContentLoaded', function(){
         <tbody id="l-tbody"></tbody></table>
       </div>
       <div id="leads-pg-bar" class="pg-bar" style="display:none"></div>
+    </div>
+    </div>
+
+    <!-- Base NVD — lista plana equivalente, mesma página "Todos os Leads" -->
+    <div id="leads-nvd-wrap" style="display:none">
+      <div class="filter-bar">
+        <input class="inp" id="lnvd-srch" placeholder="Buscar por loja, cidade, bairro ou telefone..." oninput="renderLeadsNvdTable()" style="min-width:260px">
+        <select id="lnvd-f-status" onchange="renderLeadsNvdTable()">
+          <option value="">Todos os status</option>
+          <option>Novo</option><option>Sem Contato</option><option>Em Negociação</option><option>Proposta</option>
+          <option>Fechado</option><option>Perdido</option>
+        </select>
+        <select id="lnvd-f-segmento" onchange="renderLeadsNvdTable()">
+          <option value="">Todos os segmentos</option>
+        </select>
+        <select id="lnvd-f-resp" onchange="renderLeadsNvdTable()">
+          <option value="">Todos os vendedores</option>
+          <option value="__sem__">Sem vendedor</option>
+        </select>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Leads NVD</div>
+          <button class="btn-sm" onclick="openNvdLeadModal(null)">+ Nova Loja</button>
+        </div>
+        <div class="tbl-wrap">
+          <table><thead><tr>
+            <th>Loja</th><th>Segmento</th><th>Cidade</th><th>Bairro</th><th>Telefone</th>
+            <th>Status</th><th>Vendedor</th><th>Data</th>
+          </tr></thead>
+          <tbody id="lnvd-tbody"></tbody></table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -8796,6 +8834,67 @@ async function deleteNvdLead(id){
   closeModal('nvd-lead');
   toast('Loja apagada','ok');
   await loadAndRenderNvd();
+}
+
+/* ═══ "Todos os Leads" — toggle Base GR / Base NVD (lista plana) ═══ */
+async function switchLeadsBase(base){
+  const grBtn=document.getElementById('leads-base-gr-btn');
+  const nvdBtn=document.getElementById('leads-base-nvd-btn');
+  const grWrap=document.getElementById('leads-gr-wrap');
+  const nvdWrap=document.getElementById('leads-nvd-wrap');
+  if(base==='nvd'){
+    grWrap.style.display='none'; nvdWrap.style.display='';
+    grBtn.style.borderColor='var(--border)'; grBtn.style.color='var(--text)';
+    nvdBtn.style.borderColor='var(--gold)'; nvdBtn.style.color='var(--gold2)';
+    await loadNvdLeads();
+    populateLeadsNvdFilters();
+    renderLeadsNvdTable();
+  } else {
+    nvdWrap.style.display='none'; grWrap.style.display='';
+    nvdBtn.style.borderColor='var(--border)'; nvdBtn.style.color='var(--text)';
+    grBtn.style.borderColor='var(--gold)'; grBtn.style.color='var(--gold2)';
+  }
+}
+
+function populateLeadsNvdFilters(){
+  const segSel=document.getElementById('lnvd-f-segmento');
+  const segAtual=segSel.value;
+  const segmentos=[...new Set(allLeadsNvd.map(l=>l.segmento).filter(Boolean))].sort();
+  segSel.innerHTML='<option value="">Todos os segmentos</option>'+segmentos.map(s=>`<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+  segSel.value=segAtual;
+  const respSel=document.getElementById('lnvd-f-resp');
+  const respAtual=respSel.value;
+  respSel.innerHTML='<option value="">Todos os vendedores</option><option value="__sem__">Sem vendedor</option>'+nvdVendedores().map(u=>`<option value="${u.user_id}">${escHtml(u.name)}</option>`).join('');
+  respSel.value=respAtual;
+}
+
+function renderLeadsNvdTable(){
+  const q=(document.getElementById('lnvd-srch')?.value||'').toLowerCase().trim();
+  const qd=q.replace(/[^0-9]/g,'');
+  const fStatus=document.getElementById('lnvd-f-status')?.value||'';
+  const fSeg=document.getElementById('lnvd-f-segmento')?.value||'';
+  const fResp=document.getElementById('lnvd-f-resp')?.value||'';
+  const rows=allLeadsNvd.filter(l=>{
+    if(fStatus&&l.status!==fStatus) return false;
+    if(fSeg&&l.segmento!==fSeg) return false;
+    if(fResp==='__sem__'&&l.responsavel_id) return false;
+    if(fResp&&fResp!=='__sem__'&&l.responsavel_id!==fResp) return false;
+    if(q&&!((l.loja||'').toLowerCase().includes(q)||(l.cidade||'').toLowerCase().includes(q)||(l.bairro||'').toLowerCase().includes(q)||(qd.length>=4&&(l.telefone||'').replace(/[^0-9]/g,'').includes(qd)))) return false;
+    return true;
+  }).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  document.getElementById('lnvd-tbody').innerHTML=rows.map(l=>{
+    const resp=allUsers.find(u=>u.user_id===l.responsavel_id);
+    return`<tr style="cursor:pointer" onclick="openNvdLeadModal('${l.id}')">
+      <td style="font-weight:700">${escHtml(l.loja||'—')}</td>
+      <td>${escHtml(l.segmento||'—')}</td>
+      <td>${escHtml(l.cidade||'—')}</td>
+      <td>${escHtml(l.bairro||'—')}</td>
+      <td>${escHtml(l.telefone||'—')}</td>
+      <td><span style="color:${SCOL[l.status]||'var(--muted2)'}">${escHtml(l.status||'—')}</span></td>
+      <td>${resp?escHtml(resp.name):'<span style="color:var(--muted)">Sem vendedor</span>'}</td>
+      <td>${l.created_at?new Date(l.created_at).toLocaleDateString('pt-BR'):'—'}</td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Nenhuma loja encontrada</td></tr>';
 }
 
 function saveCache(){
