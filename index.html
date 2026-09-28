@@ -13911,6 +13911,14 @@ async function buscarLeadsPorDia(){
   }
 }
 
+// Mostra só os 4 últimos dígitos do telefone na Busca na Base Geral — o vendedor usa essa
+// tela pra ENCONTRAR o lead e solicitar ao admin, não pra ligar direto antes de aprovado
+// (o número completo só aparece depois que o lead vira dele, via isMeu, ou pro admin).
+function maskTelUltimos4(tel){
+  const digits=(tel||'').replace(/\D/g,'');
+  if(!digits) return '—';
+  return `•••• ${digits.slice(-4)}`;
+}
 function renderBuscaBase(){
   _srchBasePage=1;
   const q=(document.getElementById('srch-base-inp')?.value||'').trim();
@@ -13999,7 +14007,7 @@ function _renderBuscaBasePage(){
       }
       return`<tr>
         <td style="font-weight:600">${l.nome||l.email||'(sem nome)'}</td>
-        <td>${l.telefone||'—'}</td>
+        <td>${(isMeu||isAdmin())?(l.telefone||'—'):maskTelUltimos4(l.telefone)}</td>
         <td style="color:var(--muted2);font-size:11.5px">${l.interesse||'—'}</td>
         <td>${badgeLead(l.status)}</td>
         <td style="font-size:11.5px;color:var(--muted2)">${resp?resp.name:'Sem responsável'}</td>
