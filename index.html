@@ -2265,6 +2265,12 @@ async function doAuth(){
     // pro admin). Não bloqueia o login se falhar (fire-and-forget, com try/catch
     // interno na própria função).
     if(data?.user){
+      // BUGFIX: doAuth() chamava initApp() direto após o signInWithPassword ter sucesso,
+      // sem nunca checar bloqueio (crm_users.bloqueado / crm_equipes.bloqueada) — essa
+      // checagem só rodava no boot/poll/Realtime, que dependem de já existir uma sessão
+      // ativa. Resultado: um usuário bloqueado continuava conseguindo LOGAR normalmente.
+      // Agora checa aqui, antes de tudo, e nem deixa o app abrir se estiver bloqueado.
+      if(await _verificarBloqueioAcesso()){ btn.textContent='Entrar';btn.disabled=false; return; }
       if(data.session) _registrarLoginLog(data.user,data.session).catch(e=>console.warn('[login-log] falha ao registrar:',e.message));
       await initApp(data.user);
     }
