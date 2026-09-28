@@ -2667,6 +2667,42 @@ async function _aplicarForceLogoutSeNecessario(logoutAtRaw,{reload}={}){
   return true;
 }
 
+// BLOQUEIO DE ACESSO (por vendedor ou por equipe inteira) — diferente do force-logout
+// (que só derruba a sessão atual e deixa logar de novo), o bloqueio é permanente até
+// um admin desbloquear: crm_users.bloqueado corta o usuário específico, crm_equipes.
+// bloqueada corta TODOS os membros daquela equipe de uma vez. Mesma estrutura da
+// checagem de force-logout acima (boot, poll de 30s e Realtime) pra não depender de
+// um único ponto de verificação.
+async function _verificarBloqueioAcesso({reload}={}){
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    if(!session) return false;
+    let motivo=null;
+    const{data:meuPerfil}=await sb.from('crm_users').select('bloqueado').eq('user_id',session.user.id).limit(1).maybeSingle();
+    if(meuPerfil?.bloqueado) motivo='Seu acesso ao CRM foi bloqueado por um administrador.';
+    if(!motivo){
+      const{data:minhasEquipes}=await sb.from('crm_equipe_membros').select('equipe_id').eq('user_id',session.user.id);
+      const equipeIds=[...new Set((minhasEquipes||[]).map(m=>m.equipe_id))];
+      if(equipeIds.length){
+        const{data:eqsBloqueadas}=await sb.from('crm_equipes').select('id').eq('bloqueada',true).in('id',equipeIds);
+        if(eqsBloqueadas&&eqsBloqueadas.length) motivo='Sua equipe foi bloqueada no CRM por um administrador.';
+      }
+    }
+    if(!motivo) return false;
+    console.log('[bloqueio-acesso] usuário/equipe bloqueado — deslogando');
+    await sb.auth.signOut({scope:'local'});
+    Object.keys(localStorage).forEach(k=>{if(k.startsWith('sb-'))localStorage.removeItem(k);});
+    Object.keys(sessionStorage).forEach(k=>{if(k.startsWith('crm_'))sessionStorage.removeItem(k);});
+    if(reload){ toast(motivo,'err'); setTimeout(()=>location.reload(),800); }
+    else {
+      document.getElementById('auth-screen').style.display='flex';
+      const err=document.getElementById('a-err');
+      if(err) err.textContent=motivo;
+    }
+    return true;
+  }catch(e){ console.warn('[bloqueio-acesso] erro:',e.message); return false; }
+}
+
 // BUGFIX: o listener de Realtime em crm_config/crm_users (ver setupRealtime)
 // já desloga na hora "Deslogar"/"Deslogar Todos" pra quem está com o app aberto
 // — mas depende do websocket do Realtime estar conectado NAQUELE momento. Ele
@@ -2682,7 +2718,8 @@ async function checkForceLogoutPoll(){
     const{data:cfg}=await sb.from('crm_config').select('valor').eq('chave','force_logout_at').maybeSingle();
     if(await _aplicarForceLogoutSeNecessario(cfg?.valor,{reload:true})) return;
     const{data:meuPerfil}=await sb.from('crm_users').select('force_logout_at').eq('user_id',session.user.id).limit(1).maybeSingle();
-    await _aplicarForceLogoutSeNecessario(meuPerfil?.force_logout_at,{reload:true});
+    if(await _aplicarForceLogoutSeNecessario(meuPerfil?.force_logout_at,{reload:true})) return;
+    await _verificarBloqueioAcesso({reload:true});
   }catch(e){ console.warn('[force-logout poll] erro:',e.message); }
 }
 
@@ -2702,6 +2739,10 @@ async function checkForceLogoutPoll(){
         const{data:meuPerfil}=await sb.from('crm_users').select('force_logout_at').eq('user_id',session.user.id).limit(1).maybeSingle();
         if(await _aplicarForceLogoutSeNecessario(meuPerfil?.force_logout_at)) return;
       } catch(pe){ console.warn('Individual force-logout check skipped:',pe.message); }
+      // Bloqueio (por vendedor ou por equipe) — corta o boot antes de montar o app
+      try{
+        if(await _verificarBloqueioAcesso()) return;
+      } catch(be){ console.warn('Bloqueio check skipped:',be.message); }
       await initApp(session.user);
     }
   } catch(e){ console.warn('getSession error:',e.message); }
@@ -5566,10 +5607,10 @@ function renderEquipe(){
     return`<tr>
       <td style="font-weight:700">${u.name}${u.user_id===CU.id?' <span style="font-size:10px;color:var(--muted2)">(você)</span>':''}</td>
       <td style="color:var(--muted2);font-size:12px">${u.email||'—'}</td>
-      <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-gold':u.role==='supervisor'?'b-coord':u.role==='ceo'?'b-ceo':'b-vend'}">${u.role}</span></td>
+      <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-gold':u.role==='supervisor'?'b-coord':u.role==='ceo'?'b-ceo':'b-vend'}">${u.role}</span>${u.bloqueado?' <span class="badge" style="background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.35)">bloqueado</span>':''}</td>
       <td>${leads}</td>
       <td style="color:var(--green)">${fechs}</td>
-      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button> <button class="act" onclick="openSenhaModal('${u.user_id}','${escJs(u.name)}')" title="Trocar senha">🔑</button> <button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="deslogarUsuario('${u.user_id}','${escJs(u.name)}')" title="Deslogar agora">🔒</button> <button class="act red" onclick="delUser('${u.user_id}','${escJs(u.name)}')" title="Excluir usuário">🗑️</button>`:'—'}</td>
+      <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button> <button class="act" onclick="openSenhaModal('${u.user_id}','${escJs(u.name)}')" title="Trocar senha">🔑</button> <button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="deslogarUsuario('${u.user_id}','${escJs(u.name)}')" title="Deslogar agora">🔒</button> <button class="act" style="border-color:var(--red);color:var(--red)" onclick="toggleBloqueioUsuario('${u.user_id}','${escJs(u.name)}',${!u.bloqueado})" title="${u.bloqueado?'Desbloquear acesso ao CRM':'Bloquear acesso ao CRM'}">${u.bloqueado?'✅':'🚫'}</button> <button class="act red" onclick="delUser('${u.user_id}','${escJs(u.name)}')" title="Excluir usuário">🗑️</button>`:'—'}</td>
     </tr>`;
   }).join('');
 }
@@ -10536,6 +10577,21 @@ function setupRealtime(){
     if(payload.new?.user_id===CU?.id && payload.new?.force_logout_at){
       await _aplicarForceLogoutSeNecessario(payload.new.force_logout_at,{reload:true});
     }
+    // Bloqueio individual (toggleBloqueioUsuario()) grava bloqueado=true na linha dele —
+    // mesma ideia do force_logout acima, só que a checagem é permanente (não é um corte
+    // por data, é "está bloqueado ou não" agora).
+    if(payload.new?.user_id===CU?.id && payload.new?.bloqueado){
+      await _verificarBloqueioAcesso({reload:true});
+    }
+  });
+
+  // ── crm_equipes ── bloqueio de equipe inteira (toggleBloqueioEquipe()) — se a
+  // equipe que mudou é uma das minhas E ficou bloqueada, desloga na hora igual ao
+  // bloqueio individual acima. Sem filtro no channel (poucas equipes, baixo volume).
+  ch = ch.on('postgres_changes',{event:'UPDATE',schema:'public',table:'crm_equipes'},async(payload)=>{
+    if(!payload.new?.bloqueada) return;
+    const minhasEquipeIds=allMembroEquipes.filter(m=>m.user_id===CU?.id).map(m=>m.equipe_id);
+    if(minhasEquipeIds.includes(payload.new.id)) await _verificarBloqueioAcesso({reload:true});
   });
 
   // ── crm_transmissoes ── popup de vídeo/áudio. Não tem filtro explícito aqui de
@@ -12637,6 +12693,21 @@ async function deslogarUsuario(uid,name){
   if(error){toast('Erro: '+error.message,'err');return;}
   toast(`"${name}" foi desconectado agora.`,'ok');
 }
+// Bloqueio permanente de 1 vendedor (crm_users.bloqueado) — diferente de deslogarUsuario()
+// (que só derruba a sessão atual e deixa logar de novo), aqui a pessoa fica impedida de
+// entrar até um admin desbloquear. O listener de Realtime em crm_users já pega essa
+// mudança e desloga na hora quem estiver com o CRM aberto (ver setupRealtime).
+async function toggleBloqueioUsuario(uid,name,bloquear){
+  if(!isAdmin()) return;
+  if(uid===CU.id){toast('Você não pode bloquear sua própria conta por aqui','err');return;}
+  if(!confirm(bloquear?`Bloquear o acesso de "${name}" ao CRM? Ele será desconectado e não vai conseguir entrar até você desbloquear.`:`Desbloquear o acesso de "${name}" ao CRM?`))return;
+  const{error}=await sb.from('crm_users').update({bloqueado:bloquear}).eq('user_id',uid);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  const i=allUsers.findIndex(u=>u.user_id===uid);
+  if(i>-1) allUsers[i].bloqueado=bloquear;
+  renderEquipe();
+  toast(bloquear?`"${name}" foi bloqueado.`:`"${name}" foi desbloqueado.`,'ok');
+}
 async function openRecolherTudo(){
   if(!isAdmin()){toast('Apenas admin pode recolher todos os leads','err');return;}
 
@@ -12982,9 +13053,9 @@ function renderEquipes(){
   grid.innerHTML=f.map(eq=>{
     const membros=allMembroEquipes.filter(m=>m.equipe_id===eq.id);
     return`<div class="equipe-card" onclick="openEquipeDetail('${eq.id}')">
-      <div class="equipe-card-bar" style="background:${eq.cor||'var(--gold)'}"></div>
+      <div class="equipe-card-bar" style="background:${eq.bloqueada?'var(--red)':(eq.cor||'var(--gold)')}"></div>
       <div class="equipe-card-body">
-        <div class="equipe-card-name" style="color:${eq.cor||'var(--gold2)'}">${eq.nome}</div>
+        <div class="equipe-card-name" style="color:${eq.cor||'var(--gold2)'}">${eq.nome}${eq.bloqueada?' <span class="badge" style="background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.35)">bloqueada</span>':''}</div>
         <div class="equipe-card-desc">${eq.descricao||'Sem descrição'}</div>
         <div class="equipe-card-meta">
           <span>${membros.length} membro${membros.length!==1?'s':''}</span>
@@ -13118,6 +13189,7 @@ async function openEquipeDetail(id){
         <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
           ${isAdmin()?`<button class="act" onclick="editEquipe('${eq.id}')" style="display:inline-flex;align-items:center;gap:4px">Editar</button>`:''}
           <button class="act" onclick="openRecolher('${eq.id}')" style="border-color:var(--orange);color:var(--orange);display:inline-flex;align-items:center;gap:4px">Recolher Leads</button>
+          ${isAdmin()?`<button class="act" onclick="toggleBloqueioEquipe('${eq.id}','${escJs(eq.nome)}',${!eq.bloqueada})" style="border-color:var(--red);color:var(--red);display:inline-flex;align-items:center;gap:4px" title="${eq.bloqueada?'Desbloquear equipe':'Bloquear todos os membros desta equipe'}">${eq.bloqueada?'✅ Desbloquear':'🚫 Bloquear'}</button>`:''}
           ${isAdmin()?`<button class="act red" onclick="delEquipe('${eq.id}')" style="display:inline-flex;align-items:center">🗑️</button>`:''}
         </div>
       </div>
@@ -13294,6 +13366,22 @@ async function delEquipe(id){
   toast('Equipe removida','ok');
   nav('equipes',null);
   renderEquipes();
+}
+
+// Bloqueio permanente de TODOS os membros da equipe (crm_equipes.bloqueada) — cada
+// membro é impedido de entrar no CRM até a equipe ser desbloqueada, mesma lógica do
+// bloqueio individual (toggleBloqueioUsuario). O listener de Realtime em crm_equipes
+// (ver setupRealtime) desloga na hora quem for membro e estiver com o CRM aberto.
+async function toggleBloqueioEquipe(id,nome,bloquear){
+  if(!isAdmin()) return;
+  const qtdMembros=allMembroEquipes.filter(m=>m.equipe_id===id).length;
+  if(!confirm(bloquear?`Bloquear a equipe "${nome}"? Os ${qtdMembros} membro${qtdMembros!==1?'s':''} serão desconectados e não vão conseguir entrar até você desbloquear.`:`Desbloquear a equipe "${nome}"?`))return;
+  const{error}=await sb.from('crm_equipes').update({bloqueada:bloquear}).eq('id',id);
+  if(error){toast('Erro: '+error.message,'err');return;}
+  const i=allEquipes.findIndex(e=>e.id===id);
+  if(i>-1) allEquipes[i].bloqueada=bloquear;
+  toast(bloquear?`Equipe "${nome}" bloqueada.`:`Equipe "${nome}" desbloqueada.`,'ok');
+  if(detailEquipeId===id) openEquipeDetail(id);
 }
 
 /* ═══ MESCLAR BASE POR DDD (admin only) ═══ */
