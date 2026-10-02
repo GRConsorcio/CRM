@@ -8536,7 +8536,8 @@ async function renderVendasPage(){
   const scopeLabel=isAdmin()||isCoordenador()?'— Todos os Vendedores':isSupervisor()?'— Minha Equipe':'— Minhas Vendas';
   const title=_vendasFilter==='todos'?`Todas as Vendas`:_vendasFilter==='Aprovado'?'Aprovado Pós Vendas':_vendasFilter==='Cancelado'?'Reprovado Pós Vendas':_vendasFilter==='SemRetorno'?'Cancelados':'Pendente Pós Vendas';
   const el=document.getElementById('vp-title');
-  if(el) el.textContent=`${title} ${scopeLabel} — ${vendas.length}`;
+  const totalCotas=vendas.reduce((s,v)=>s+(v.qtd_cotas||1),0);
+  if(el) el.textContent=`${title} ${scopeLabel} — ${vendas.length} ${vendas.length===1?'venda':'vendas'} · ${totalCotas} ${totalCotas===1?'cota':'cotas'}`;
 
   const tbody=document.getElementById('vp-tbody');
   if(!tbody) return;
