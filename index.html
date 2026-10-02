@@ -8549,12 +8549,18 @@ async function renderVendasPage(){
   // Quantas cotas cada cliente (lead) tem no total — conta sobre allVendas inteiro,
   // não só sobre a lista filtrada, pra o aviso não mudar conforme o filtro.
   const _cotasPorLead={};
-  allVendas.forEach(x=>{ _cotasPorLead[x.lead_id]=(_cotasPorLead[x.lead_id]||0)+1; });
+  // Soma qtd_cotas (uma venda pode ter várias cotas), ignorando Cancelado/Cancelados.
+  const _cotasPorLeadTodas={};
+  allVendas.forEach(x=>{
+    const q=x.qtd_cotas||1;
+    _cotasPorLeadTodas[x.lead_id]=(_cotasPorLeadTodas[x.lead_id]||0)+q;
+    if(x.status_venda!=='Cancelado'&&x.status_venda!=='SemRetorno') _cotasPorLead[x.lead_id]=(_cotasPorLead[x.lead_id]||0)+q;
+  });
 
   tbody.innerHTML=vendas.map(v=>{
     const lead=allLeads.find(l=>l.id===v.lead_id);
     const vendedor=allUsers.find(u=>u.user_id===v.vendedor_id);
-    const nCotas=_cotasPorLead[v.lead_id]||1;
+    const nCotas=_cotasPorLead[v.lead_id]||_cotasPorLeadTodas[v.lead_id]||1;
     const cotasBadge=nCotas>1
       ?`<span title="Este cliente tem ${nCotas} cotas vendidas" style="margin-left:8px;font-size:10px;font-weight:800;padding:2px 7px;border-radius:10px;background:rgba(255,80,80,.15);color:#ff5c5c;border:1px solid rgba(255,80,80,.4);white-space:nowrap">${nCotas} cotas</span>`
       :`<span title="Cliente com apenas 1 cota" style="margin-left:8px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(255,255,255,.05);color:var(--muted2);border:1px solid var(--border,rgba(255,255,255,.12));white-space:nowrap">1 cota</span>`;
