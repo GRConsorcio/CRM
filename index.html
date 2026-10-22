@@ -581,6 +581,7 @@ document.addEventListener('DOMContentLoaded', function(){
       <button class="btn-sm" id="leads-avaliar-perdidos-btn" style="display:none;border-color:var(--red);color:var(--red)" onclick="openAvaliarPerdidos()">Avaliar Perdidos</button>
       <button class="btn-sm" id="leads-duplicatas-btn" style="display:none;border-color:var(--orange);color:var(--orange)" onclick="openDuplicatas()">Duplicatas</button>
       <button class="btn-sm" id="leads-exportar-btn" style="display:none;border-color:var(--gold-dim);color:var(--gold2)" onclick="exportarLeadsCSV()">⬇ Exportar CSV</button>
+      <button class="btn-sm" id="leads-discadora-btn" style="display:none;border-color:var(--gold-dim);color:var(--gold2)" onclick="exportarParaDiscadora()" title="Leads Novo sem vendedor, origem GR, no formato de lista da 3C Plus">📞 Lista p/ discadora</button>
       <button class="btn-sm" id="leads-mass-btn" onclick="openLeadsMass()" style="border-color:var(--gold-dim);color:var(--gold2)">Selecionar</button>
       <span id="new-lead-btn-wrap"></span>
     </div>
@@ -4282,6 +4283,8 @@ function renderLeads(resetPage){
   if(dpb) dpb.style.display=isAdmin()?'':'none';
   const exb=document.getElementById('leads-exportar-btn');
   if(exb) exb.style.display=isAdmin()?'':'none';
+  const dscb=document.getElementById('leads-discadora-btn');
+  if(dscb) dscb.style.display=isAdmin()?'':'none';
   // Populate DDD filter (admin only)
   populateDDDFilter();
   populateEquipeFilterLeads();
@@ -4455,6 +4458,57 @@ async function exportarLeadsCSV(){
   a.href=url;a.download=`leads_sem_vendidos_${new Date().toISOString().slice(0,10)}.csv`;a.click();
   URL.revokeObjectURL(url);
   toast(`${leads.length.toLocaleString('pt-BR')} lead(s) exportado(s)`,'ok');
+}
+
+// Gera a lista de contatos no formato do "Nova lista" da 3C Plus (discadora):
+// separador ';', delimitador '"', 1a linha cabeçalho, DDD e Telefone em colunas
+// separadas e telefone só com dígitos. Pega leads Novo, sem vendedor, origem GR
+// (os de CSV/remalho ficam de fora). Sem BOM: ele grudaria no nome da 1a coluna.
+// Só LÊ o CRM, não altera nenhum lead.
+async function exportarParaDiscadora(){
+  if(!isAdmin()){toast('Apenas admin pode exportar','err');return;}
+  const btn=document.getElementById('leads-discadora-btn');
+  const txt0='📞 Lista p/ discadora';
+  if(btn){btn.disabled=true;btn.textContent='Buscando leads...';}
+  const loadingToast=showLoadingProgress(0);
+  let leads;
+  try{
+    leads=await fetchAllPages(
+      sb.from('crm_leads').select('id,nome,telefone')
+        .eq('status','Novo').is('responsavel_id',null).eq('tipo_lead','Novo').eq('ativo_crm',true)
+        .in('origem',['Leads GR','Lead GR','Anúncio GR','Remalho GR'])
+        .order('created_at',{ascending:false}).order('id'),
+      1000,
+      (total)=>updateLoadingProgress(loadingToast,total)
+    );
+  }catch(e){
+    hideLoadingProgress(loadingToast,0);
+    if(btn){btn.disabled=false;btn.textContent=txt0;}
+    toast('Erro ao buscar leads: '+e.message,'err');
+    return;
+  }
+  hideLoadingProgress(loadingToast,leads.length);
+  if(btn){btn.disabled=false;btn.textContent=txt0;}
+  const vistos=new Set();
+  let semDdd=0,dup=0;
+  const rows=[];
+  leads.forEach(l=>{
+    let t=String(l.telefone||'').replace(/\D/g,'');
+    if(t.length>=12&&t.startsWith('55')) t=t.slice(2);
+    t=t.replace(/^0+/,'');
+    if(t.length<10||t.length>11){semDdd++;return;}
+    if(vistos.has(t)){dup++;return;}
+    vistos.add(t);
+    rows.push([t.slice(0,2),t.slice(2),l.nome||'',l.id]);
+  });
+  if(!rows.length){toast('Nenhum lead com telefone válido','err');return;}
+  const csv=[['ddd','telefone','nome','identificador'],...rows].map(r=>r.map(csvEsc).join(';')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`lista_discadora_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  URL.revokeObjectURL(url);
+  toast(`${rows.length.toLocaleString('pt-BR')} contato(s) exportado(s) · ${semDdd} sem DDD/telefone inválido · ${dup} repetido(s)`,'ok');
 }
 
 function renderLeadsPagination(total, totalPages){
