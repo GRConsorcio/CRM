@@ -44,6 +44,24 @@
       "port": 8798
     },
     {
+      "name": "portalcliente-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\PortalCliente\\_static_server.ps1", "-Port", "8813"],
+      "port": 8813
+    },
+    {
+      "name": "grsite-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\GRSite\\_static_server.ps1", "-Port", "8812"],
+      "port": 8812
+    },
+    {
+      "name": "nvdcard-static",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\NVDCard\\_static_server.ps1", "-Port", "8799"],
+      "port": 8799
+    },
+    {
       "name": "basegr-static",
       "runtimeExecutable": "powershell.exe",
       "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\invol\\OneDrive\\Documentos\\BaseGR\\_static_server.ps1", "-Port", "8796"],
