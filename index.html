@@ -4461,8 +4461,7 @@ async function exportarLeadsCSV(){
 }
 
 // Gera a lista de contatos no formato do "Nova lista" da 3C Plus (discadora):
-// separador ';', delimitador '"', 1a linha cabeçalho, DDD e Telefone em colunas
-// separadas e telefone só com dígitos. Pega leads Novo, sem vendedor, origem GR
+// separador ';', delimitador '"', 1a linha cabeçalho e telefone só com dígitos. Pega leads Novo, sem vendedor, origem GR
 // (os de CSV/remalho ficam de fora). Sem BOM: ele grudaria no nome da 1a coluna.
 // Só LÊ o CRM, não altera nenhum lead.
 async function exportarParaDiscadora(){
@@ -4499,10 +4498,12 @@ async function exportarParaDiscadora(){
     if(t.length<10||t.length>11){semDdd++;return;}
     if(vistos.has(t)){dup++;return;}
     vistos.add(t);
-    rows.push([t.slice(0,2),t.slice(2),l.nome||'',l.id]);
+    rows.push([l.nome||'',t,l.id]);
   });
   if(!rows.length){toast('Nenhum lead com telefone válido','err');return;}
-  const csv=[['ddd','telefone','nome','identificador'],...rows].map(r=>r.map(csvEsc).join(';')).join('\r\n');
+  // Mesmo cabeçalho das listas que já rodam na campanha (Nome/areacodephone/identifier),
+  // com DDD+telefone junto, senão a 3C marca a lista como template_mismatch.
+  const csv=[['Nome','areacodephone','identifier'],...rows].map(r=>r.map(csvEsc).join(';')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
