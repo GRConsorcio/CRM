@@ -544,6 +544,7 @@ document.addEventListener('DOMContentLoaded', function(){
     <div style="display:flex;gap:6px;margin-bottom:10px" id="leads-base-toggle">
       <button class="btn-sm" id="leads-base-gr-btn" onclick="switchLeadsBase('gr')" style="border-color:var(--gold);color:var(--gold2)">Base GR</button>
       <button class="btn-sm" id="leads-base-nvd-btn" onclick="switchLeadsBase('nvd')">Base NVD</button>
+      <button class="btn-sm" id="leads-base-canc-btn" onclick="switchLeadsBase('cancelados')">Cancelados</button>
     </div>
     <div id="leads-gr-wrap">
     <div class="filter-bar">
@@ -706,6 +707,29 @@ document.addEventListener('DOMContentLoaded', function(){
             <th>Status</th><th>Vendedor</th><th>Data</th>
           </tr></thead>
           <tbody id="lnvd-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cancelados — contatos das planilhas CANCELADAS - GR / GRO (tabela crm_cancelados) -->
+    <div id="leads-canc-wrap" style="display:none">
+      <div class="filter-bar">
+        <input class="inp" id="lcanc-srch" placeholder="Buscar por nome ou telefone..." oninput="renderCanceladosTable()" style="min-width:260px">
+        <select id="lcanc-f-origem" onchange="renderCanceladosTable()">
+          <option value="">GR e GRO</option>
+          <option value="GR">GR</option>
+          <option value="GRO">GRO</option>
+        </select>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Cancelados — <span id="lcanc-count">0</span> contatos</div>
+        </div>
+        <div class="tbl-wrap">
+          <table><thead><tr>
+            <th>Nome</th><th>Telefone</th><th>Base</th><th>Cotas canceladas</th>
+          </tr></thead>
+          <tbody id="lcanc-tbody"></tbody></table>
         </div>
       </div>
     </div>
@@ -9322,20 +9346,57 @@ async function saveEstagiosEditor(){
 async function switchLeadsBase(base){
   const grBtn=document.getElementById('leads-base-gr-btn');
   const nvdBtn=document.getElementById('leads-base-nvd-btn');
+  const cancBtn=document.getElementById('leads-base-canc-btn');
   const grWrap=document.getElementById('leads-gr-wrap');
   const nvdWrap=document.getElementById('leads-nvd-wrap');
+  const cancWrap=document.getElementById('leads-canc-wrap');
+  const marcar=(btn,ativo)=>{
+    btn.style.borderColor=ativo?'var(--gold)':'var(--border)';
+    btn.style.color=ativo?'var(--gold2)':'var(--text)';
+  };
+  grWrap.style.display=base==='gr'?'':'none';
+  nvdWrap.style.display=base==='nvd'?'':'none';
+  cancWrap.style.display=base==='cancelados'?'':'none';
+  marcar(grBtn,base==='gr'); marcar(nvdBtn,base==='nvd'); marcar(cancBtn,base==='cancelados');
   if(base==='nvd'){
-    grWrap.style.display='none'; nvdWrap.style.display='';
-    grBtn.style.borderColor='var(--border)'; grBtn.style.color='var(--text)';
-    nvdBtn.style.borderColor='var(--gold)'; nvdBtn.style.color='var(--gold2)';
     await Promise.all([loadNvdLeads(),loadNvdEstagios()]);
     populateLeadsNvdFilters();
     renderLeadsNvdTable();
-  } else {
-    nvdWrap.style.display='none'; grWrap.style.display='';
-    nvdBtn.style.borderColor='var(--border)'; nvdBtn.style.color='var(--text)';
-    grBtn.style.borderColor='var(--gold)'; grBtn.style.color='var(--gold2)';
+  } else if(base==='cancelados'){
+    await loadCancelados();
+    renderCanceladosTable();
   }
+}
+
+/* ═══ Aba "Cancelados" — contatos das planilhas CANCELADAS - GR / GRO ═══ */
+let allCancelados=[];
+async function loadCancelados(){
+  // PostgREST limita a 1000 linhas por requisição — pagina pra não cortar a lista.
+  const rows=[];
+  for(let from=0;;from+=1000){
+    const{data,error}=await sb.from('crm_cancelados').select('id,nome,telefone,origem,cotas_canceladas').order('nome').range(from,from+999);
+    if(error){toast('Erro ao carregar cancelados: '+error.message,'err');return;}
+    rows.push(...data);
+    if(data.length<1000) break;
+  }
+  allCancelados=rows;
+}
+function renderCanceladosTable(){
+  const q=(document.getElementById('lcanc-srch')?.value||'').toLowerCase().trim();
+  const qd=q.replace(/[^0-9]/g,'');
+  const fOrigem=document.getElementById('lcanc-f-origem')?.value||'';
+  const rows=allCancelados.filter(c=>{
+    if(fOrigem&&!c.origem.split(', ').includes(fOrigem)) return false;
+    if(q&&!((c.nome||'').toLowerCase().includes(q)||(qd.length>=4&&(c.telefone||'').replace(/[^0-9]/g,'').includes(qd)))) return false;
+    return true;
+  });
+  document.getElementById('lcanc-count').textContent=rows.length;
+  document.getElementById('lcanc-tbody').innerHTML=rows.map(c=>`<tr>
+    <td style="font-weight:700">${escHtml(c.nome||'—')}</td>
+    <td>${escHtml(c.telefone||'—')}</td>
+    <td>${escHtml(c.origem||'—')}</td>
+    <td>${c.cotas_canceladas||1}</td>
+  </tr>`).join('')||`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">Nenhum cancelado encontrado</td></tr>`;
 }
 
 function populateLeadsNvdFilters(){
