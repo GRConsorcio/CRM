@@ -5680,13 +5680,12 @@ async function carregarPosVendaEquipe(){
   await Promise.all(allUsers.filter(u=>u.role==='supervisor').map(async u=>{
     const eqIds=[...new Set(membros.filter(m=>m.user_id===u.user_id).map(m=>m.equipe_id))];
     const ids=[...new Set(membros.filter(m=>eqIds.includes(m.equipe_id)).map(m=>m.user_id))];
-    const nomes=eqIds.map(id=>(allEquipes||[]).find(e=>e.id===id)?.nome).filter(Boolean);
-    if(!ids.length){ sup[u.user_id]={nomes,leads:0,fechs:0,semEquipe:true}; return; }
+    if(!ids.length){ sup[u.user_id]={eqIds,leads:0,fechs:0,semEquipe:true}; return; }
     const[a,b]=await Promise.all([
       sb.from('crm_leads').select('id',{count:'exact',head:true}).in('responsavel_id',ids),
       sb.from('crm_leads').select('id',{count:'exact',head:true}).in('responsavel_id',ids).eq('status','Fechado')]);
     if(a.error) throw a.error; if(b.error) throw b.error;
-    sup[u.user_id]={nomes,leads:a.count||0,fechs:b.count||0};
+    sup[u.user_id]={eqIds,leads:a.count||0,fechs:b.count||0};
   }));
   EQ_SUPERV=sup;
 }
@@ -5709,7 +5708,8 @@ function renderEquipe(){
       :u.role==='supervisor'?(()=>{ const s=EQ_SUPERV[u.user_id];
         if(!s) return '<td style="color:var(--muted2)">…</td><td style="color:var(--muted2)">…</td>';
         if(s.semEquipe) return `<td style="color:var(--muted2)" title="Não está em nenhuma equipe — vincule em Equipes">—</td><td style="color:var(--muted2);font-size:11px">sem equipe</td>`;
-        const eq=escHtml(s.nomes.join(', ')||'equipe');
+        // nome resolvido na hora de desenhar: allEquipes pode chegar depois da contagem
+        const eq=escHtml(s.eqIds.map(id=>(allEquipes||[]).find(e=>e.id===id)?.nome).filter(Boolean).join(', ')||'—');
         return `<td title="Leads de toda a equipe ${eq}">${s.leads} <span style="font-size:11px;color:var(--muted2)">da equipe ${eq}</span></td>`+
           `<td style="color:var(--green)" title="Fechamentos de toda a equipe ${eq}">${s.fechs} <span style="font-size:11px;color:var(--muted2)">da equipe</span></td>`;
       })()
