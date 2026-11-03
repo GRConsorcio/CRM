@@ -1033,6 +1033,39 @@ document.addEventListener('DOMContentLoaded', function(){
     </div>
   </div>
 
+  <!-- TERMO DE ACEITE (admin) -->
+  <div class="page" id="page-termo">
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <div class="panel-title">Termo / Regulamento</div>
+        <div id="termo-adm-versao" style="font-size:12px;color:var(--gold2)"></div>
+      </div>
+      <div class="panel-body">
+        <div style="font-size:12px;color:var(--muted2);margin-bottom:12px;line-height:1.6">
+          Este texto aparece em um popup obrigatório para todos os <strong style="color:var(--gold2)">vendedores</strong>:
+          eles leem, informam o CPF e escolhem <em>Li e ACEITO</em> ou <em>NÃO aceito</em>. Cada resposta guarda CPF, data, hora, IP e o hash do texto exibido.
+          Ao publicar uma nova versão, todos respondem de novo. O texto antigo continua guardado.
+        </div>
+        <div class="fld"><label>Título</label><input class="inp" id="termo-adm-titulo" style="width:100%"></div>
+        <div class="fld"><label>Texto</label><textarea class="inp" id="termo-adm-texto" rows="14" style="width:100%;resize:vertical;font-family:inherit;line-height:1.5"></textarea></div>
+        <button class="btn-sm" style="border-color:var(--gold);color:var(--gold2)" onclick="publicarTermo()">Publicar nova versão</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">Respostas dos vendedores</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div id="termo-adm-resumo" style="font-size:12px;color:var(--muted2)"></div>
+          <button class="btn-sm" onclick="exportarAceitesCsv()" title="Baixa todas as respostas, de todas as versões, com CPF, IP e hash">Exportar CSV</button>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table><thead><tr><th>Vendedor</th><th>Resposta</th><th>CPF</th><th>Data/Hora</th><th>IP</th><th></th></tr></thead>
+        <tbody id="termo-adm-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
   <!-- TRANSMISSÕES -->
   <div class="page" id="page-transmissoes">
     <div class="panel" style="margin-bottom:16px">
@@ -2751,6 +2784,7 @@ async function checkForceLogoutPoll(){
     const{data:meuPerfil}=await sb.from('crm_users').select('force_logout_at').eq('user_id',session.user.id).limit(1).maybeSingle();
     if(await _aplicarForceLogoutSeNecessario(meuPerfil?.force_logout_at,{reload:true})) return;
     await _verificarBloqueioAcesso({reload:true});
+    verificarTermo();
   }catch(e){ console.warn('[force-logout poll] erro:',e.message); }
 }
 
@@ -3827,6 +3861,7 @@ function invalidateDDDCache(){_dddCache=null;}
 
 /* ═══ NAV ═══ */
 function renderNav(){
+  setTimeout(verificarTermo,300);
   const isAdm=isAdmin();
   const isCoord=isCoordenador();
   const isSup=isSupervisor();
@@ -3949,7 +3984,8 @@ function renderNav(){
       <div class="nav-item" id="nav-solicitacoes" onclick="nav('solicitacoes',this);renderSolicitacoes()" title="Solicitações"><span class="nav-icon">${IC.mail}</span><span class="nav-label">Solicitações<span id="sol-adm-badge"></span></span></div>
       <div class="nav-item" onclick="nav('login-logs',this)" title="Histórico de Logins"><span class="nav-icon">${IC.lock}</span><span class="nav-label">Logins</span></div>
       <div class="nav-item" onclick="nav('transmissoes',this)" title="Transmissões"><span class="nav-icon">${IC.broadcast}</span><span class="nav-label">Transmissões</span></div>
-      <div class="nav-item" onclick="nav('questionarios',this)" title="Questionários"><span class="nav-icon">${IC.quiz}</span><span class="nav-label">Questionários</span></div>`;
+      <div class="nav-item" onclick="nav('questionarios',this)" title="Questionários"><span class="nav-icon">${IC.quiz}</span><span class="nav-label">Questionários</span></div>
+      <div class="nav-item" onclick="nav('termo',this)" title="Termo de Aceite"><span class="nav-icon">${IC.quiz}</span><span class="nav-label">Termo de Aceite</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
   const flBtn=document.getElementById('sb-force-logout');
@@ -3975,7 +4011,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','base-comissao':'Base GR/GRO','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões','campanhas':'Campanhas','questionarios':'Questionários','nvd-funil':'Funil NVD'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','base-comissao':'Base GR/GRO','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões','campanhas':'Campanhas','questionarios':'Questionários','nvd-funil':'Funil NVD','termo':'Termo de Aceite'};
 /* ═══ PERSISTÊNCIA DE PÁGINA ATUAL (item solicitado: não voltar sempre pro dashboard) ═══
    Salva a última página visitada por usuário (localStorage, sobrevive a refresh/F5 e a
    logins futuros no mesmo navegador). Páginas de "detalhe" (que dependem de um ID
@@ -4061,6 +4097,7 @@ function nav(page,el){
   if(page==='transmissoes') renderTransmissoes();
   if(page==='campanhas') renderCampanhas();
   if(page==='questionarios') renderQuestionarios();
+  if(page==='termo') renderTermoAdmin();
 }
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
 
@@ -5821,6 +5858,201 @@ async function renderLoginLogs(){
     console.warn('[login-logs] erro ao carregar:',e.message);
     tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--red)">Erro ao carregar: '+(e.message||'desconhecido')+'</td></tr>';
   }
+}
+
+/* ═══ TERMO / REGULAMENTO — aceite obrigatório dos vendedores ═══
+   Ao abrir o CRM (e a cada 30s, pra pegar uma versão nova publicada com o app
+   aberto), o vendedor que ainda não respondeu ao termo vigente vê um modal que
+   não fecha: lê o texto até o fim, informa o CPF e clica em "Li e ACEITO" ou
+   "NÃO aceito". A resposta é gravada pela função crm_registrar_termo, que valida o
+   CPF no servidor e registra data/hora, IP (lido do header no servidor, não do
+   navegador), user-agent e o hash SHA-256 do texto exato que foi exibido.
+   O cliente não consegue inserir/alterar nada direto na tabela (só via RPC).
+   Quem recusa só deixa de participar da campanha: o acesso ao CRM continua, a não
+   ser que TERMO_RECUSA_BLOQUEIA seja true (aí a recusa também desloga a pessoa). */
+const TERMO_RECUSA_BLOQUEIA=false;
+let _termoAberto=false, _termoChecando=false;
+
+function cpfValido(v){
+  const d=String(v||'').replace(/\D/g,'');
+  if(d.length!==11||/^(\d)\1{10}$/.test(d)) return false;
+  for(const n of [9,10]){
+    let s=0; for(let i=0;i<n;i++) s+=parseInt(d[i],10)*(n+1-i);
+    let r=(s*10)%11; if(r===10) r=0;
+    if(r!==parseInt(d[n],10)) return false;
+  }
+  return true;
+}
+function fmtCpf(v){
+  const d=String(v||'').replace(/\D/g,'').slice(0,11);
+  if(d.length!==11) return d||'—';
+  return d.slice(0,3)+'.'+d.slice(3,6)+'.'+d.slice(6,9)+'-'+d.slice(9);
+}
+function _cpfMascara(v){
+  const d=String(v||'').replace(/\D/g,'').slice(0,11);
+  return d.replace(/^(\d{3})(\d)/,'$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/,'$1.$2.$3').replace(/\.(\d{3})(\d)/,'.$1-$2');
+}
+
+async function verificarTermo(){
+  if(_termoAberto||_termoChecando||!CU) return;
+  if(CUProfile&&!CUProfile._fallback&&CUProfile.role&&CUProfile.role!=='vendedor') return;
+  _termoChecando=true;
+  try{
+    const{data,error}=await sb.rpc('crm_termo_pendente');
+    if(error) throw error;
+    if(data) mostrarTermo(data);
+  }catch(e){ console.warn('[termo] erro ao verificar:',e.message); }
+  finally{ _termoChecando=false; }
+}
+
+function mostrarTermo(t){
+  if(_termoAberto) return;
+  _termoAberto=true;
+  document.body.style.overflow='hidden';
+  const ov=document.createElement('div');
+  ov.id='termo-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
+  ov.innerHTML=`<div role="dialog" aria-modal="true" aria-labelledby="termo-titulo" style="background:var(--surface,#14161c);color:var(--text,#eee);border:1px solid var(--gold,#d4af37);border-radius:14px;max-width:760px;width:100%;max-height:96vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div style="padding:18px 22px 12px;border-bottom:1px solid var(--border,#2a2d36)">
+      <div style="font-size:11px;letter-spacing:.12em;color:var(--gold2,#e6c860);font-weight:700;text-transform:uppercase">Leitura e resposta obrigatórias · versão ${Number(t.versao)||1}</div>
+      <div id="termo-titulo" style="font-size:18px;font-weight:800;margin-top:4px"></div>
+      <div id="termo-quem" style="font-size:12px;color:var(--muted2,#9aa0ad);margin-top:4px"></div>
+    </div>
+    <div id="termo-corpo" style="padding:16px 22px;overflow:auto;flex:1;min-height:120px;max-height:40vh;white-space:pre-wrap;line-height:1.6;font-size:13.5px"></div>
+    <div id="termo-dica" style="padding:6px 22px;font-size:11.5px;color:var(--gold2,#e6c860);border-top:1px solid var(--border,#2a2d36)">Role até o final do texto para liberar as opções.</div>
+    <div style="padding:12px 22px 18px;border-top:1px solid var(--border,#2a2d36)">
+      <label for="termo-cpf" style="font-size:12px;font-weight:700;display:block;margin-bottom:5px">Seu CPF</label>
+      <input id="termo-cpf" class="inp" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00" style="width:100%;max-width:240px" disabled>
+      <div id="termo-erro" style="color:var(--red,#f87171);font-size:12px;min-height:16px;margin-top:4px"></div>
+      <div style="font-size:11.5px;color:var(--muted2,#9aa0ad);line-height:1.5;margin:6px 0 12px">Ao clicar em "Li e ACEITO", declaro que li e concordo com o texto acima e que o CPF informado é o meu. Autorizo o registro deste aceite (nome, CPF, data, hora, IP e versão do texto) como comprovação. O CPF é usado somente para identificar o autor deste aceite.</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+        <button id="termo-nao" class="btn-sm" style="border-color:var(--red,#f87171);color:var(--red,#f87171)" disabled>NÃO aceito</button>
+        <button id="termo-sim" class="btn-sm" style="border-color:var(--gold,#d4af37);color:var(--gold2,#e6c860);font-weight:800" disabled>Li e ACEITO</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  document.getElementById('termo-titulo').textContent=t.titulo||'Termo de aceite';
+  document.getElementById('termo-quem').textContent='Usuário: '+((CUProfile&&CUProfile.name)||CU?.email||'')+(CU?.email?' · '+CU.email:'');
+  const corpo=document.getElementById('termo-corpo');
+  corpo.textContent=t.texto||'';
+  const cpfEl=document.getElementById('termo-cpf');
+  const btnSim=document.getElementById('termo-sim'), btnNao=document.getElementById('termo-nao');
+  const liberar=()=>{
+    cpfEl.disabled=false; btnSim.disabled=false; btnNao.disabled=false;
+    document.getElementById('termo-dica').style.display='none';
+  };
+  const noFim=()=>corpo.scrollTop+corpo.clientHeight>=corpo.scrollHeight-8;
+  corpo.addEventListener('scroll',()=>{ if(noFim()) liberar(); });
+  setTimeout(()=>{ if(noFim()) liberar(); },50);
+  cpfEl.addEventListener('input',()=>{ cpfEl.value=_cpfMascara(cpfEl.value); document.getElementById('termo-erro').textContent=''; });
+  btnSim.onclick=()=>_termoEnviar(t,'aceito');
+  btnNao.onclick=()=>_termoEnviar(t,'recusado');
+}
+
+async function _termoEnviar(t,decisao){
+  const cpfEl=document.getElementById('termo-cpf');
+  const erro=document.getElementById('termo-erro');
+  const btnSim=document.getElementById('termo-sim'), btnNao=document.getElementById('termo-nao');
+  if(decisao==='aceito'&&!cpfValido(cpfEl.value)){ erro.textContent='Informe um CPF válido para aceitar.'; cpfEl.focus(); return; }
+  if(decisao==='recusado'&&!confirm('Tem certeza? Ao NÃO aceitar, você não participa e a sua resposta fica registrada.')) return;
+  btnSim.disabled=true; btnNao.disabled=true;
+  try{
+    const{error}=await sb.rpc('crm_registrar_termo',{p_termo_id:t.id,p_cpf:cpfEl.value,p_decisao:decisao,p_user_agent:navigator.userAgent||''});
+    if(error) throw error;
+  }catch(e){
+    erro.textContent='Não foi possível registrar: '+(e.message||'erro desconhecido')+'. Tente de novo.';
+    btnSim.disabled=false; btnNao.disabled=false;
+    return;
+  }
+  document.getElementById('termo-overlay')?.remove();
+  document.body.style.overflow='';
+  _termoAberto=false;
+  if(decisao==='recusado'&&TERMO_RECUSA_BLOQUEIA){
+    await sb.auth.signOut({scope:'local'});
+    location.reload();
+    return;
+  }
+  toast(decisao==='aceito'?'Aceite registrado. Obrigado!':'Resposta registrada: você não aceitou o regulamento.','ok');
+}
+
+/* ── Admin: editar/publicar o termo e acompanhar as respostas ── */
+let _termoAdmAtivo=null;
+async function renderTermoAdmin(){
+  if(!isAdmin()) return;
+  const tb=document.getElementById('termo-adm-tbody');
+  tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:20px">Carregando...</td></tr>';
+  try{
+    const{data:termos,error:e1}=await sb.from('crm_termos').select('*').order('versao',{ascending:false});
+    if(e1) throw e1;
+    const ativo=(termos||[]).find(t=>t.ativo)||null;
+    _termoAdmAtivo=ativo;
+    const base=ativo||(termos||[])[0]||{titulo:'',texto:''};
+    document.getElementById('termo-adm-titulo').value=base.titulo||'';
+    document.getElementById('termo-adm-texto').value=base.texto||'';
+    document.getElementById('termo-adm-versao').textContent=ativo?('Versão vigente: '+ativo.versao):'Nenhum termo vigente';
+    if(!ativo){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:20px">Publique um termo para começar a coletar respostas.</td></tr>'; document.getElementById('termo-adm-resumo').textContent=''; return; }
+    const{data:resp,error:e2}=await sb.from('crm_termo_aceites').select('*').eq('termo_id',ativo.id).is('anulado_em',null);
+    if(e2) throw e2;
+    const vendedores=(allUsers||[]).filter(u=>u.role==='vendedor'&&u.ativo!==false);
+    const linhas=vendedores.map(u=>({u,r:(resp||[]).find(x=>x.user_id===u.user_id)||null}));
+    const ordem={pend:0,rec:1,ace:2};
+    const st=l=>!l.r?'pend':(l.r.decisao==='aceito'?'ace':'rec');
+    linhas.sort((a,b)=>ordem[st(a)]-ordem[st(b)]||String(a.u.name||'').localeCompare(String(b.u.name||''),'pt-BR'));
+    const nAce=linhas.filter(l=>st(l)==='ace').length, nRec=linhas.filter(l=>st(l)==='rec').length, nPend=linhas.filter(l=>st(l)==='pend').length;
+    document.getElementById('termo-adm-resumo').textContent=`Aceitos: ${nAce} · Recusados: ${nRec} · Pendentes: ${nPend}`;
+    tb.innerHTML=linhas.map(l=>{
+      const s=st(l);
+      const badge=s==='ace'?'<span style="color:var(--green,#4ade80);font-weight:700">Aceito</span>':s==='rec'?'<span style="color:var(--red,#f87171);font-weight:700">Recusou</span>':'<span style="color:var(--muted2)">Pendente</span>';
+      return`<tr>
+        <td style="font-weight:700">${escHtml(l.u.name||l.u.email||'—')}</td>
+        <td>${badge}</td>
+        <td style="font-size:12px">${l.r&&l.r.cpf?escHtml(fmtCpf(l.r.cpf)):'—'}</td>
+        <td style="color:var(--muted2);font-size:12px">${l.r?new Date(l.r.criado_em).toLocaleString('pt-BR'):'—'}</td>
+        <td style="color:var(--muted2);font-size:12px">${l.r?escHtml(l.r.ip||'—'):'—'}</td>
+        <td>${l.r?`<button class="btn-sm" onclick="reabrirTermoResposta('${l.r.id}','${escJs(l.u.name||'')}')" title="Anula esta resposta (o registro é mantido) e pede de novo ao vendedor">Reabrir</button>`:''}</td>
+      </tr>`;
+    }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:20px">Nenhum vendedor ativo.</td></tr>';
+  }catch(e){
+    console.warn('[termo-adm] erro:',e.message);
+    tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--red)">Erro ao carregar: '+escHtml(e.message||'desconhecido')+'</td></tr>';
+  }
+}
+
+async function publicarTermo(){
+  if(!isAdmin()) return;
+  const titulo=document.getElementById('termo-adm-titulo').value.trim();
+  const texto=document.getElementById('termo-adm-texto').value;
+  if(!titulo||texto.trim().length<20){ toast('Preencha o título e o texto do termo','err'); return; }
+  if(!confirm('Publicar como NOVA versão? Todos os vendedores terão que ler e responder de novo.')) return;
+  const{error}=await sb.rpc('crm_publicar_termo',{p_titulo:titulo,p_texto:texto});
+  if(error){ toast('Erro ao publicar: '+error.message,'err'); return; }
+  toast('Nova versão publicada. Os vendedores verão o termo no próximo acesso.','ok');
+  renderTermoAdmin();
+}
+
+async function reabrirTermoResposta(id,nome){
+  if(!isAdmin()) return;
+  if(!confirm('Reabrir a resposta de '+(nome||'este vendedor')+'? O registro anterior é mantido, mas ele terá que responder de novo.')) return;
+  const{error}=await sb.rpc('crm_reabrir_termo',{p_aceite_id:id});
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  toast('Resposta reaberta','ok');
+  renderTermoAdmin();
+}
+
+async function exportarAceitesCsv(){
+  if(!isAdmin()) return;
+  const{data,error}=await sb.from('crm_termo_aceites').select('*').order('criado_em',{ascending:true});
+  if(error){ toast('Erro ao exportar: '+error.message,'err'); return; }
+  const esc=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const cab=['Nome','E-mail','Resposta','CPF','Versão','Data/Hora','IP','Hash SHA-256 do texto','Navegador','Anulada em'];
+  const linhas=(data||[]).map(r=>[r.nome,r.email,r.decisao==='aceito'?'Aceito':'Recusou',r.cpf?fmtCpf(r.cpf):'',r.versao,new Date(r.criado_em).toLocaleString('pt-BR'),r.ip,r.texto_sha256,r.user_agent,r.anulado_em?new Date(r.anulado_em).toLocaleString('pt-BR'):''].map(esc).join(';'));
+  const blob=new Blob(['﻿'+[cab.map(esc).join(';'),...linhas].join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='aceites-termo-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 }
 
 /* ═══ TRANSMISSÕES (popup de vídeo/áudio) ═══
