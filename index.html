@@ -5663,8 +5663,11 @@ function renderTarefas(){
 // pós-venda, contado no histórico: tipos 'Venda Aprovado', 'Venda Cancelado' (reprovada) e 'Venda Pendente'
 // (voltou para pendente). Contagem exata no banco (head:true), recarregada no máximo a cada 60 s.
 let EQ_POSVENDA={}, EQ_POSVENDA_AT=0;
+// Supervisor: totais (leads e fechamentos) dos membros das equipes que ele acompanha (allMembroEquipes).
+// Admin: mesmas ações de pós-venda do coordenador. CEO: só visualiza — mostra "—".
+let EQ_SUPERV={};
 async function carregarPosVendaEquipe(){
-  const coords=allUsers.filter(u=>u.role==='coordenador');
+  const coords=allUsers.filter(u=>u.role==='coordenador'||u.role==='admin');
   const tipos={aprov:'Venda Aprovado',reprov:'Venda Cancelado',pend:'Venda Pendente'};
   const res={};
   await Promise.all(coords.flatMap(u=>Object.entries(tipos).map(async([k,t])=>{
@@ -5673,9 +5676,22 @@ async function carregarPosVendaEquipe(){
     (res[u.user_id]=res[u.user_id]||{})[k]=count||0;
   })));
   EQ_POSVENDA=res;
+  const membros=allMembroEquipes||[], sup={};
+  await Promise.all(allUsers.filter(u=>u.role==='supervisor').map(async u=>{
+    const eqIds=[...new Set(membros.filter(m=>m.user_id===u.user_id).map(m=>m.equipe_id))];
+    const ids=[...new Set(membros.filter(m=>eqIds.includes(m.equipe_id)).map(m=>m.user_id))];
+    const nomes=eqIds.map(id=>(allEquipes||[]).find(e=>e.id===id)?.nome).filter(Boolean);
+    if(!ids.length){ sup[u.user_id]={nomes,leads:0,fechs:0,semEquipe:true}; return; }
+    const[a,b]=await Promise.all([
+      sb.from('crm_leads').select('id',{count:'exact',head:true}).in('responsavel_id',ids),
+      sb.from('crm_leads').select('id',{count:'exact',head:true}).in('responsavel_id',ids).eq('status','Fechado')]);
+    if(a.error) throw a.error; if(b.error) throw b.error;
+    sup[u.user_id]={nomes,leads:a.count||0,fechs:b.count||0};
+  }));
+  EQ_SUPERV=sup;
 }
 function renderEquipe(){
-  if(Date.now()-EQ_POSVENDA_AT>60000&&allUsers.some(u=>u.role==='coordenador')){
+  if(Date.now()-EQ_POSVENDA_AT>60000&&allUsers.some(u=>['coordenador','admin','supervisor'].includes(u.role))){
     EQ_POSVENDA_AT=Date.now();   // marca antes de buscar: evita buscar de novo a cada renderEquipe
     carregarPosVendaEquipe().then(()=>{ if(document.getElementById('page-equipe')?.classList.contains('on')) renderEquipe(); })
       .catch(e=>{ console.warn('[Equipe] pós-venda:',e.message); EQ_POSVENDA_AT=0; });
@@ -5689,7 +5705,15 @@ function renderEquipe(){
       <td style="font-weight:700">${u.name}${u.user_id===CU.id?' <span style="font-size:10px;color:var(--muted2)">(você)</span>':''}</td>
       <td style="color:var(--muted2);font-size:12px">${u.email||'—'}</td>
       <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-gold':u.role==='supervisor'?'b-coord':u.role==='ceo'?'b-ceo':'b-vend'}">${u.role}</span>${u.bloqueado?' <span class="badge" style="background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.35)">bloqueado</span>':''}</td>
-      ${u.role==='coordenador'?(()=>{ const pv=EQ_POSVENDA[u.user_id];
+      ${u.role==='ceo'?`<td style="color:var(--muted2)" title="Perfil CEO só visualiza: não atende leads nem aprova vendas">—</td><td style="color:var(--muted2);font-size:11px">só visualiza</td>`
+      :u.role==='supervisor'?(()=>{ const s=EQ_SUPERV[u.user_id];
+        if(!s) return '<td style="color:var(--muted2)">…</td><td style="color:var(--muted2)">…</td>';
+        if(s.semEquipe) return `<td style="color:var(--muted2)" title="Não está em nenhuma equipe — vincule em Equipes">—</td><td style="color:var(--muted2);font-size:11px">sem equipe</td>`;
+        const eq=escHtml(s.nomes.join(', ')||'equipe');
+        return `<td title="Leads de toda a equipe ${eq}">${s.leads} <span style="font-size:11px;color:var(--muted2)">da equipe ${eq}</span></td>`+
+          `<td style="color:var(--green)" title="Fechamentos de toda a equipe ${eq}">${s.fechs} <span style="font-size:11px;color:var(--muted2)">da equipe</span></td>`;
+      })()
+      :(u.role==='coordenador'||u.role==='admin')?(()=>{ const pv=EQ_POSVENDA[u.user_id];
         if(!pv) return '<td style="color:var(--muted2)">…</td><td style="color:var(--muted2)">…</td>';
         return `<td title="Vendas aprovadas por ${escHtml(u.name)} no pós-venda"><span style="color:var(--green)">✔ ${pv.aprov}</span> <span style="font-size:11px;color:var(--muted2)">aprovadas</span></td>`+
           `<td title="Reprovadas e voltadas para pendente por ${escHtml(u.name)} no pós-venda"><span style="color:var(--red)">✘ ${pv.reprov}</span> <span style="font-size:11px;color:var(--muted2)">reprovadas</span> · ${pv.pend} <span style="font-size:11px;color:var(--muted2)">p/ pendente</span></td>`;
