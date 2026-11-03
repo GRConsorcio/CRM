@@ -5659,7 +5659,27 @@ function renderTarefas(){
 }
 
 /* ═══ EQUIPE ═══ */
+// Coordenador não atende lead (Leads/Fechamentos ficavam sempre 0). Na linha dele mostramos o trabalho de
+// pós-venda, contado no histórico: tipos 'Venda Aprovado', 'Venda Cancelado' (reprovada) e 'Venda Pendente'
+// (voltou para pendente). Contagem exata no banco (head:true), recarregada no máximo a cada 60 s.
+let EQ_POSVENDA={}, EQ_POSVENDA_AT=0;
+async function carregarPosVendaEquipe(){
+  const coords=allUsers.filter(u=>u.role==='coordenador');
+  const tipos={aprov:'Venda Aprovado',reprov:'Venda Cancelado',pend:'Venda Pendente'};
+  const res={};
+  await Promise.all(coords.flatMap(u=>Object.entries(tipos).map(async([k,t])=>{
+    const{count,error}=await sb.from('crm_historico').select('id',{count:'exact',head:true}).eq('user_id',u.user_id).eq('tipo',t);
+    if(error) throw error;
+    (res[u.user_id]=res[u.user_id]||{})[k]=count||0;
+  })));
+  EQ_POSVENDA=res;
+}
 function renderEquipe(){
+  if(Date.now()-EQ_POSVENDA_AT>60000&&allUsers.some(u=>u.role==='coordenador')){
+    EQ_POSVENDA_AT=Date.now();   // marca antes de buscar: evita buscar de novo a cada renderEquipe
+    carregarPosVendaEquipe().then(()=>{ if(document.getElementById('page-equipe')?.classList.contains('on')) renderEquipe(); })
+      .catch(e=>{ console.warn('[Equipe] pós-venda:',e.message); EQ_POSVENDA_AT=0; });
+  }
   const btnNovo=document.getElementById('btn-novo-usuario');
   if(btnNovo) btnNovo.style.display=isAdmin()?'inline-flex':'none';
   document.getElementById('eq-tbody').innerHTML=allUsers.map(u=>{
@@ -5669,8 +5689,12 @@ function renderEquipe(){
       <td style="font-weight:700">${u.name}${u.user_id===CU.id?' <span style="font-size:10px;color:var(--muted2)">(você)</span>':''}</td>
       <td style="color:var(--muted2);font-size:12px">${u.email||'—'}</td>
       <td><span class="badge ${u.role==='admin'?'b-admin':u.role==='coordenador'?'b-gold':u.role==='supervisor'?'b-coord':u.role==='ceo'?'b-ceo':'b-vend'}">${u.role}</span>${u.bloqueado?' <span class="badge" style="background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.35)">bloqueado</span>':''}</td>
-      <td>${leads}</td>
-      <td style="color:var(--green)">${fechs}</td>
+      ${u.role==='coordenador'?(()=>{ const pv=EQ_POSVENDA[u.user_id];
+        if(!pv) return '<td style="color:var(--muted2)">…</td><td style="color:var(--muted2)">…</td>';
+        return `<td title="Vendas aprovadas por ${escHtml(u.name)} no pós-venda"><span style="color:var(--green)">✔ ${pv.aprov}</span> <span style="font-size:11px;color:var(--muted2)">aprovadas</span></td>`+
+          `<td title="Reprovadas e voltadas para pendente por ${escHtml(u.name)} no pós-venda"><span style="color:var(--red)">✘ ${pv.reprov}</span> <span style="font-size:11px;color:var(--muted2)">reprovadas</span> · ${pv.pend} <span style="font-size:11px;color:var(--muted2)">p/ pendente</span></td>`;
+      })():`<td>${leads}</td>
+      <td style="color:var(--green)">${fechs}</td>`}
       <td>${isAdmin()&&u.user_id!==CU.id?`<button class="act" onclick="openRoleModal('${u.user_id}','${escJs(u.name)}','${u.role}')">Perfil</button> <button class="act" onclick="openSenhaModal('${u.user_id}','${escJs(u.name)}')" title="Trocar senha">🔑</button> <button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="deslogarUsuario('${u.user_id}','${escJs(u.name)}')" title="Deslogar agora">🔒</button> <button class="act" style="border-color:var(--red);color:var(--red)" onclick="toggleBloqueioUsuario('${u.user_id}','${escJs(u.name)}',${!u.bloqueado})" title="${u.bloqueado?'Desbloquear acesso ao CRM':'Bloquear acesso ao CRM'}">${u.bloqueado?'✅':'🚫'}</button> <button class="act red" onclick="delUser('${u.user_id}','${escJs(u.name)}')" title="Excluir usuário">🗑️</button>`:'—'}</td>
     </tr>`;
   }).join('');
