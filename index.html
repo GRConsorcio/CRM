@@ -898,6 +898,13 @@ document.addEventListener('DOMContentLoaded', function(){
               <option value="Remalho">Remalho</option>
             </select>
           </div>
+          <div class="fld" style="width:160px;margin:0">
+            <label>Origem</label>
+            <select class="inp" id="dist-equipe-origem" style="margin:0" onchange="updateDistEquipePreview()">
+              <option value="">Todas</option>
+              <option value="Cancelado">Cancelado</option>
+            </select>
+          </div>
           <button class="btn-primary" onclick="distParaEquipe()" style="flex-shrink:0;align-self:flex-end">Enviar para Equipe</button>
         </div>
         <div id="dist-equipe-preview" style="font-size:11.5px;color:var(--muted2);margin-top:10px"></div>
@@ -5634,11 +5641,13 @@ function updateDistEquipePreview(){
   if(!preview) return;
   const tipo=document.getElementById('dist-equipe-tipo')?.value||'';
   const qty=parseInt(document.getElementById('dist-equipe-qty')?.value)||null;
+  const origem=document.getElementById('dist-equipe-origem')?.value||'';
   let semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
   if(tipo) semVend=semVend.filter(l=>l.tipo_lead===tipo);
+  if(origem) semVend=semVend.filter(l=>l.origem===origem);
   const total=semVend.length;
   const a=qty?Math.min(qty,total):total;
-  preview.textContent=`${total.toLocaleString('pt-BR')} lead${total!==1?'s':''} disponíveis sem vendedor${tipo?' ('+tipo+')':''} — será${a!==1?'ão':''} enviado${a!==1?'s':''}: ${a.toLocaleString('pt-BR')}`;
+  preview.textContent=`${total.toLocaleString('pt-BR')} lead${total!==1?'s':''} disponíveis sem vendedor${tipo?' ('+tipo+')':''}${origem?' — origem '+origem:''} — será${a!==1?'ão':''} enviado${a!==1?'s':''}: ${a.toLocaleString('pt-BR')}`;
 }
 
 async function distParaEquipe(){
@@ -5648,8 +5657,10 @@ async function distParaEquipe(){
   const tipo=document.getElementById('dist-equipe-tipo')?.value||'';
   const qty=parseInt(document.getElementById('dist-equipe-qty')?.value)||null;
   const equipe=allEquipes.find(e=>e.id===equipeId);
+  const origem=document.getElementById('dist-equipe-origem')?.value||'';
   let semVend=allLeads.filter(l=>!l.responsavel_id&&!l.equipe_id);
   if(tipo) semVend=semVend.filter(l=>l.tipo_lead===tipo);
+  if(origem) semVend=semVend.filter(l=>l.origem===origem);
   if(qty) semVend=semVend.slice(0,qty);
   if(!semVend.length){toast('Nenhum lead disponível com esses critérios','err');return;}
   if(!confirm(`Enviar ${semVend.length} lead(s) para a equipe "${equipe?.nome}"?`)) return;
