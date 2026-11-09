@@ -2242,7 +2242,74 @@ document.addEventListener('DOMContentLoaded', function(){
 const SUPA_URL='https://prquggwhjcvenzuziaox.supabase.co';
 const SUPA_KEY='sb_publishable_YcjSMFQoaBa5mHUtqrPCPQ_2SZmJ5aF';
 const {createClient}=supabase;
-const sb=createClient(SUPA_URL,SUPA_KEY);
+// ── SESSÃO RESILIENTE ──
+// BUGFIX (perfil oscilando vendedor/coordenador + dados sumindo): quando o
+// relógio do computador está errado (ex.: 1h atrasado), o supabase-js acha que
+// o token ainda vale e não renova — o servidor responde 401 "JWT expired" em
+// TODAS as consultas até o relógio local "alcançar" a expiração. Antes, esse
+// 401 era tratado como "perfil não existe" (virava vendedor) e como "tabela
+// vazia" (zerava leads/vendas). Agora, qualquer 401 de token nas APIs força a
+// renovação da sessão (que não depende do relógio local) e refaz a requisição.
+let _refreshEmAndamento=null;
+function _renovarSessao(motivo){
+  if(!_refreshEmAndamento){
+    _refreshEmAndamento=(async()=>{
+      try{
+        const{data,error}=await sb.auth.refreshSession();
+        if(error){ console.warn('[sessao] renovação falhou ('+motivo+'):',error.message); return null; }
+        console.log('[sessao] token renovado ('+motivo+')');
+        _verificarRelogio(data?.session?.access_token);
+        return data?.session||null;
+      }catch(e){ console.warn('[sessao] renovação erro:',e.message); return null; }
+    })();
+    _refreshEmAndamento.finally(()=>{ setTimeout(()=>{ _refreshEmAndamento=null; },0); });
+  }
+  return _refreshEmAndamento;
+}
+const _fetchOriginal=window.fetch.bind(window);
+async function _fetchComRenovacao(input,init){
+  const resp=await _fetchOriginal(input,init);
+  if(resp.status!==401) return resp;
+  const url=typeof input==='string'?input:(input&&input.url)||'';
+  // Só REST/Storage/Functions — nunca /auth (evita laço com o próprio refresh)
+  if(!/\/(rest|storage|functions)\/v1\//.test(url)) return resp;
+  let corpo='';
+  try{ corpo=await resp.clone().text(); }catch(_){}
+  if(!/JWT|PGRST30\d|token/i.test(corpo)) return resp;
+  const sess=await _renovarSessao('401 em '+url.split('?')[0].split('/').pop());
+  if(!sess?.access_token) return resp;
+  const headers=new Headers((init&&init.headers)||(input instanceof Request?input.headers:undefined));
+  headers.set('Authorization','Bearer '+sess.access_token);
+  return _fetchOriginal(input,Object.assign({},init||{},{headers}));
+}
+// Avisa quando o relógio do computador está errado (causa raiz das quedas).
+// iat do token recém-emitido = hora do servidor.
+let _avisoRelogioMostrado=false;
+function _verificarRelogio(token){
+  try{
+    if(!token) return;
+    const b=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+    const iat=JSON.parse(atob(b)).iat;
+    if(!iat) return;
+    const dif=Math.round(Date.now()/1000-iat); // + adiantado, - atrasado
+    if(Math.abs(dif)<=120) return;
+    console.warn('[relogio] diferença local x servidor:',dif,'s');
+    if(_avisoRelogioMostrado||!document.body) return;
+    _avisoRelogioMostrado=true;
+    const min=Math.round(Math.abs(dif)/60);
+    // Faixa fixa (o toast some em 3s e pode ser sobrescrito)
+    const d=document.createElement('div');
+    d.id='aviso-relogio';
+    d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#7a1d1d;color:#fff;font:600 13px/1.4 system-ui,sans-serif;padding:8px 40px 8px 14px;text-align:center';
+    d.textContent=`⚠ O relógio deste computador está ${min} min ${dif<0?'atrasado':'adiantado'}. Isso derruba a sessão do CRM. Ajuste em Configurações do Windows › Hora e idioma › "Definir horário automaticamente" e o fuso "Brasília".`;
+    const x=document.createElement('button');
+    x.textContent='✕'; x.title='Fechar';
+    x.style.cssText='position:absolute;right:10px;top:6px;background:none;border:0;color:#fff;font-size:15px;cursor:pointer';
+    x.onclick=()=>d.remove();
+    d.appendChild(x); document.body.appendChild(d);
+  }catch(_){}
+}
+const sb=createClient(SUPA_URL,SUPA_KEY,{global:{fetch:_fetchComRenovacao}});
 // Exposto pro <script type="module"> do ranking Firebase mais abaixo — módulo
 // ES não enxerga const/let de nível superior de um <script> clássico, só o
 // que for pendurado explicitamente em window (mesmo padrão já usado pra
@@ -2452,7 +2519,7 @@ window.limparCacheERecarregar=function(){
 /* ═══ INIT ═══ */
 
 // ── Versão do cache: incrementar aqui invalida todos os caches antigos automaticamente ──
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5; // 5: descarta caches gravados com perfil errado (sessão expirada)
 
 // ── Leitura segura de cache com validação de versão e integridade ──
 function _readCache(userId){
@@ -2557,8 +2624,17 @@ async function initApp(user){
     if(cached){
       _applyCache(cached.data);
       _openUI('Carregando...',75);
-      // Sempre atualiza em background após abrir com cache
-      loadAll().then(()=>{
+      // Sempre atualiza em background após abrir com cache.
+      // Antes de recarregar, confirma o perfil no banco: se o cache tinha o
+      // perfil errado, _aplicarPerfilConfirmado já recarrega tudo com o certo.
+      (async()=>{
+        try{
+          const{data:pf}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
+          if(pf&&await _aplicarPerfilConfirmado(pf)) return 'recarregado';
+        }catch(_){}
+        return loadAll();
+      })().then((r)=>{
+        if(r==='recarregado') return;
         saveCache();
         populateSelects();
         renderDashboard().catch(()=>{});
@@ -2868,6 +2944,8 @@ async function checkForceLogoutPoll(){
 /* Listener para login/logout em tempo real */
 sb.auth.onAuthStateChange(async(ev,session)=>{
   if(ev==='INITIAL_SESSION') return;
+  // Só token recém-emitido serve de referência (SIGNED_IN pode trazer token salvo de até 1h atrás)
+  if(ev==='TOKEN_REFRESHED') _verificarRelogio(session?.access_token);
   // TOKEN_REFRESHED: só ignora se o app já inicializou (CU preenchido)
   // Se CU está vazio mas sessão existe, o app travou — precisa inicializar
   if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED'){
@@ -2899,10 +2977,8 @@ async function ensureProfile(){
       if(p&&p.role&&p.user_id===CU.id&&!p._fallback){
         CUProfile=p;
         console.log('Profile from cache, role:',CUProfile.role);
-        // Refresh silently in background
-        sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle()
-          .then(({data})=>{ if(data){ CUProfile=data; try{sessionStorage.setItem(cacheKey,JSON.stringify(data));}catch(e){} }})
-          .catch(()=>{});
+        // Confirma no banco em background — se o perfil mudou, recarrega com o certo
+        _confirmarPerfilEmBackground();
         return;
       }
     } catch(e){ sessionStorage.removeItem(cacheKey); }
@@ -2913,94 +2989,126 @@ async function ensureProfile(){
     promise,
     new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout_profile')),ms))
   ]);
+  const buscar=(ms)=>withTimeout(sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),ms);
 
-  let data,error;
+  let data=null,error=null;
   try{
     let r;
     try{
-      r=await withTimeout(sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),5000);
+      r=await buscar(5000);
     } catch(firstErr){
-      if(firstErr.message==='timeout_profile'){
-        console.warn('[ensureProfile] 1ª tentativa timeout — retentando em 1s...');
-        await new Promise(res=>setTimeout(res,1000));
-        r=await withTimeout(sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle(),4000);
-      } else { throw firstErr; }
+      if(firstErr.message!=='timeout_profile') throw firstErr;
+      console.warn('[ensureProfile] 1ª tentativa timeout — retentando em 1s...');
+      await new Promise(res=>setTimeout(res,1000));
+      r=await buscar(4000);
     }
     data=r.data; error=r.error;
-  } catch(e){
-    if(e.message==='timeout_profile'){
-      console.warn('ensureProfile timeout — usando fallback');
-
-      // 1) Tenta cache do localStorage cross-tab (mais persistente que sessionStorage)
-      try{
-        const xtab=localStorage.getItem('crm_xtab_'+CU.id);
-        if(xtab){
-          const c=JSON.parse(xtab);
-          if(c?.profile?.role&&c.profile.user_id===CU.id&&!c.profile._fallback){
-            CUProfile=c.profile;
-            console.log('[profileFallback] xtab cache encontrado, role:',CUProfile.role);
-            _setProfileUI(CUProfile.name||name, CUProfile.role);
-            return; // Perfil real do localStorage, watchdog ficará satisfeito
-          }
-        }
-      }catch(_){}
-
-      // 2) Fallback temporário — mas marca o app como inicializado para o watchdog
-      CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor',_fallback:true};
-      try{ sessionStorage.setItem(cacheKey,JSON.stringify(CUProfile)); }catch(se){}
-      _setProfileUI(name,'vendedor');
-
-      // ── CRÍTICO: marca app como pronto para o watchdog não lopar ──
-      window._appReadyWithFallback=true;
-
-      // 3) Retry em background — quando chegar, atualiza sem reload
-      setTimeout(async()=>{
-        try{
-          const{data}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
-          if(data){
-            const roleAnterior=CUProfile?.role;
-            CUProfile=data;
-            window._appReadyWithFallback=false;
-            try{ sessionStorage.setItem(cacheKey,JSON.stringify(data)); }catch(se){}
-            _setProfileUI(data.name||name,data.role);
-            try{ saveCache(); }catch(sc){}
-            if(data.role!==roleAnterior){
-              console.log('[profileRetry] Role mudou para',data.role,'— recarregando nav...');
-              try{
-                Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_data_')||k.startsWith('crm_profile_')) sessionStorage.removeItem(k); });
-                Object.keys(localStorage).forEach(k=>{ if(k.startsWith('crm_xtab_')) localStorage.removeItem(k); });
-              }catch(ce){}
-              showLoading('Atualizando permissões...', 40);
-              await loadAll();
-              saveCache();
-              hideLoading();
-              renderNav();
-              populateSelects();
-              renderDashboard().catch(()=>{});
-              const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor',vendedor_nvd:'Vendedor NVD',ceo:'CEO'};
-              toast('Perfil atualizado: '+roleLabels[data.role],'ok');
-            }
-          }
-        } catch(re){ console.warn('[profileRetry] Falhou:',re.message); }
-      },3000);
-      return;
+    // BUGFIX: erro na consulta (ex.: 401 token expirado) NÃO significa "perfil
+    // não existe". Antes caía no insert e o usuário virava 'vendedor'.
+    if(error&&!error.message?.includes('does not exist')){
+      console.warn('[ensureProfile] erro ao buscar perfil:',error.message,'— renovando sessão e tentando de novo');
+      await _renovarSessao('perfil');
+      const r2=await buscar(5000);
+      data=r2.data; error=r2.error;
     }
-    throw e;
+  } catch(e){
+    if(e.message!=='timeout_profile') throw e;
+    error={message:'timeout_profile'};
   }
 
   if(error?.message?.includes('does not exist')){
     throw new Error('Tabela crm_users não existe. Execute o crm-setup-completo.sql no Supabase SQL Editor.');
   }
+  if(error){
+    console.warn('[ensureProfile] perfil indisponível ('+error.message+') — usando fallback');
+    _perfilFallback(name,cacheKey);
+    return;
+  }
   if(!data){
+    // Só aqui (consulta OK e nenhuma linha) o usuário é realmente novo
     const{error:ie}=await sb.from('crm_users').insert({user_id:CU.id,name,email:CU.email,role:'vendedor'});
     if(ie) console.warn('Insert user error:',ie.message);
     const{data:d2}=await sb.from('crm_users').select('*').eq('user_id',CU.id).maybeSingle();
-    CUProfile=d2||{user_id:CU.id,name,email:CU.email,role:'vendedor'};
+    if(!d2){ _perfilFallback(name,cacheKey); return; }
+    CUProfile=d2;
   } else {
     CUProfile=data;
     try{ sessionStorage.setItem(cacheKey,JSON.stringify(data)); }catch(e){}
   }
   _setProfileUI(CUProfile.name,CUProfile.role);
+}
+
+// Perfil temporário enquanto o real não chega. Marcado com _fallback para
+// nunca ser salvo em cache nem usado para filtrar/zerar dados.
+function _perfilFallback(name,cacheKey){
+  // 1) cache cross-tab com o perfil real, se houver
+  try{
+    const xtab=localStorage.getItem('crm_xtab_'+CU.id);
+    if(xtab){
+      const c=JSON.parse(xtab);
+      if(c?._v===CACHE_VERSION&&c?.profile?.role&&c.profile.user_id===CU.id&&!c.profile._fallback){
+        CUProfile=c.profile;
+        console.log('[profileFallback] xtab cache encontrado, role:',CUProfile.role);
+        _setProfileUI(CUProfile.name||name, CUProfile.role);
+        _confirmarPerfilEmBackground();
+        return;
+      }
+    }
+  }catch(_){}
+  // 2) fallback temporário
+  CUProfile={user_id:CU.id,name,email:CU.email,role:'vendedor',_fallback:true};
+  _setProfileUI(name,'vendedor');
+  window._appReadyWithFallback=true; // watchdog não deve lopar
+  _confirmarPerfilEmBackground();
+}
+
+// Busca o perfil real em background, com novas tentativas (antes era 1 só —
+// se falhasse, o usuário ficava preso como vendedor até recarregar).
+let _confirmandoPerfil=false;
+async function _confirmarPerfilEmBackground(){
+  if(_confirmandoPerfil) return;
+  _confirmandoPerfil=true;
+  const uid=CU?.id;
+  try{
+    for(let tentativa=0;tentativa<10;tentativa++){
+      await new Promise(res=>setTimeout(res,tentativa===0?1500:Math.min(3000*tentativa,30000)));
+      if(!CU||CU.id!==uid) return;
+      try{
+        const{data,error}=await sb.from('crm_users').select('*').eq('user_id',uid).maybeSingle();
+        if(error){ await _renovarSessao('confirmar perfil'); continue; }
+        if(data){ await _aplicarPerfilConfirmado(data); return; }
+      }catch(e){ console.warn('[profileRetry] falhou:',e.message); }
+    }
+  } finally { _confirmandoPerfil=false; }
+}
+
+async function _aplicarPerfilConfirmado(data){
+  const roleAnterior=CUProfile?.role;
+  const eraFallback=!!CUProfile?._fallback;
+  CUProfile=data;
+  window._appReadyWithFallback=false;
+  try{ sessionStorage.setItem('crm_profile_'+CU.id,JSON.stringify(data)); }catch(se){}
+  _setProfileUI(data.name||'',data.role);
+  if(data.role===roleAnterior){
+    if(eraFallback){ try{ saveCache(); }catch(_){} renderDashboard().catch(()=>{}); }
+    return false;
+  }
+  console.log('[perfil] Role confirmado:',data.role,'(antes:',roleAnterior+') — recarregando dados');
+  try{
+    Object.keys(sessionStorage).forEach(k=>{ if(k.startsWith('crm_data_')) sessionStorage.removeItem(k); });
+    Object.keys(localStorage).forEach(k=>{ if(k.startsWith('crm_xtab_')) localStorage.removeItem(k); });
+    clearLastSyncTime();
+  }catch(ce){}
+  allLeads=[];
+  showLoading('Atualizando permissões...', 40);
+  try{ await loadAll(); saveCache(); }catch(e){ console.warn('[perfil] recarga falhou:',e.message); }
+  hideLoading();
+  renderNav();
+  populateSelects();
+  renderDashboard().catch(()=>{});
+  const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor',vendedor_nvd:'Vendedor NVD',ceo:'CEO'};
+  toast('Perfil confirmado: '+(roleLabels[data.role]||data.role),'ok');
+  return true;
 }
 
 function _setProfileUI(name,role){
@@ -3133,11 +3241,14 @@ async function loadAll(){
     safe(sb.from('crm_estagios').select('*').order('ordem')),
   ]);
 
-  allUsers=_normUsers(lu.data);
-  allHist=lh.data||[];
-  allTasks=lt.data||[];
-  allVendas=lv.data||[];
-  allDocs=ld.data||[];
+  // BUGFIX: consulta com erro (401/timeout) mantém o que já estava em memória
+  // em vez de zerar — antes um token expirado apagava usuários/vendas da tela.
+  if(!lu.error) allUsers=_normUsers(lu.data);
+  if(!lh.error) allHist=lh.data||[];
+  if(!lt.error) allTasks=lt.data||[];
+  if(!lv.error) allVendas=lv.data||[];
+  if(!ld.error) allDocs=ld.data||[];
+  const _vendasFalhou=!!lv.error;
   if(le.data&&le.data.length){
     STAGES=le.data.map(e=>e.nome);
     _stagesProtegidos=new Set(le.data.filter(e=>e.protegido).map(e=>e.nome));
@@ -3375,7 +3486,12 @@ async function loadAll(){
       }
       // IDs dos leads que já têm venda registrada (allVendas já foi carregado acima)
       const idsVendidos=[...new Set((allVendas||[]).map(v=>v.lead_id).filter(Boolean))];
-      if(idsVendidos.length){
+      if(_vendasFalhou){
+        // Sem a lista de vendas não dá pra saber quais leads carregar: mantém o
+        // que está em memória e NÃO marca como sincronizado (antes zerava a base
+        // e o cache vazio ficava "válido" por horas).
+        console.warn('[loadAll] vendas indisponíveis (coordenador) — mantendo dados atuais');
+      } else if(idsVendidos.length){
         try{
           allLeads=await fetchAllPages(
             sb.from('crm_leads').select(getLeadListCols()).in('id',idsVendidos).order('created_at',{ascending:false}),
@@ -3388,7 +3504,7 @@ async function loadAll(){
       } else {
         allLeads=[];
       }
-      setLastSyncTime(new Date().toISOString());
+      if(!_vendasFalhou) setLastSyncTime(new Date().toISOString());
       toast(`Base carregada: ${allLeads.length.toLocaleString('pt-BR')} lead(s) vendido(s)`,'ok');
       populateSelects();
       renderNav();
