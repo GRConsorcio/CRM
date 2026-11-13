@@ -328,6 +328,58 @@ tr:hover td{background:rgba(255,255,255,.015)}
 
 /* EDIT INLINE MODAL */
 .edit-inline-modal{background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:16px;margin-top:8px}
+
+/* ── Fluxo da venda (acompanhamento em 5 etapas) e comprovantes de parcela ── */
+.fl-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 14px 12px}
+.fl-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px}
+.fl-steps{display:flex;align-items:flex-start;gap:0}
+.fl-step{flex:0 0 auto;width:110px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:3px}
+.fl-dot{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;border:2px solid var(--border);color:var(--muted2);background:var(--surface2)}
+.fl-ok .fl-dot{background:var(--green);border-color:var(--green);color:#06130a}
+.fl-cur .fl-dot{border-color:var(--gold);color:var(--gold2);box-shadow:0 0 0 4px var(--gold-glow)}
+.fl-bad .fl-dot{background:var(--red);border-color:var(--red);color:#fff}
+.fl-name{font-size:11.5px;font-weight:700;line-height:1.25}
+.fl-state{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted2)}
+.fl-ok .fl-state{color:var(--green)}.fl-cur .fl-state{color:var(--gold2)}.fl-bad .fl-state{color:var(--red)}
+.fl-when{font-size:10px;color:var(--muted2);line-height:1.35}
+.fl-undo{background:none;border:none;color:var(--muted2);font-size:10px;text-decoration:underline;cursor:pointer;padding:0}
+.fl-line{flex:1 1 20px;height:2px;background:var(--border);margin-top:15px;min-width:14px}
+.fl-line.on{background:var(--green)}
+.fl-next{margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--gold-glow);border:1px solid var(--gold-dim);border-radius:9px;padding:10px 12px}
+.fl-next.ok{border-color:var(--green)}.fl-next.bad{border-color:var(--red)}
+.fl-next-txt{font-size:12.5px;flex:1 1 220px}
+.fl-next-act{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:640px){.fl-steps{flex-direction:column;align-items:stretch;gap:6px}.fl-step{width:auto;flex-direction:row;gap:10px;text-align:left;flex-wrap:wrap}.fl-line{display:none}.fl-name{flex:1}}
+.cp-row{border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--surface)}
+.cp-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+.cp-btns{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.cp-item{border-top:1px dashed var(--border);margin-top:8px;padding-top:8px;font-size:12px}
+.cp-main{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cp-file{color:var(--gold2);text-decoration:none;word-break:break-all}
+.cp-meta{color:var(--muted2);font-size:11px}
+.cp-obs{margin-top:4px;color:var(--text);white-space:pre-wrap}
+.cp-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+
+/* ── Central de Campanhas ── */
+.cc-tabs{display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border);flex-wrap:wrap}
+.cc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:16px}
+.cc-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.cc-card.off{opacity:.7}
+.cc-banner{height:150px;background:linear-gradient(135deg,#1c1608,#3a2d0c 55%,#7a6328);display:flex;align-items:flex-end;padding:14px;position:relative;background-size:cover;background-position:center}
+.cc-banner-t{font-weight:900;font-size:20px;line-height:1.1;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.7);text-transform:uppercase}
+.cc-chip{position:absolute;top:10px;right:10px}
+.cc-body{padding:14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.cc-title{font-weight:800;font-size:15px;color:var(--gold2)}
+.cc-sub{font-size:12.5px;color:var(--muted2);line-height:1.5}
+.cc-row{font-size:11.5px;color:var(--muted2)}
+.cc-row strong{color:var(--text)}
+.cc-prem{font-size:12px;background:var(--gold-glow);border:1px solid var(--gold-dim);border-radius:8px;padding:8px 10px;white-space:pre-wrap;max-height:84px;overflow:hidden}
+.cc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.cc-bar{height:8px;background:var(--surface2);border-radius:6px;overflow:hidden}
+.cc-bar>i{display:block;height:100%;background:var(--gold)}
+.cc-modal{position:fixed;inset:0;z-index:2147482000;background:rgba(0,0,0,.8);display:flex;align-items:flex-start;justify-content:center;padding:20px 12px;overflow:auto}
+.cc-modal-box{background:var(--surface);color:var(--text);border:1px solid var(--gold-dim);border-radius:14px;max-width:760px;width:100%;overflow:hidden}
+.cc-reg{white-space:pre-wrap;line-height:1.6;font-size:13px;max-height:300px;overflow:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px}
 </style>
 </head>
 <body>
@@ -1143,22 +1195,36 @@ document.addEventListener('DOMContentLoaded', function(){
     </div>
   </div>
 
-  <!-- CAMPANHAS -->
+  <!-- CENTRAL DE CAMPANHAS -->
   <div class="page" id="page-campanhas">
     <div class="panel" id="campanha-form-panel" style="margin-bottom:16px;display:none">
-      <div class="panel-head"><div class="panel-title">Nova Campanha</div></div>
+      <div class="panel-head"><div class="panel-title" id="camp-form-title">Nova Campanha</div></div>
       <div class="panel-body">
-        <div class="fld"><label>Título *</label><input class="inp" id="camp-titulo" placeholder="Ex: Campanha de Verão — bônus dobrado"></div>
-        <div class="fld"><label>Descrição</label><textarea class="inp" id="camp-desc" placeholder="Detalhes da campanha, regras, metas..." style="min-height:80px"></textarea></div>
+        <input type="hidden" id="camp-edit-id">
         <div class="fld-row">
-          <div class="fld"><label>Válida até (opcional)</label><input class="inp" type="date" id="camp-validade"></div>
-          <div class="fld"><label>Mostrar para</label>
-            <select class="inp" id="camp-alvo-modo" onchange="onCampAlvoModoChange()">
-              <option value="todos">Todo mundo</option>
-              <option value="equipes">Equipes específicas</option>
-              <option value="usuarios">Vendedores específicos</option>
-            </select>
-          </div>
+          <div class="fld"><label>Título *</label><input class="inp" id="camp-titulo" placeholder="Ex: ATIVOU, GANHOU!"></div>
+          <div class="fld"><label>Subtítulo</label><input class="inp" id="camp-subtitulo" placeholder="Ex: Ative suas cotas e ganhe prêmio por cota ativada"></div>
+        </div>
+        <div class="fld"><label>Descrição (resumo exibido no card)</label><textarea class="inp" id="camp-desc" placeholder="O que é a campanha, quem participa, como ganhar..." style="min-height:70px"></textarea></div>
+        <div class="fld"><label>Premiação (valores, por cota, faixas)</label><textarea class="inp" id="camp-premiacao" placeholder="Ex: Cota de R$ 50 mil a R$ 99 mil: R$ 100 por cota ativada&#10;Cota a partir de R$ 100 mil: R$ 200 por cota ativada" style="min-height:70px"></textarea></div>
+        <div class="fld"><label>Regulamento (texto completo, vira documento assinado)</label><textarea class="inp" id="camp-regulamento" placeholder="Participantes, período, critérios de apuração (venda aprovada, pagamento confirmado), desclassificação, pagamento do prêmio, casos omissos..." style="min-height:160px"></textarea></div>
+        <div class="fld-row">
+          <div class="fld"><label>Início</label><input class="inp" type="date" id="camp-inicio"></div>
+          <div class="fld"><label>Válida até</label><input class="inp" type="date" id="camp-validade"></div>
+        </div>
+        <div class="fld-row">
+          <div class="fld"><label>Meta de cotas (opcional)</label><input class="inp" type="number" min="0" id="camp-meta-cotas" placeholder="Ex: 10"></div>
+          <div class="fld"><label>Meta de crédito em R$ (opcional)</label><input class="inp" type="number" min="0" step="0.01" id="camp-meta-credito" placeholder="Ex: 500000"></div>
+        </div>
+        <div class="fld">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="camp-exige-aceite" style="accent-color:var(--gold);width:15px;height:15px"> Exigir leitura e aceite do regulamento (assinatura eletrônica com CPF, data, hora e IP)</label>
+        </div>
+        <div class="fld"><label>Mostrar para</label>
+          <select class="inp" id="camp-alvo-modo" onchange="onCampAlvoModoChange()">
+            <option value="todos">Todo mundo</option>
+            <option value="equipes">Equipes específicas</option>
+            <option value="usuarios">Vendedores específicos</option>
+          </select>
         </div>
         <div class="fld" id="camp-alvo-equipes-wrap" style="display:none">
           <label>Equipes</label>
@@ -1170,7 +1236,12 @@ document.addEventListener('DOMContentLoaded', function(){
           <div id="camp-alvo-usuarios-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 12px"></div>
         </div>
         <div class="fld">
-          <label>Arquivos (opcional)</label>
+          <label>Banner (imagem do card)</label>
+          <input type="file" id="camp-banner" accept="image/*" style="font-size:12px">
+          <div id="camp-banner-atual" style="font-size:11px;color:var(--muted2);margin-top:4px"></div>
+        </div>
+        <div class="fld">
+          <label>Arquivos anexos (opcional)</label>
           <div class="upload-zone" id="camp-zone">
             <input type="file" id="camp-files" multiple onchange="handleCampanhaFiles(this.files)">
             <div class="upload-icon">📎</div>
@@ -1181,18 +1252,22 @@ document.addEventListener('DOMContentLoaded', function(){
         </div>
         <div id="camp-form-status" style="font-size:12px;margin-top:6px"></div>
         <div class="modal-btns" style="border-top:none;padding-top:6px">
-          <button class="btn-save" onclick="criarCampanha()">Publicar Campanha</button>
+          <button class="btn-sm" id="camp-cancel-edit" style="display:none" onclick="cancelarEdicaoCampanha()">Cancelar edição</button>
+          <button class="btn-save" id="camp-save-btn" onclick="criarCampanha()">Publicar Campanha</button>
         </div>
       </div>
     </div>
 
-    <div class="filter-bar" style="margin-bottom:0">
-      <div style="display:flex;gap:6px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
+    <div class="filter-bar" style="margin-bottom:0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div class="cc-tabs">
         <button id="camp-btn-ativas" class="tab on" onclick="setCampanhaFilter('ativas')">Ativas</button>
-        <button id="camp-btn-inativas" class="tab" onclick="setCampanhaFilter('inativas')">Inativas</button>
+        <button id="camp-btn-proximas" class="tab" onclick="setCampanhaFilter('proximas')">Próximas</button>
+        <button id="camp-btn-encerradas" class="tab" onclick="setCampanhaFilter('encerradas')">Encerradas</button>
+        <button id="camp-btn-resultados" class="tab" onclick="setCampanhaFilter('resultados')">Meus resultados</button>
       </div>
+      <button class="btn-sm" id="camp-btn-nova" style="display:none" onclick="toggleFormCampanha()">+ Nova campanha</button>
     </div>
-    <div id="campanhas-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:16px"></div>
+    <div id="campanhas-grid" class="cc-grid"></div>
   </div>
 
   <!-- EQUIPES -->
@@ -5103,6 +5178,7 @@ async function openDetail(id,from){
   if(venda){
     html+=`<div style="padding:16px 18px;border-bottom:1px solid var(--border)">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim);margin-bottom:12px">Dados da Venda · <span class="badge ${venda.status_venda==='Aprovado'?'b-aprov':venda.status_venda==='Cancelado'?'b-canc':venda.status_venda==='SemRetorno'?'b-semret':'b-pend'}">${venda.status_venda==='SemRetorno'?'Cancelados':venda.status_venda==='Cancelado'?'Reprovado':(venda.status_venda||'Pendente')}</span></div>
+      <div id="venda-acompanhamento" data-venda="${venda.id}" style="margin-bottom:16px"><div class="empty" style="padding:10px">Carregando acompanhamento...</div></div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12.5px">
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">${venda.tipo_pessoa==='PJ'?'CNPJ':'CPF'}</div><strong>${fmtCPF(venda.cpf)||'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Nascimento</div><strong>${venda.data_nascimento?fmtDateStr(venda.data_nascimento):'—'}</strong></div>
@@ -5117,8 +5193,9 @@ async function openDetail(id,from){
         ${docSectionHeaderHtml('Documentos',docs.length)}
         ${docs.map(d=>docItemHtml(d,isAdminOrCoord())).join('')}
       </div>`:''}
+      <div id="venda-comprovantes" data-venda="${venda.id}" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div class="empty" style="padding:10px">Carregando comprovantes...</div></div>
       ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-        ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">Aprovado</span>'}
+        ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar documentação</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">Aprovado</span>'}
         ${venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">Reprovar</button>`:'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">Reprovado</span>'}
         ${venda.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${venda.id}','Pendente')">Voltar para Pendente</button>`:''}
         ${isAdmin()?`<button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">Reverter para Lead</button>`:''}
@@ -5292,6 +5369,7 @@ async function openDetail(id,from){
   document.getElementById('lead-detail-wrap').innerHTML=html;
   nav('lead-detail',null);
   if(venda) renderComentariosVenda(venda.id);
+  if(venda) renderVendaFluxo(venda.id);
   if(_docViewMode==='feed') renderDocPreviews(docs);
 }
 
@@ -6731,6 +6809,241 @@ function fecharQuestionarioPopup(){
   // o questionário continuar no ar e a pessoa não tiver respondido de fato.
 }
 
+/* ═══════════════════════════════════════════════════════════
+   FLUXO DA VENDA: acompanhamento em 5 etapas + comprovantes de parcela (2ª a 6ª)
+   Tabelas: crm_venda_etapas (etapas 2–5; a 1 é o created_at da venda) e
+   crm_venda_comprovantes (bucket privado 'crm-comprovantes', caminho <venda_id>/<arquivo>).
+   A venda nasce Pendente e só vira Aprovada quando admin/pós-venda confere a documentação
+   (a trava está no banco: vendedor não consegue aprovar nem pela API).
+   ═══════════════════════════════════════════════════════════ */
+const PRAZO_COMPROVANTE_DIA=20;
+const ETAPAS_VENDA=[
+  {key:'registro',   n:1, titulo:'Venda Registrada',            sub:'Vendedor registrou a venda e anexou os documentos'},
+  {key:'documentacao',n:2,titulo:'Conferência de Documentação', sub:'Pós-venda confere os documentos e aprova a venda'},
+  {key:'pagamento',  n:3, titulo:'Confirmação de Pagamento',    sub:'Pagamento da 1ª parcela confirmado'},
+  {key:'posvenda',   n:4, titulo:'Pós-venda',                   sub:'Contato e acompanhamento do cliente'},
+  {key:'alocacao',   n:5, titulo:'Alocação',                    sub:'Cota alocada ao cliente'}
+];
+function _fEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function _fData(iso){return iso?new Date(iso).toLocaleDateString('pt-BR')+' '+new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';}
+function _podeConferirVenda(){return isAdmin()||isCoordenador();}
+
+async function renderVendaFluxo(vendaId){
+  const venda=allVendas.find(v=>v.id===vendaId);
+  if(!venda) return;
+  let etapas={},comps=[],erro=null;
+  try{
+    const [r1,r2]=await Promise.all([
+      sb.from('crm_venda_etapas').select('*').eq('venda_id',vendaId),
+      sb.from('crm_venda_comprovantes').select('*').eq('venda_id',vendaId).order('enviado_em',{ascending:true})
+    ]);
+    if(r1.error) throw r1.error;
+    if(r2.error) throw r2.error;
+    (r1.data||[]).forEach(e=>{etapas[e.etapa]=e;});
+    comps=r2.data||[];
+  }catch(e){ erro=e; console.warn('[fluxo venda]',e.message); }
+  const boxA=document.getElementById('venda-acompanhamento');
+  const boxC=document.getElementById('venda-comprovantes');
+  if(!boxA||boxA.dataset.venda!==vendaId) return;
+  if(erro){
+    const msg='<div style="font-size:12px;color:var(--muted2)">Acompanhamento indisponível no momento ('+_fEsc(erro.message||'erro')+').</div>';
+    boxA.innerHTML=msg; if(boxC) boxC.innerHTML=''; return;
+  }
+  boxA.innerHTML=_vendaTimelineHtml(venda,etapas,comps);
+  if(boxC) boxC.innerHTML=_vendaComprovantesHtml(venda,comps);
+}
+
+function _vendaTimelineHtml(venda,etapas,comps){
+  const cancelada=venda.status_venda==='Cancelado'||venda.status_venda==='SemRetorno';
+  const done={
+    registro:{em:venda.created_at,por:findUser(venda.vendedor_id)?.name},
+    documentacao:etapas.documentacao?{em:etapas.documentacao.concluida_em,por:findUser(etapas.documentacao.concluida_por)?.name}:null,
+    pagamento:etapas.pagamento?{em:etapas.pagamento.concluida_em,por:findUser(etapas.pagamento.concluida_por)?.name}:null,
+    posvenda:etapas.posvenda?{em:etapas.posvenda.concluida_em,por:findUser(etapas.posvenda.concluida_por)?.name}:null,
+    alocacao:etapas.alocacao?{em:etapas.alocacao.concluida_em,por:findUser(etapas.alocacao.concluida_por)?.name}:null
+  };
+  // Etapa atual = primeira não concluída (a venda cancelada para na conferência)
+  const atual=ETAPAS_VENDA.find(s=>!done[s.key]);
+  const pode=_podeConferirVenda();
+  const stepHtml=ETAPAS_VENDA.map((s,i)=>{
+    const d=done[s.key];
+    const isAtual=atual&&atual.key===s.key;
+    let estado='fut',rot='Aguardando';
+    if(d){estado='ok';rot='Concluída';}
+    else if(isAtual&&cancelada){estado='bad';rot=venda.status_venda==='Cancelado'?'Reprovada':'Cancelada';}
+    else if(isAtual){estado='cur';rot=s.key==='documentacao'?'Pendente':'Em andamento';}
+    const quando=d?`<div class="fl-when">${_fData(d.em)}${d.por?'<br>'+_fEsc(d.por):''}</div>`:'';
+    const desfazer=(d&&pode&&['pagamento','posvenda','alocacao'].includes(s.key)&&(
+        (s.key==='pagamento'&&!done.posvenda)||(s.key==='posvenda'&&!done.alocacao)||s.key==='alocacao'))
+      ?`<button class="fl-undo" onclick="desfazerEtapaVenda('${venda.id}','${s.key}')" title="Desfazer esta etapa">desfazer</button>`:'';
+    return `<div class="fl-step fl-${estado}">
+      <div class="fl-dot">${estado==='ok'?'✓':estado==='bad'?'✕':s.n}</div>
+      <div class="fl-name">${s.titulo}</div>
+      <div class="fl-state">${rot}</div>
+      ${quando}${desfazer}
+    </div>${i<ETAPAS_VENDA.length-1?`<div class="fl-line ${done[s.key]?'on':''}"></div>`:''}`;
+  }).join('');
+
+  // Barra "Próximo passo"
+  let barTxt='',barBtn='',barCls='';
+  if(cancelada){
+    barCls='bad';
+    barTxt=venda.status_venda==='Cancelado'?'Venda reprovada pelo pós-venda. Corrija a documentação e peça nova conferência.':'Venda marcada como Sem Retorno.';
+  }else if(!atual){
+    barCls='ok';barTxt='Venda concluída: documentação conferida, pagamento confirmado e cota alocada.';
+  }else{
+    const msgs={
+      documentacao:{txt:'Próximo passo: o pós-venda confere a documentação anexada e aprova a venda.',btn:pode?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar documentação</button>`:''},
+      pagamento:{txt:'Próximo passo: confirmar o pagamento da 1ª parcela.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','pagamento')">Confirmar pagamento</button>`:''},
+      posvenda:{txt:'Próximo passo: concluir o contato de pós-venda com o cliente.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','posvenda')">Concluir pós-venda</button>`:''},
+      alocacao:{txt:'Próximo passo: alocar a cota ao cliente.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','alocacao')">Registrar alocação</button>`:''}
+    };
+    const m=msgs[atual.key];
+    barTxt=m.txt+(pode?'':' (responsável: pós-venda)');
+    barBtn=m.btn;
+  }
+  const pendComp=comps.filter(c=>c.status==='pendente'&&c.tipo==='comprovante').length;
+  const verComp=`<button class="act" onclick="document.getElementById('venda-comprovantes')?.scrollIntoView({behavior:'smooth',block:'start'})">Ver Comprovante / Status${pendComp?` (${pendComp} p/ conferir)`:''}</button>`;
+  return `<div class="fl-wrap">
+    <div class="fl-title">Acompanhamento da venda</div>
+    <div class="fl-steps">${stepHtml}</div>
+    <div class="fl-next ${barCls}"><div class="fl-next-txt">${_fEsc(barTxt)}</div><div class="fl-next-act">${barBtn}${verComp}</div></div>
+  </div>`;
+}
+
+async function avancarEtapaVenda(vendaId,etapa){
+  if(!_podeConferirVenda()) return;
+  const venda=allVendas.find(v=>v.id===vendaId);
+  if(!venda||venda.status_venda!=='Aprovado'){ toast('Aprove a documentação da venda antes de avançar.','err'); return; }
+  const{error}=await sb.from('crm_venda_etapas').upsert({venda_id:vendaId,etapa,concluida_por:CU.id,concluida_em:new Date().toISOString()},{onConflict:'venda_id,etapa'});
+  if(error){ toast('Erro ao avançar etapa: '+error.message,'err'); return; }
+  const rot={pagamento:'Pagamento confirmado',posvenda:'Pós-venda concluído',alocacao:'Alocação registrada'}[etapa]||etapa;
+  if(venda.lead_id){
+    sb.from('crm_historico').insert({lead_id:venda.lead_id,user_id:CU.id,tipo:'Venda '+rot,descricao:`${rot} por ${CUProfile?.name||CU.email}.`,created_at:new Date().toISOString()}).then(()=>{});
+  }
+  toast(rot+'.','ok');
+  renderVendaFluxo(vendaId);
+}
+async function desfazerEtapaVenda(vendaId,etapa){
+  if(!_podeConferirVenda()) return;
+  if(!confirm('Desfazer esta etapa?')) return;
+  const{error}=await sb.from('crm_venda_etapas').delete().eq('venda_id',vendaId).eq('etapa',etapa);
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  renderVendaFluxo(vendaId);
+}
+
+/* ── Comprovantes da 2ª à 6ª parcela ── */
+function _vendaComprovantesHtml(venda,comps){
+  const pode=_podeConferirVenda();
+  const ehSupervisor=CUProfile?.role==='supervisor';
+  const podeEnviar=pode||ehSupervisor||venda.vendedor_id===CU.id;
+  const hoje=new Date();
+  const badge=c=>{
+    if(c.tipo==='inadimplencia') return '<span class="badge b-canc">Inadimplência informada</span>';
+    return c.status==='aprovado'?'<span class="badge b-aprov">Conferido</span>'
+      :c.status==='recusado'?'<span class="badge b-canc">Recusado</span>'
+      :'<span class="badge b-pend">Aguardando conferência</span>';
+  };
+  const linhas=[2,3,4,5,6].map(n=>{
+    const lista=comps.filter(c=>c.numero_parcela===n);
+    const ok=lista.some(c=>c.tipo==='comprovante'&&c.status==='aprovado');
+    const env=lista.some(c=>c.tipo==='comprovante'&&c.status==='pendente');
+    const inad=!ok&&lista.length&&lista[lista.length-1].tipo==='inadimplencia';
+    const estado=ok?'<span class="badge b-aprov">Paga</span>':inad?'<span class="badge b-canc">Inadimplente</span>':env?'<span class="badge b-pend">Em conferência</span>':'<span class="badge" style="background:var(--surface2);color:var(--muted2)">Sem comprovante</span>';
+    const itens=lista.map(c=>`<div class="cp-item">
+      <div class="cp-main">
+        ${badge(c)}
+        ${c.storage_path?`<a href="#" onclick="abrirComprovante('${escJs(c.storage_path)}');return false" class="cp-file">${_fEsc(c.nome_arquivo||'comprovante')}</a>`:''}
+        <span class="cp-meta">${_fData(c.enviado_em)} · ${_fEsc(findUser(c.enviado_por)?.name||'—')}</span>
+      </div>
+      ${c.observacao?`<div class="cp-obs">${_fEsc(c.observacao)}</div>`:''}
+      ${c.status==='recusado'&&c.motivo_recusa?`<div class="cp-obs" style="color:var(--red)">Motivo: ${_fEsc(c.motivo_recusa)}</div>`:''}
+      ${c.conferido_por?`<div class="cp-meta">Conferido por ${_fEsc(findUser(c.conferido_por)?.name||'—')} em ${_fData(c.conferido_em)}</div>`:''}
+      <div class="cp-actions">
+        ${pode&&c.tipo==='comprovante'&&c.status!=='aprovado'?`<button class="act green" onclick="conferirComprovante('${c.id}','aprovado','${venda.id}')">Aprovar</button>`:''}
+        ${pode&&c.tipo==='comprovante'&&c.status!=='recusado'?`<button class="act red" onclick="conferirComprovante('${c.id}','recusado','${venda.id}')">Recusar</button>`:''}
+        ${(pode||(c.enviado_por===CU.id&&c.status==='pendente'))?`<button class="act red" onclick="removerComprovante('${c.id}','${venda.id}','${escJs(c.storage_path||'')}')" title="Remover">🗑️</button>`:''}
+      </div>
+    </div>`).join('');
+    return `<div class="cp-row">
+      <div class="cp-head"><strong>${n}ª parcela</strong> ${estado}
+        ${podeEnviar?`<span class="cp-btns">
+          <label class="btn-sm" style="cursor:pointer">+ Anexar comprovante
+            <input type="file" accept="image/*,application/pdf" style="display:none" onchange="enviarComprovanteParcela('${venda.id}','${venda.lead_id||''}',${n},this.files[0]);this.value=''">
+          </label>
+          ${ok?'':`<button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="informarInadimplencia('${venda.id}','${venda.lead_id||''}',${n})">Informar inadimplência</button>`}
+        </span>`:''}
+      </div>
+      ${itens}
+    </div>`;
+  }).join('');
+  const totalOk=[2,3,4,5,6].filter(n=>comps.some(c=>c.numero_parcela===n&&c.tipo==='comprovante'&&c.status==='aprovado')).length;
+  return `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold-dim)">Comprovantes de parcelas (2ª a 6ª)</div>
+      <span style="font-size:11px;color:var(--muted2)">${totalOk} de 5 conferidos</span>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted2);margin-bottom:10px;line-height:1.5">Anexe o comprovante de cada parcela <strong>antes do dia ${PRAZO_COMPROVANTE_DIA}</strong>. Se o cliente não pagou, use "Informar inadimplência" para o pós-venda agir.</div>
+    ${linhas}`;
+}
+
+async function enviarComprovanteParcela(vendaId,leadId,n,file){
+  if(!file) return;
+  if(file.size>15*1024*1024){ toast('Arquivo maior que 15 MB.','err'); return; }
+  const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80);
+  const path=`${vendaId}/p${n}-${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
+  toast('Enviando comprovante...','ok');
+  const{error:upErr}=await sb.storage.from('crm-comprovantes').upload(path,file,{upsert:false});
+  if(upErr){ toast('Erro ao enviar: '+upErr.message,'err'); return; }
+  const{error}=await sb.from('crm_venda_comprovantes').insert({
+    venda_id:vendaId,lead_id:leadId||null,numero_parcela:n,tipo:'comprovante',
+    storage_path:path,nome_arquivo:file.name,mime:file.type||null,tamanho:file.size,enviado_por:CU.id
+  });
+  if(error){
+    await sb.storage.from('crm-comprovantes').remove([path]).catch(()=>{});
+    toast('Erro ao registrar comprovante: '+error.message,'err'); return;
+  }
+  if(leadId) sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'Comprovante de parcela',descricao:`Comprovante da ${n}ª parcela anexado por ${CUProfile?.name||CU.email}.`,created_at:new Date().toISOString()}).then(()=>{});
+  toast('Comprovante enviado para conferência.','ok');
+  renderVendaFluxo(vendaId);
+}
+async function informarInadimplencia(vendaId,leadId,n){
+  const obs=prompt(`Cliente não pagou a ${n}ª parcela. Explique o que aconteceu (opcional):`);
+  if(obs===null) return;
+  const{error}=await sb.from('crm_venda_comprovantes').insert({
+    venda_id:vendaId,lead_id:leadId||null,numero_parcela:n,tipo:'inadimplencia',observacao:obs.trim()||null,enviado_por:CU.id
+  });
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  if(leadId) sb.from('crm_historico').insert({lead_id:leadId,user_id:CU.id,tipo:'Inadimplência',descricao:`Inadimplência da ${n}ª parcela informada por ${CUProfile?.name||CU.email}.${obs.trim()?' '+obs.trim():''}`,created_at:new Date().toISOString()}).then(()=>{});
+  toast('Inadimplência informada ao pós-venda.','ok');
+  renderVendaFluxo(vendaId);
+}
+async function conferirComprovante(id,status,vendaId){
+  if(!_podeConferirVenda()) return;
+  let motivo=null;
+  if(status==='recusado'){
+    motivo=prompt('Motivo da recusa (o vendedor verá):');
+    if(motivo===null) return;
+    if(!motivo.trim()){ toast('Informe o motivo da recusa.','err'); return; }
+  }
+  const{error}=await sb.from('crm_venda_comprovantes').update({status,motivo_recusa:motivo?motivo.trim():null,conferido_por:CU.id,conferido_em:new Date().toISOString()}).eq('id',id);
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  toast(status==='aprovado'?'Comprovante conferido.':'Comprovante recusado.','ok');
+  renderVendaFluxo(vendaId);
+}
+async function removerComprovante(id,vendaId,path){
+  if(!confirm('Remover este registro?')) return;
+  const{error}=await sb.from('crm_venda_comprovantes').delete().eq('id',id);
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  if(path) await sb.storage.from('crm-comprovantes').remove([path]).catch(()=>{});
+  renderVendaFluxo(vendaId);
+}
+async function abrirComprovante(path){
+  const{data,error}=await sb.storage.from('crm-comprovantes').createSignedUrl(path,600);
+  if(error||!data?.signedUrl){ toast('Não foi possível abrir o arquivo.','err'); return; }
+  window.open(data.signedUrl,'_blank','noopener');
+}
+
+
 /* ═══ CAMPANHAS ═══
    Diferente de Transmissões: não tem "modo teste" — publica direto pro
    público escolhido. RLS decide quem enxerga cada linha (mesmo padrão:
@@ -6741,14 +7054,7 @@ let allCampanhas=[];
 let _campanhaFilter='ativas';
 let campPendingFiles=[];
 
-function _campanhaEstaAtiva(c){
-  if(!c.ativo) return false;
-  if(c.validade){
-    const hoje=new Date().toISOString().slice(0,10);
-    if(c.validade<hoje) return false;
-  }
-  return true;
-}
+function _campanhaEstaAtiva(c){ return _campFase(c)==='ativa'; }
 
 function handleCampanhaFiles(files){
   if(!files||!files.length) return;
@@ -6802,73 +7108,177 @@ function renderCampAlvoUsuarios(){
     </label>`).join('');
 }
 
+let _campAceitesMeus={};   // campanha_id -> aceite vigente (da versão atual) do usuário logado
+function _hojeISO(){ return new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function _campFase(c){
+  if(!c.ativo) return 'encerrada';
+  const hoje=_hojeISO();
+  if(c.validade&&c.validade<hoje) return 'encerrada';
+  if(c.inicio&&c.inicio>hoje) return 'proxima';
+  return 'ativa';
+}
+function _campData(d){ return d?new Date(d+'T00:00:00').toLocaleDateString('pt-BR'):''; }
+function _campPeriodo(c){
+  const a=_campData(c.inicio),b=_campData(c.validade);
+  if(a&&b) return a+' a '+b;
+  if(b) return 'até '+b;
+  if(a) return 'a partir de '+a;
+  return 'sem data de término';
+}
+function _campBannerUrl(c){
+  if(!c.banner_path) return null;
+  const{data}=sb.storage.from('crm-campanhas').getPublicUrl(c.banner_path);
+  return data?.publicUrl||null;
+}
+function _campAceiteStatus(c){
+  if(!c.exige_aceite) return null;
+  if(c.criado_por===CU.id) return null;
+  const a=_campAceitesMeus[c.id];
+  if(!a) return {t:'pendente',txt:'Aceite pendente'};
+  return a.decisao==='aceito'?{t:'ok',txt:'Regulamento aceito em '+new Date(a.criado_em).toLocaleDateString('pt-BR')}:{t:'rec',txt:'Você não aceitou'};
+}
+
 async function criarCampanha(){
   if(!isAdmin()) return;
-  const titulo=document.getElementById('camp-titulo').value.trim();
-  const desc=document.getElementById('camp-desc').value.trim();
+  const editId=document.getElementById('camp-edit-id').value||null;
+  const v=id=>document.getElementById(id).value.trim();
+  const titulo=v('camp-titulo');
+  const subtitulo=v('camp-subtitulo')||null;
+  const desc=v('camp-desc')||null;
+  const premiacao=v('camp-premiacao')||null;
+  const regulamento=v('camp-regulamento')||null;
+  const inicio=document.getElementById('camp-inicio').value||null;
   const validade=document.getElementById('camp-validade').value||null;
+  const metaCotas=document.getElementById('camp-meta-cotas').value;
+  const metaCred=document.getElementById('camp-meta-credito').value;
+  const exige=document.getElementById('camp-exige-aceite').checked;
   const modo=document.getElementById('camp-alvo-modo').value;
   const statusEl=document.getElementById('camp-form-status');
-  if(!titulo){ statusEl.style.color='var(--red)'; statusEl.textContent='Título é obrigatório.'; return; }
+  const erro=m=>{ statusEl.style.color='var(--red)'; statusEl.textContent=m; };
+  if(!titulo) return erro('Título é obrigatório.');
+  if(exige&&!regulamento) return erro('Para exigir aceite, escreva o regulamento.');
+  if(inicio&&validade&&validade<inicio) return erro('A data final não pode ser anterior ao início.');
   let equipes_alvo=[],usuarios_alvo=[];
   if(modo==='equipes'){
     equipes_alvo=[...document.querySelectorAll('.camp-eq-chk:checked')].map(c=>c.value);
-    if(!equipes_alvo.length){ statusEl.style.color='var(--red)'; statusEl.textContent='Selecione ao menos uma equipe.'; return; }
+    if(!equipes_alvo.length) return erro('Selecione ao menos uma equipe.');
   } else if(modo==='usuarios'){
     usuarios_alvo=[...document.querySelectorAll('.camp-us-chk:checked')].map(c=>c.value);
-    if(!usuarios_alvo.length){ statusEl.style.color='var(--red)'; statusEl.textContent='Selecione ao menos um vendedor.'; return; }
+    if(!usuarios_alvo.length) return erro('Selecione ao menos um vendedor.');
+  }
+  const campAtual=editId?allCampanhas.find(c=>c.id===editId):null;
+  if(campAtual&&campAtual.exige_aceite&&(campAtual.titulo!==titulo||(campAtual.premiacao||null)!==premiacao||(campAtual.regulamento||null)!==regulamento)){
+    if(!confirm('Alterar título, premiação ou regulamento cria uma nova versão: todos precisarão aceitar de novo. Continuar?')) return;
   }
   statusEl.style.color='var(--muted2)';
-  statusEl.textContent='Publicando campanha...';
+  statusEl.textContent=editId?'Salvando alterações...':'Publicando campanha...';
   try{
-    const{data:camp,error:campErr}=await sb.from('crm_campanhas').insert({
-      criado_por:CU.id,titulo,descricao:desc||null,validade,
-      alvo:modo,equipes_alvo,usuarios_alvo,ativo:true
-    }).select().maybeSingle();
-    if(campErr) throw campErr;
-    // Sobe os anexos DEPOIS de a campanha existir (precisa do id pra vincular).
-    // Falha em um arquivo não derruba os outros — cada upload é isolado.
+    const dados={
+      titulo,subtitulo,descricao:desc,premiacao,regulamento,inicio,validade,exige_aceite:exige,
+      meta_cotas:metaCotas!==''?parseInt(metaCotas,10):null,
+      meta_credito:metaCred!==''?Number(metaCred):null,
+      alvo:modo,equipes_alvo,usuarios_alvo
+    };
+    let camp;
+    if(editId){
+      const{data,error}=await sb.from('crm_campanhas').update(dados).eq('id',editId).select().maybeSingle();
+      if(error) throw error;
+      camp=data;
+    }else{
+      const{data,error}=await sb.from('crm_campanhas').insert({...dados,criado_por:CU.id,ativo:true}).select().maybeSingle();
+      if(error) throw error;
+      camp=data;
+    }
     const falhas=[];
+    // Banner
+    const bannerFile=document.getElementById('camp-banner').files[0];
+    if(bannerFile&&camp){
+      try{
+        const safeName=bannerFile.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80);
+        const path=`banners/${camp.id}-${Date.now()}-${safeName}`;
+        const{error:upErr}=await sb.storage.from('crm-campanhas').upload(path,bannerFile,{upsert:false});
+        if(upErr) throw upErr;
+        const{error:bErr}=await sb.from('crm_campanhas').update({banner_path:path}).eq('id',camp.id);
+        if(bErr) throw bErr;
+      }catch(be){ falhas.push('banner'); }
+    }
+    // Anexos (cada upload isolado: falha de um não derruba os outros)
     for(const file of campPendingFiles){
       try{
         const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80);
         const path=`${camp.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
         const{error:upErr}=await sb.storage.from('crm-campanhas').upload(path,file,{upsert:false});
         if(upErr){ falhas.push(file.name); continue; }
-        await sb.from('crm_campanha_anexos').insert({
-          campanha_id:camp.id,nome_arquivo:file.name,storage_path:path,tamanho:file.size
-        });
+        await sb.from('crm_campanha_anexos').insert({campanha_id:camp.id,nome_arquivo:file.name,storage_path:path,tamanho:file.size});
       }catch(fe){ falhas.push(file.name); }
     }
     statusEl.style.color=falhas.length?'var(--red)':'var(--green)';
-    statusEl.textContent=falhas.length
-      ? `Campanha publicada, mas falhou ao anexar: ${falhas.join(', ')}`
-      : 'Campanha publicada!';
-    document.getElementById('camp-titulo').value='';
-    document.getElementById('camp-desc').value='';
-    document.getElementById('camp-validade').value='';
-    document.getElementById('camp-alvo-modo').value='todos';
-    onCampAlvoModoChange();
-    campPendingFiles=[];
-    renderCampFilesPreview();
+    statusEl.textContent=falhas.length?`Salva, mas falhou ao enviar: ${falhas.join(', ')}`:(editId?'Campanha atualizada!':'Campanha publicada!');
+    resetFormCampanha(true);
     renderCampanhas();
   }catch(e){
-    console.error('[campanha] erro ao publicar:',e.message);
-    statusEl.style.color='var(--red)';
-    statusEl.textContent='Erro ao publicar: '+(e.message||'desconhecido');
+    console.error('[campanha] erro ao salvar:',e.message);
+    erro('Erro ao salvar: '+(e.message||'desconhecido'));
   }
+}
+
+function resetFormCampanha(keepStatus){
+  ['camp-edit-id','camp-titulo','camp-subtitulo','camp-desc','camp-premiacao','camp-regulamento','camp-inicio','camp-validade','camp-meta-cotas','camp-meta-credito'].forEach(i=>{ const el=document.getElementById(i); if(el) el.value=''; });
+  document.getElementById('camp-exige-aceite').checked=false;
+  document.getElementById('camp-alvo-modo').value='todos';
+  document.getElementById('camp-banner').value='';
+  document.getElementById('camp-banner-atual').textContent='';
+  onCampAlvoModoChange();
+  campPendingFiles=[];
+  renderCampFilesPreview();
+  document.getElementById('camp-form-title').textContent='Nova Campanha';
+  document.getElementById('camp-save-btn').textContent='Publicar Campanha';
+  document.getElementById('camp-cancel-edit').style.display='none';
+  if(!keepStatus) document.getElementById('camp-form-status').textContent='';
+}
+function toggleFormCampanha(){
+  const p=document.getElementById('campanha-form-panel');
+  const abrir=p.style.display==='none';
+  if(abrir) resetFormCampanha(false);
+  p.style.display=abrir?'':'none';
+}
+function cancelarEdicaoCampanha(){
+  resetFormCampanha(false);
+  document.getElementById('campanha-form-panel').style.display='none';
+}
+function editarCampanha(id){
+  if(!isAdmin()) return;
+  const c=allCampanhas.find(x=>x.id===id); if(!c) return;
+  const p=document.getElementById('campanha-form-panel');
+  p.style.display='';
+  resetFormCampanha(false);
+  const set=(i,val)=>{ document.getElementById(i).value=val==null?'':val; };
+  set('camp-edit-id',c.id); set('camp-titulo',c.titulo); set('camp-subtitulo',c.subtitulo); set('camp-desc',c.descricao);
+  set('camp-premiacao',c.premiacao); set('camp-regulamento',c.regulamento); set('camp-inicio',c.inicio); set('camp-validade',c.validade);
+  set('camp-meta-cotas',c.meta_cotas); set('camp-meta-credito',c.meta_credito);
+  document.getElementById('camp-exige-aceite').checked=!!c.exige_aceite;
+  document.getElementById('camp-alvo-modo').value=c.alvo||'todos';
+  onCampAlvoModoChange();
+  if(c.alvo==='equipes') document.querySelectorAll('.camp-eq-chk').forEach(ch=>{ ch.checked=(c.equipes_alvo||[]).includes(ch.value); });
+  if(c.alvo==='usuarios') document.querySelectorAll('.camp-us-chk').forEach(ch=>{ ch.checked=(c.usuarios_alvo||[]).includes(ch.value); });
+  document.getElementById('camp-banner-atual').textContent=c.banner_path?'Já tem banner. Escolha outra imagem só se quiser trocar.':'';
+  document.getElementById('camp-form-title').textContent='Editar campanha';
+  document.getElementById('camp-save-btn').textContent='Salvar alterações';
+  document.getElementById('camp-cancel-edit').style.display='';
+  p.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 function setCampanhaFilter(f){
   _campanhaFilter=f;
-  document.getElementById('camp-btn-ativas').classList.toggle('on',f==='ativas');
-  document.getElementById('camp-btn-inativas').classList.toggle('on',f==='inativas');
+  ['ativas','proximas','encerradas','resultados'].forEach(k=>document.getElementById('camp-btn-'+k)?.classList.toggle('on',k===f));
   renderCampanhasGrid();
 }
 
 async function renderCampanhas(){
   const formPanel=document.getElementById('campanha-form-panel');
-  if(formPanel) formPanel.style.display=isAdmin()?'':'none';
+  const btnNova=document.getElementById('camp-btn-nova');
+  if(!isAdmin()){ if(formPanel) formPanel.style.display='none'; }
+  if(btnNova) btnNova.style.display=isAdmin()?'':'none';
   const grid=document.getElementById('campanhas-grid');
   if(grid) grid.innerHTML='<div style="color:var(--muted2);font-size:13px;padding:20px">Carregando campanhas...</div>';
   try{
@@ -6881,51 +7291,228 @@ async function renderCampanhas(){
       const byCamp={};
       (anexos||[]).forEach(a=>{ (byCamp[a.campanha_id]=byCamp[a.campanha_id]||[]).push(a); });
       allCampanhas.forEach(c=>{ c._anexos=byCamp[c.id]||[]; });
+      // Aceites do próprio usuário (só da versão vigente do regulamento)
+      _campAceitesMeus={};
+      const{data:ac,error:acErr}=await sb.from('crm_campanha_aceites').select('*').eq('user_id',CU.id).is('anulado_em',null).in('campanha_id',ids);
+      if(acErr) console.warn('[campanhas] aceites:',acErr.message);
+      (ac||[]).forEach(a=>{
+        const c=allCampanhas.find(x=>x.id===a.campanha_id);
+        if(c&&a.versao===(c.versao_regulamento||1)) _campAceitesMeus[a.campanha_id]=a;
+      });
     }
     renderCampanhasGrid();
+    const pend=allCampanhas.filter(c=>_campFase(c)==='ativa'&&_campAceiteStatus(c)?.t==='pendente');
+    if(pend.length&&!window._campAvisoPend){ window._campAvisoPend=true; toast(`Você tem ${pend.length} campanha(s) aguardando leitura e aceite do regulamento.`,'ok'); }
   }catch(e){
     console.warn('[campanhas] erro ao carregar:',e.message);
-    if(grid) grid.innerHTML='<div style="color:var(--red);font-size:13px;padding:20px">Erro ao carregar: '+(e.message||'desconhecido')+'</div>';
+    if(grid) grid.innerHTML='<div style="color:var(--red);font-size:13px;padding:20px">Erro ao carregar: '+_fEsc(e.message||'desconhecido')+'</div>';
   }
 }
 
 function renderCampanhasGrid(){
   const grid=document.getElementById('campanhas-grid');
   if(!grid) return;
-  const list=allCampanhas.filter(c=>_campanhaFilter==='ativas'?_campanhaEstaAtiva(c):!_campanhaEstaAtiva(c));
+  if(_campanhaFilter==='resultados'){ renderCampResultados(); return; }
+  const fase={ativas:'ativa',proximas:'proxima',encerradas:'encerrada'}[_campanhaFilter]||'ativa';
+  const nomes={ativa:'ativa',proxima:'próxima',encerrada:'encerrada'};
+  const list=allCampanhas.filter(c=>_campFase(c)===fase);
   if(!list.length){
-    grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:var(--muted2);padding:40px 20px">Nenhuma campanha ${_campanhaFilter==='ativas'?'ativa':'inativa'} no momento.</div>`;
+    grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;color:var(--muted2);padding:40px 20px">Nenhuma campanha ${nomes[fase]} no momento.</div>`;
     return;
   }
   grid.innerHTML=list.map(c=>{
-    const ativa=_campanhaEstaAtiva(c);
-    const validadeStr=c.validade?new Date(c.validade+'T00:00:00').toLocaleDateString('pt-BR'):null;
-    const anexosHtml=(c._anexos||[]).map(a=>{
-      const{data:pub}=sb.storage.from('crm-campanhas').getPublicUrl(a.storage_path);
-      return `<a href="${pub?.publicUrl||'#'}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--gold2);text-decoration:none;padding:3px 0">${a.nome_arquivo}</a>`;
-    }).join('');
-    const adminBtns=isAdmin()?`
-      <div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-        ${ativa?`<button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="encerrarCampanha('${c.id}')">Encerrar</button>`:''}
-        <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirCampanha('${c.id}')">Excluir</button>
-      </div>`:'';
-    return `<div class="panel" style="margin:0;${ativa?'':'opacity:.65'}">
-      <div class="panel-body" style="padding:16px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
-          <div style="font-weight:700;font-size:14px;color:var(--gold2)">${c.titulo}</div>
-          <span class="badge ${ativa?'b-aprov':'b-canc'}" style="flex-shrink:0">${ativa?'Ativa':'Inativa'}</span>
+    const f=_campFase(c);
+    const banner=_campBannerUrl(c);
+    const ac=_campAceiteStatus(c);
+    const chip=f==='ativa'?'<span class="badge b-aprov">Ativa</span>':f==='proxima'?'<span class="badge b-pend">Em breve</span>':'<span class="badge b-canc">Encerrada</span>';
+    const acHtml=ac?`<div class="cc-row" style="color:${ac.t==='ok'?'var(--green)':ac.t==='rec'?'var(--red)':'var(--orange)'};font-weight:700">${ac.t==='ok'?'✓ ':ac.t==='rec'?'✕ ':'✍ '}${_fEsc(ac.txt)}</div>`:'';
+    const adm=isAdmin()?`<button class="btn-sm" onclick="editarCampanha('${c.id}')">Editar</button>
+      ${c.exige_aceite?`<button class="btn-sm" onclick="verAceitesCampanha('${c.id}')">Aceites</button>`:''}
+      ${f!=='encerrada'?`<button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="encerrarCampanha('${c.id}')">Encerrar</button>`:''}
+      <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirCampanha('${c.id}')">Excluir</button>`:'';
+    return `<div class="cc-card ${f==='encerrada'?'off':''}">
+      <div class="cc-banner" style="${banner?`background-image:linear-gradient(0deg,rgba(0,0,0,.55),rgba(0,0,0,.05)),url('${banner}')`:''}">
+        <div class="cc-chip">${chip}</div>
+        ${banner?'':`<div class="cc-banner-t">${_fEsc(c.titulo)}</div>`}
+      </div>
+      <div class="cc-body">
+        <div class="cc-title">${_fEsc(c.titulo)}</div>
+        ${c.subtitulo?`<div class="cc-sub">${_fEsc(c.subtitulo)}</div>`:''}
+        <div class="cc-row">Período: <strong>${_fEsc(_campPeriodo(c))}</strong></div>
+        ${c.premiacao?`<div class="cc-prem">${_fEsc(c.premiacao)}</div>`:''}
+        ${acHtml}
+        <div class="cc-actions">
+          <button class="btn-primary" style="padding:7px 14px;font-size:12px" onclick="abrirCampanha('${c.id}')">Visualizar campanha</button>
+          ${adm}
         </div>
-        ${c.descricao?`<div style="font-size:12.5px;color:var(--muted2);line-height:1.6;margin-bottom:10px;white-space:pre-wrap">${c.descricao}</div>`:''}
-        ${validadeStr?`<div style="font-size:11px;color:var(--muted2);margin-bottom:8px">Válida até ${validadeStr}</div>`:''}
-        ${anexosHtml?`<div style="margin-top:8px">${anexosHtml}</div>`:''}
-        ${adminBtns}
       </div>
     </div>`;
   }).join('');
 }
 
+/* ── Modal da campanha: banner, regulamento completo e aceite ── */
+function fecharModalCampanha(){
+  document.getElementById('camp-modal')?.remove();
+  document.body.style.overflow='';
+}
+function abrirCampanha(id){
+  const c=allCampanhas.find(x=>x.id===id); if(!c) return;
+  fecharModalCampanha();
+  const f=_campFase(c);
+  const banner=_campBannerUrl(c);
+  const ac=_campAceiteStatus(c);
+  const anexos=(c._anexos||[]).map(a=>{
+    const{data:pub}=sb.storage.from('crm-campanhas').getPublicUrl(a.storage_path);
+    return `<a href="${_fEsc(pub?.publicUrl||'#')}" target="_blank" rel="noopener" style="display:block;font-size:12px;color:var(--gold2);padding:3px 0">${_fEsc(a.nome_arquivo)}</a>`;
+  }).join('');
+  const metas=[c.meta_cotas?`${c.meta_cotas} cota(s)`:'',c.meta_credito?brl(c.meta_credito)+' em crédito':''].filter(Boolean).join(' · ');
+  const podeAceitar=c.exige_aceite&&f!=='encerrada'&&c.criado_por!==CU.id&&!_campAceitesMeus[c.id];
+  const ov=document.createElement('div');
+  ov.id='camp-modal'; ov.className='cc-modal';
+  ov.onclick=e=>{ if(e.target===ov) fecharModalCampanha(); };
+  ov.innerHTML=`<div class="cc-modal-box" role="dialog" aria-modal="true">
+    <div class="cc-banner" style="height:170px;${banner?`background-image:linear-gradient(0deg,rgba(0,0,0,.55),rgba(0,0,0,.05)),url('${banner}')`:''}">
+      <div class="cc-banner-t">${_fEsc(c.titulo)}</div>
+      <button class="btn-sm" style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,.5);color:#fff" onclick="fecharModalCampanha()">✕ Fechar</button>
+    </div>
+    <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+      ${c.subtitulo?`<div style="font-size:14px;font-weight:700;color:var(--gold2)">${_fEsc(c.subtitulo)}</div>`:''}
+      <div class="cc-row">Período: <strong>${_fEsc(_campPeriodo(c))}</strong>${metas?` · Meta: <strong>${_fEsc(metas)}</strong>`:''}</div>
+      ${c.descricao?`<div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${_fEsc(c.descricao)}</div>`:''}
+      ${c.premiacao?`<div><div class="fl-title" style="margin-bottom:6px">Premiação</div><div class="cc-prem" style="max-height:none">${_fEsc(c.premiacao)}</div></div>`:''}
+      ${c.regulamento?`<div><div class="fl-title" style="margin-bottom:6px">Regulamento (versão ${c.versao_regulamento||1})</div><div class="cc-reg" id="camp-reg-corpo">${_fEsc(c.regulamento)}</div></div>`:''}
+      ${anexos?`<div><div class="fl-title" style="margin-bottom:4px">Arquivos</div>${anexos}</div>`:''}
+      ${ac&&!podeAceitar?`<div class="cc-row" style="font-weight:700;color:${ac.t==='ok'?'var(--green)':ac.t==='rec'?'var(--red)':'var(--orange)'}">${_fEsc(ac.txt)}</div>`:''}
+      ${podeAceitar?`<div style="border-top:1px solid var(--border);padding-top:12px">
+        <div id="camp-dica" style="font-size:11.5px;color:var(--gold2);margin-bottom:6px">Role o regulamento até o final para liberar o aceite.</div>
+        <label for="camp-cpf" style="font-size:12px;font-weight:700;display:block;margin-bottom:5px">Seu CPF</label>
+        <input id="camp-cpf" class="inp" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="000.000.000-00" style="width:100%;max-width:240px" disabled>
+        <div id="camp-erro" style="color:var(--red);font-size:12px;min-height:16px;margin-top:4px"></div>
+        <div style="font-size:11.5px;color:var(--muted2);line-height:1.5;margin:6px 0 12px">Ao clicar em "Li e ACEITO", declaro que li e concordo com o regulamento acima e que o CPF informado é o meu. Autorizo o registro deste aceite (nome, CPF, data, hora, IP e versão do texto) como assinatura eletrônica.</div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+          <button id="camp-nao" class="btn-sm" style="border-color:var(--red);color:var(--red)" disabled>NÃO aceito</button>
+          <button id="camp-sim" class="btn-sm" style="border-color:var(--gold);color:var(--gold2);font-weight:800" disabled>Li e ACEITO</button>
+        </div>
+      </div>`:''}
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  document.body.style.overflow='hidden';
+  if(podeAceitar){
+    const corpo=document.getElementById('camp-reg-corpo')||document.createElement('div');
+    const cpfEl=document.getElementById('camp-cpf'),sim=document.getElementById('camp-sim'),nao=document.getElementById('camp-nao');
+    const liberar=()=>{ cpfEl.disabled=false; sim.disabled=false; nao.disabled=false; document.getElementById('camp-dica').style.display='none'; };
+    const noFim=()=>corpo.scrollTop+corpo.clientHeight>=corpo.scrollHeight-8;
+    corpo.addEventListener('scroll',()=>{ if(noFim()) liberar(); });
+    setTimeout(()=>{ if(noFim()) liberar(); },60);
+    cpfEl.addEventListener('input',()=>{ cpfEl.value=_cpfMascara(cpfEl.value); document.getElementById('camp-erro').textContent=''; });
+    sim.onclick=()=>_campEnviarAceite(c,'aceito');
+    nao.onclick=()=>_campEnviarAceite(c,'recusado');
+  }
+}
+async function _campEnviarAceite(c,decisao){
+  const cpfEl=document.getElementById('camp-cpf'),erro=document.getElementById('camp-erro');
+  const sim=document.getElementById('camp-sim'),nao=document.getElementById('camp-nao');
+  if(decisao==='aceito'&&!cpfValido(cpfEl.value)){ erro.textContent='Informe um CPF válido para aceitar.'; cpfEl.focus(); return; }
+  if(decisao==='recusado'&&!confirm('Tem certeza? Ao NÃO aceitar, você não participa da campanha e a sua resposta fica registrada.')) return;
+  sim.disabled=true; nao.disabled=true;
+  try{
+    const{error}=await sb.rpc('crm_registrar_aceite_campanha',{p_campanha_id:c.id,p_cpf:cpfEl.value,p_decisao:decisao,p_user_agent:navigator.userAgent||''});
+    if(error) throw error;
+  }catch(e){
+    erro.textContent='Não foi possível registrar: '+(e.message||'erro desconhecido');
+    sim.disabled=false; nao.disabled=false; return;
+  }
+  fecharModalCampanha();
+  toast(decisao==='aceito'?'Aceite registrado. Boa campanha!':'Resposta registrada: você não participa desta campanha.','ok');
+  renderCampanhas();
+}
+
+/* ── Admin: quem aceitou / quem falta ── */
+async function verAceitesCampanha(id){
+  if(!isAdmin()) return;
+  const c=allCampanhas.find(x=>x.id===id); if(!c) return;
+  const{data,error}=await sb.from('crm_campanha_aceites').select('*').eq('campanha_id',id).is('anulado_em',null).eq('versao',c.versao_regulamento||1);
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  const porUser={}; (data||[]).forEach(a=>{ porUser[a.user_id]=a; });
+  let alvo=allUsers.filter(u=>u.ativo!==false&&['vendedor','supervisor','coordenador'].includes(u.role));
+  if(c.alvo==='usuarios') alvo=alvo.filter(u=>(c.usuarios_alvo||[]).includes(u.user_id));
+  if(c.alvo==='equipes'){ const ids=new Set(allMembroEquipes.filter(m=>(c.equipes_alvo||[]).includes(m.equipe_id)).map(m=>m.user_id)); alvo=alvo.filter(u=>ids.has(u.user_id)); }
+  alvo.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const nOk=alvo.filter(u=>porUser[u.user_id]?.decisao==='aceito').length;
+  const linhas=alvo.map(u=>{
+    const a=porUser[u.user_id];
+    const st=!a?'<span class="badge b-pend">Pendente</span>':a.decisao==='aceito'?'<span class="badge b-aprov">Aceitou</span>':'<span class="badge b-canc">Recusou</span>';
+    const cpf=a?.cpf?'***.***.***-'+a.cpf.slice(-2):'';
+    return `<tr><td style="padding:6px 8px">${_fEsc(u.name||u.email)}</td><td>${st}</td><td style="font-size:11px;color:var(--muted2)">${a?_fData(a.criado_em)+' · IP '+_fEsc(a.ip||'—')+' · '+cpf:''}</td><td>${a?`<button class="btn-sm" onclick="anularAceiteCampanha('${a.id}','${c.id}')">Reabrir</button>`:''}</td></tr>`;
+  }).join('');
+  fecharModalCampanha();
+  const ov=document.createElement('div'); ov.id='camp-modal'; ov.className='cc-modal';
+  ov.onclick=e=>{ if(e.target===ov) fecharModalCampanha(); };
+  ov.innerHTML=`<div class="cc-modal-box"><div style="padding:16px 18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><div style="font-weight:800;color:var(--gold2)">Aceites — ${_fEsc(c.titulo)}</div><button class="btn-sm" onclick="fecharModalCampanha()">✕ Fechar</button></div>
+    <div style="font-size:12px;color:var(--muted2);margin-bottom:10px">Regulamento versão ${c.versao_regulamento||1} · ${nOk} de ${alvo.length} aceitaram. "Reabrir" anula a resposta (o registro é mantido) e pede de novo.</div>
+    <div style="overflow:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse"><tbody>${linhas||'<tr><td style="padding:12px;color:var(--muted2)">Nenhum destinatário.</td></tr>'}</tbody></table></div>
+  </div></div>`;
+  document.body.appendChild(ov);
+  document.body.style.overflow='hidden';
+}
+async function anularAceiteCampanha(aceiteId,campId){
+  if(!confirm('Reabrir esta resposta? Ela é anulada (registro mantido) e a pessoa precisará responder de novo.')) return;
+  const{error}=await sb.rpc('crm_anular_aceite_campanha',{p_id:aceiteId});
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  verAceitesCampanha(campId);
+}
+
+/* ── Meus resultados: vendas aprovadas no período de cada campanha ── */
+async function renderCampResultados(){
+  const grid=document.getElementById('campanhas-grid');
+  grid.innerHTML='<div style="color:var(--muted2);font-size:13px;padding:20px;grid-column:1/-1">Calculando resultados...</div>';
+  const staff=['admin','ceo','coordenador','supervisor'].includes(CUProfile?.role);
+  let vendas=[];
+  try{
+    const{data,error}=await sb.from('crm_vendas').select('id,vendedor_id,qtd_cotas,valor_credito,created_at').eq('status_venda','Aprovado').limit(5000);
+    if(error) throw error;
+    vendas=data||[];
+  }catch(e){ grid.innerHTML='<div style="color:var(--red);padding:20px;grid-column:1/-1">Erro ao calcular: '+_fEsc(e.message||'')+'</div>'; return; }
+  const list=allCampanhas.filter(c=>_campFase(c)!=='proxima');
+  if(!list.length){ grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--muted2);padding:40px 20px">Nenhuma campanha iniciada ainda.</div>'; return; }
+  const hoje=_hojeISO();
+  grid.innerHTML=list.map(c=>{
+    const ini=c.inicio||String(c.criado_em).slice(0,10);
+    const fim=c.validade||hoje;
+    const noPeriodo=vendas.filter(v=>{ const d=String(v.created_at).slice(0,10); return d>=ini&&d<=fim; });
+    const calc=arr=>({cotas:arr.reduce((s,v)=>s+(v.qtd_cotas||1),0),cred:arr.reduce((s,v)=>s+Number(v.valor_credito||0),0),vendas:arr.length});
+    const meus=calc(noPeriodo.filter(v=>v.vendedor_id===CU.id));
+    const pCotas=c.meta_cotas?Math.min(100,Math.round(meus.cotas/c.meta_cotas*100)):null;
+    const pCred=c.meta_credito?Math.min(100,Math.round(meus.cred/c.meta_credito*100)):null;
+    const ac=_campAceiteStatus(c);
+    let rank='';
+    if(staff){
+      const por={};
+      noPeriodo.forEach(v=>{ (por[v.vendedor_id]=por[v.vendedor_id]||[]).push(v); });
+      const top=Object.entries(por).map(([uid,arr])=>({uid,...calc(arr)})).sort((a,b)=>b.cotas-a.cotas||b.cred-a.cred).slice(0,10);
+      rank=top.length?`<div style="margin-top:10px"><div class="fl-title" style="margin-bottom:6px">Ranking (top 10)</div>${top.map((r,i)=>`<div style="display:flex;gap:10px;font-size:12.5px;padding:3px 0;border-bottom:1px dashed var(--border)"><span style="width:22px;color:var(--gold2);font-weight:800">${i+1}º</span><span style="flex:1">${_fEsc(findUser(r.uid)?.name||'—')}</span><span>${r.cotas} cota(s)</span><span style="color:var(--muted2)">${brl(r.cred)}</span></div>`).join('')}</div>`:'<div class="cc-row" style="margin-top:8px">Sem vendas aprovadas no período.</div>';
+    }
+    return `<div class="cc-card" style="grid-column:1/-1"><div class="cc-body">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div class="cc-title">${_fEsc(c.titulo)}</div><span class="badge ${_campFase(c)==='ativa'?'b-aprov':'b-canc'}">${_campFase(c)==='ativa'?'Ativa':'Encerrada'}</span></div>
+      <div class="cc-row">Período apurado: <strong>${_campData(ini)} a ${_campData(fim)}</strong> · vendas aprovadas registradas no período${ac?` · <span style="color:${ac.t==='ok'?'var(--green)':'var(--orange)'}">${_fEsc(ac.txt)}</span>`:''}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:6px">
+        <div><div class="cc-row">Vendas aprovadas</div><div style="font-size:22px;font-weight:800">${meus.vendas}</div></div>
+        <div><div class="cc-row">Cotas</div><div style="font-size:22px;font-weight:800;color:var(--gold2)">${meus.cotas}</div></div>
+        <div><div class="cc-row">Crédito</div><div style="font-size:22px;font-weight:800">${brl(meus.cred)}</div></div>
+      </div>
+      ${pCotas!=null?`<div class="cc-row" style="margin-top:6px">Meta de cotas: ${meus.cotas}/${c.meta_cotas} (${pCotas}%)</div><div class="cc-bar"><i style="width:${pCotas}%"></i></div>`:''}
+      ${pCred!=null?`<div class="cc-row" style="margin-top:6px">Meta de crédito: ${brl(meus.cred)} / ${brl(c.meta_credito)} (${pCred}%)</div><div class="cc-bar"><i style="width:${pCred}%"></i></div>`:''}
+      ${c.premiacao?`<div class="cc-row" style="margin-top:8px">Premiação: confira a regra completa em "Visualizar campanha".</div>`:''}
+      ${rank}
+      <div class="cc-actions"><button class="btn-sm" onclick="abrirCampanha('${c.id}')">Visualizar campanha</button></div>
+    </div></div>`;
+  }).join('');
+}
+
 async function encerrarCampanha(id){
-  if(!confirm('Encerrar esta campanha? Ela some da aba Ativas pra todo mundo.')) return;
+  if(!confirm('Encerrar esta campanha? Ela vai para a aba Encerradas pra todo mundo.')) return;
   try{
     const{error}=await sb.from('crm_campanhas').update({ativo:false}).eq('id',id);
     if(error) throw error;
@@ -6936,12 +7523,13 @@ async function encerrarCampanha(id){
   }
 }
 async function excluirCampanha(id){
-  if(!confirm('Excluir esta campanha e os anexos dela? Irreversível.')) return;
+  if(!confirm('Excluir esta campanha, os anexos e os aceites dela? Irreversível. (Para só tirar do ar, use Encerrar.)')) return;
   try{
     const camp=allCampanhas.find(c=>c.id===id);
     for(const a of (camp?._anexos||[])){
       await sb.storage.from('crm-campanhas').remove([a.storage_path]).catch(()=>{});
     }
+    if(camp?.banner_path) await sb.storage.from('crm-campanhas').remove([camp.banner_path]).catch(()=>{});
     const{error}=await sb.from('crm_campanhas').delete().eq('id',id);
     if(error) throw error;
     toast('Campanha excluída.','ok');
@@ -6950,6 +7538,7 @@ async function excluirCampanha(id){
     alert('Erro ao excluir: '+(e.message||'desconhecido'));
   }
 }
+
 
 /* ═══ MODALS ═══ */
 // vendaId null = registrar venda nova e separada (repetição de compra do
@@ -7861,6 +8450,7 @@ async function updateVendaStatus(id,status){
   saveCacheLazy();
   toast('Venda '+status.toLowerCase()+'!','ok');
   renderDashboard();
+  if(document.getElementById('venda-acompanhamento')?.dataset.venda===id) renderVendaFluxo(id);
 
   // ── Sincronização Firebase do Ranking ──
   // REGRA: só sobe ao criar (Pendente) — controlado em saveVenda()
