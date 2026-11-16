@@ -5211,10 +5211,14 @@ async function openDetail(id,from){
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Redutor</div><strong>${venda.redutor?venda.redutor+'%':'—'}</strong></div>
         <div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px">Qtd. Cotas</div><strong style="color:var(--gold2);font-size:15px">${venda.qtd_cotas||1}</strong></div>
       </div>
-      ${docs.length>0?`<div style="margin-top:14px">
-        ${docSectionHeaderHtml('Documentos',docs.length)}
-        ${docs.map(d=>docItemHtml(d,isAdminOrCoord())).join('')}
-      </div>`:''}
+      <div style="margin-top:14px">
+        ${docSectionHeaderHtml('Documentos do cliente',docs.length)}
+        ${docs.length?docs.map(d=>docItemHtml(d,isAdminOrCoord())).join(''):'<div class="empty" style="padding:12px">Nenhum documento anexado</div>'}
+        ${canWork?`<label style="cursor:pointer;display:inline-block;margin-top:8px">
+          <input type="file" id="doc-cliente-input-${id}" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple style="display:none" onchange="uploadDocumentoCliente('${id}',this.files)">
+          <span class="btn-sm" style="border-color:var(--gold);color:var(--gold2)">+ Anexar documento do cliente</span>
+        </label>`:''}
+      </div>
       <div id="venda-comprovantes" data-venda="${venda.id}" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div class="empty" style="padding:10px">Carregando comprovantes...</div></div>
       ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         ${venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar documentação</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">Aprovado</span>'}
@@ -8641,6 +8645,33 @@ async function uploadContratoLead(leadId, files){
     if(dbErr){toast('Erro ao salvar: '+dbErr.message,'err');continue;}
     toast('Contrato anexado!','ok');
   }
+  openDetail(leadId,fromPage);
+}
+
+// Documento do CLIENTE (não de parcela): pode ser anexado a qualquer momento, inclusive depois de remover os anteriores.
+async function uploadDocumentoCliente(leadId, files){
+  if(!files||files.length===0) return;
+  const MAX_MB=10;
+  let ok=0;
+  for(const file of files){
+    if(file.size>MAX_MB*1024*1024){toast(`${file.name} excede ${MAX_MB}MB`,'err');continue;}
+    toast('Enviando documento...','ok');
+    const ext=file.name.split('.').pop().toLowerCase();
+    const path=`clientes/${leadId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const{error:upErr}=await sb.storage.from('crm-documentos').upload(path,file,{cacheControl:'3600',upsert:false});
+    if(upErr){toast('Erro no upload: '+upErr.message,'err');continue;}
+    const{error:dbErr}=await sb.from('crm_documentos').insert({
+      lead_id:leadId,user_id:CU.id,
+      nome:file.name,tipo:ext==='pdf'?'pdf':'imagem',tamanho:file.size,
+      storage_path:path,categoria:'documento_cliente'
+    });
+    if(dbErr){
+      await sb.storage.from('crm-documentos').remove([path]).catch(()=>{});
+      toast('Erro ao salvar: '+dbErr.message,'err');continue;
+    }
+    ok++;
+  }
+  if(ok) toast(ok>1?`${ok} documentos anexados!`:'Documento anexado!','ok');
   openDetail(leadId,fromPage);
 }
 
