@@ -1,0 +1,4 @@
+-- Acesso extra por usuário (campanhas e termo de aceite). Aplicada no Supabase em 2026-11-16.
+-- Tabela crm_acessos_extra (admin concede), função crm_tem_acesso(), policies aditivas em
+-- crm_termos, crm_termo_aceites, crm_campanhas, crm_campanha_anexos, crm_campanha_aceites e storage crm-campanhas.
+-- Concedido a Chis Caroline e Luiz Goes (supervisores). Veja a migração aplicada "crm_acessos_extra_campanhas_termo".
