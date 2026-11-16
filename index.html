@@ -1107,7 +1107,7 @@ document.addEventListener('DOMContentLoaded', function(){
         </div>
         <div class="fld"><label>Título</label><input class="inp" id="termo-adm-titulo" style="width:100%"></div>
         <div class="fld"><label>Texto</label><textarea class="inp" id="termo-adm-texto" rows="14" style="width:100%;resize:vertical;font-family:inherit;line-height:1.5"></textarea></div>
-        <button class="btn-sm" style="border-color:var(--gold);color:var(--gold2)" onclick="publicarTermo()">Publicar nova versão</button>
+        <button class="btn-sm" id="termo-publicar-btn" style="border-color:var(--gold);color:var(--gold2)" onclick="publicarTermo()">Publicar nova versão</button>
       </div>
     </div>
     <div class="panel">
@@ -1115,7 +1115,7 @@ document.addEventListener('DOMContentLoaded', function(){
         <div class="panel-title">Respostas dos vendedores</div>
         <div style="display:flex;align-items:center;gap:12px">
           <div id="termo-adm-resumo" style="font-size:12px;color:var(--muted2)"></div>
-          <button class="btn-sm" onclick="exportarAceitesCsv()" title="Baixa todas as respostas, de todas as versões, com CPF, IP e hash">Exportar CSV</button>
+          <button class="btn-sm" id="termo-exportar-btn" onclick="exportarAceitesCsv()" title="Baixa todas as respostas, de todas as versões, com CPF, IP e hash">Exportar CSV</button>
         </div>
       </div>
       <div class="tbl-wrap">
@@ -3786,6 +3786,23 @@ function hideLoadingProgress(el,total){
   setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 3000);
 }
 
+/* Acesso extra por usuário (tabela crm_acessos_extra, concedida só pelo admin): 'campanhas' e 'termo'.
+   Não muda o perfil da pessoa: supervisor continua supervisor. As policies do banco repetem a mesma regra. */
+let _acessosExtra=new Set(), _acessosExtraUid=null;
+function temAcesso(recurso){ return isAdmin()||_acessosExtra.has(recurso); }
+function podeGerirCampanha(c){ return isAdmin()||(_acessosExtra.has('campanhas')&&!!c&&c.criado_por===CU?.id); }
+async function carregarAcessosExtra(){
+  if(!CU||_acessosExtraUid===CU.id) return;
+  _acessosExtraUid=CU.id;
+  try{
+    const{data,error}=await sb.from('crm_acessos_extra').select('recurso').eq('user_id',CU.id);
+    if(error) throw error;
+    const novo=new Set((data||[]).map(r=>r.recurso));
+    const mudou=[...novo].some(x=>!_acessosExtra.has(x));
+    _acessosExtra=novo;
+    if(mudou) renderNav();
+  }catch(e){ _acessosExtraUid=null; console.warn('[acessos extra]',e.message); }
+}
 function isAdminOrCoord(){return CUProfile?.role==='admin'||CUProfile?.role==='coordenador'||CUProfile?.role==='supervisor';}
 // ── Sincronização incremental ──
 // Em vez de recarregar os 52k+ leads inteiros em TODA sessão de admin/coordenador
@@ -4060,6 +4077,7 @@ function invalidateDDDCache(){_dddCache=null;}
 /* ═══ NAV ═══ */
 function renderNav(){
   setTimeout(verificarTermo,300);
+  carregarAcessosExtra();
   const isAdm=isAdmin();
   const isCoord=isCoordenador();
   const isSup=isSupervisor();
@@ -4183,6 +4201,10 @@ function renderNav(){
       <div class="nav-item" onclick="nav('login-logs',this)" title="Histórico de Logins"><span class="nav-icon">${IC.lock}</span><span class="nav-label">Logins</span></div>
       <div class="nav-item" onclick="nav('transmissoes',this)" title="Transmissões"><span class="nav-icon">${IC.broadcast}</span><span class="nav-label">Transmissões</span></div>
       <div class="nav-item" onclick="nav('questionarios',this)" title="Questionários"><span class="nav-icon">${IC.quiz}</span><span class="nav-label">Questionários</span></div>
+      <div class="nav-item" onclick="nav('termo',this)" title="Termo de Aceite"><span class="nav-icon">${IC.quiz}</span><span class="nav-label">Termo de Aceite</span></div>`;
+  }
+  if(!isAdm&&temAcesso('termo')){
+    html+=`<div class="nav-sect">Administração</div>
       <div class="nav-item" onclick="nav('termo',this)" title="Termo de Aceite"><span class="nav-icon">${IC.quiz}</span><span class="nav-label">Termo de Aceite</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
@@ -6184,7 +6206,10 @@ async function _termoEnviar(t,decisao){
 /* ── Admin: editar/publicar o termo e acompanhar as respostas ── */
 let _termoAdmAtivo=null;
 async function renderTermoAdmin(){
-  if(!isAdmin()) return;
+  if(!temAcesso('termo')) return;
+  const soLeitura=!isAdmin();
+  ['termo-adm-titulo','termo-adm-texto'].forEach(i=>{ const el=document.getElementById(i); if(el) el.readOnly=soLeitura; });
+  ['termo-publicar-btn','termo-exportar-btn'].forEach(i=>{ const el=document.getElementById(i); if(el) el.style.display=soLeitura?'none':''; });
   const tb=document.getElementById('termo-adm-tbody');
   tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:20px">Carregando...</td></tr>';
   try{
@@ -6215,7 +6240,7 @@ async function renderTermoAdmin(){
         <td style="font-size:12px">${l.r&&l.r.cpf?escHtml(fmtCpf(l.r.cpf)):'—'}</td>
         <td style="color:var(--muted2);font-size:12px">${l.r?new Date(l.r.criado_em).toLocaleString('pt-BR'):'—'}</td>
         <td style="color:var(--muted2);font-size:12px">${l.r?escHtml(l.r.ip||'—'):'—'}</td>
-        <td>${l.r?`<button class="btn-sm" onclick="reabrirTermoResposta('${l.r.id}','${escJs(l.u.name||'')}')" title="Anula esta resposta (o registro é mantido) e pede de novo ao vendedor">Reabrir</button>`:''}</td>
+        <td>${l.r&&!soLeitura?`<button class="btn-sm" onclick="reabrirTermoResposta('${l.r.id}','${escJs(l.u.name||'')}')" title="Anula esta resposta (o registro é mantido) e pede de novo ao vendedor">Reabrir</button>`:''}</td>
       </tr>`;
     }).join('')||'<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:20px">Nenhum vendedor ativo.</td></tr>';
   }catch(e){
@@ -7139,7 +7164,7 @@ function _campAceiteStatus(c){
 }
 
 async function criarCampanha(){
-  if(!isAdmin()) return;
+  if(!temAcesso('campanhas')) return;
   const editId=document.getElementById('camp-edit-id').value||null;
   const v=id=>document.getElementById(id).value.trim();
   const titulo=v('camp-titulo');
@@ -7247,8 +7272,7 @@ function cancelarEdicaoCampanha(){
   document.getElementById('campanha-form-panel').style.display='none';
 }
 function editarCampanha(id){
-  if(!isAdmin()) return;
-  const c=allCampanhas.find(x=>x.id===id); if(!c) return;
+  const c=allCampanhas.find(x=>x.id===id); if(!c||!podeGerirCampanha(c)) return;
   const p=document.getElementById('campanha-form-panel');
   p.style.display='';
   resetFormCampanha(false);
@@ -7277,8 +7301,9 @@ function setCampanhaFilter(f){
 async function renderCampanhas(){
   const formPanel=document.getElementById('campanha-form-panel');
   const btnNova=document.getElementById('camp-btn-nova');
-  if(!isAdmin()){ if(formPanel) formPanel.style.display='none'; }
-  if(btnNova) btnNova.style.display=isAdmin()?'':'none';
+  await carregarAcessosExtra();
+  if(!temAcesso('campanhas')){ if(formPanel) formPanel.style.display='none'; }
+  if(btnNova) btnNova.style.display=temAcesso('campanhas')?'':'none';
   const grid=document.getElementById('campanhas-grid');
   if(grid) grid.innerHTML='<div style="color:var(--muted2);font-size:13px;padding:20px">Carregando campanhas...</div>';
   try{
@@ -7326,7 +7351,7 @@ function renderCampanhasGrid(){
     const ac=_campAceiteStatus(c);
     const chip=f==='ativa'?'<span class="badge b-aprov">Ativa</span>':f==='proxima'?'<span class="badge b-pend">Em breve</span>':'<span class="badge b-canc">Encerrada</span>';
     const acHtml=ac?`<div class="cc-row" style="color:${ac.t==='ok'?'var(--green)':ac.t==='rec'?'var(--red)':'var(--orange)'};font-weight:700">${ac.t==='ok'?'✓ ':ac.t==='rec'?'✕ ':'✍ '}${_fEsc(ac.txt)}</div>`:'';
-    const adm=isAdmin()?`<button class="btn-sm" onclick="editarCampanha('${c.id}')">Editar</button>
+    const adm=podeGerirCampanha(c)?`<button class="btn-sm" onclick="editarCampanha('${c.id}')">Editar</button>
       ${c.exige_aceite?`<button class="btn-sm" onclick="verAceitesCampanha('${c.id}')">Aceites</button>`:''}
       ${f!=='encerrada'?`<button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="encerrarCampanha('${c.id}')">Encerrar</button>`:''}
       <button class="btn-sm" style="border-color:var(--red);color:var(--red)" onclick="excluirCampanha('${c.id}')">Excluir</button>`:'';
@@ -7430,8 +7455,7 @@ async function _campEnviarAceite(c,decisao){
 
 /* ── Admin: quem aceitou / quem falta ── */
 async function verAceitesCampanha(id){
-  if(!isAdmin()) return;
-  const c=allCampanhas.find(x=>x.id===id); if(!c) return;
+  const c=allCampanhas.find(x=>x.id===id); if(!c||!podeGerirCampanha(c)) return;
   const{data,error}=await sb.from('crm_campanha_aceites').select('*').eq('campanha_id',id).is('anulado_em',null).eq('versao',c.versao_regulamento||1);
   if(error){ toast('Erro: '+error.message,'err'); return; }
   const porUser={}; (data||[]).forEach(a=>{ porUser[a.user_id]=a; });
@@ -7444,7 +7468,7 @@ async function verAceitesCampanha(id){
     const a=porUser[u.user_id];
     const st=!a?'<span class="badge b-pend">Pendente</span>':a.decisao==='aceito'?'<span class="badge b-aprov">Aceitou</span>':'<span class="badge b-canc">Recusou</span>';
     const cpf=a?.cpf?'***.***.***-'+a.cpf.slice(-2):'';
-    return `<tr><td style="padding:6px 8px">${_fEsc(u.name||u.email)}</td><td>${st}</td><td style="font-size:11px;color:var(--muted2)">${a?_fData(a.criado_em)+' · IP '+_fEsc(a.ip||'—')+' · '+cpf:''}</td><td>${a?`<button class="btn-sm" onclick="anularAceiteCampanha('${a.id}','${c.id}')">Reabrir</button>`:''}</td></tr>`;
+    return `<tr><td style="padding:6px 8px">${_fEsc(u.name||u.email)}</td><td>${st}</td><td style="font-size:11px;color:var(--muted2)">${a?_fData(a.criado_em)+' · IP '+_fEsc(a.ip||'—')+' · '+cpf:''}</td><td>${a&&isAdmin()?`<button class="btn-sm" onclick="anularAceiteCampanha('${a.id}','${c.id}')">Reabrir</button>`:''}</td></tr>`;
   }).join('');
   fecharModalCampanha();
   const ov=document.createElement('div'); ov.id='camp-modal'; ov.className='cc-modal';
@@ -7512,6 +7536,7 @@ async function renderCampResultados(){
 }
 
 async function encerrarCampanha(id){
+  if(!podeGerirCampanha(allCampanhas.find(c=>c.id===id))) return;
   if(!confirm('Encerrar esta campanha? Ela vai para a aba Encerradas pra todo mundo.')) return;
   try{
     const{error}=await sb.from('crm_campanhas').update({ativo:false}).eq('id',id);
@@ -7523,6 +7548,7 @@ async function encerrarCampanha(id){
   }
 }
 async function excluirCampanha(id){
+  if(!podeGerirCampanha(allCampanhas.find(c=>c.id===id))) return;
   if(!confirm('Excluir esta campanha, os anexos e os aceites dela? Irreversível. (Para só tirar do ar, use Encerrar.)')) return;
   try{
     const camp=allCampanhas.find(c=>c.id===id);
