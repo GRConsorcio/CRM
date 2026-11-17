@@ -8638,7 +8638,7 @@ async function uploadContratoLead(leadId, files){
     if(upErr){toast('Erro no upload: '+upErr.message,'err');continue;}
     const tipo=ext==='pdf'?'pdf':'imagem';
     const{error:dbErr}=await sb.from('crm_documentos').insert({
-      lead_id:leadId,user_id:CU.id,
+      lead_id:leadId,uploaded_by:CU.id,
       nome:file.name,tipo,tamanho:file.size,
       storage_path:path,categoria:'contrato_lead'
     });
@@ -8661,7 +8661,7 @@ async function uploadDocumentoCliente(leadId, files){
     const{error:upErr}=await sb.storage.from('crm-documentos').upload(path,file,{cacheControl:'3600',upsert:false});
     if(upErr){toast('Erro no upload: '+upErr.message,'err');continue;}
     const{error:dbErr}=await sb.from('crm_documentos').insert({
-      lead_id:leadId,user_id:CU.id,
+      lead_id:leadId,uploaded_by:CU.id,
       nome:file.name,tipo:ext==='pdf'?'pdf':'imagem',tamanho:file.size,
       storage_path:path,categoria:'documento_cliente'
     });
