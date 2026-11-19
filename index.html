@@ -6849,9 +6849,8 @@ const PRAZO_COMPROVANTE_DIA=20;
 const ETAPAS_VENDA=[
   {key:'registro',   n:1, titulo:'Venda Registrada',            sub:'Vendedor registrou a venda e anexou os documentos'},
   {key:'documentacao',n:2,titulo:'Conferência de Documentação', sub:'Pós-venda confere os documentos e aprova a venda'},
-  {key:'pagamento',  n:3, titulo:'Confirmação de Pagamento',    sub:'Pagamento da 1ª parcela confirmado'},
-  {key:'posvenda',   n:4, titulo:'Pós-venda',                   sub:'Contato e acompanhamento do cliente'},
-  {key:'alocacao',   n:5, titulo:'Alocação',                    sub:'Cota alocada ao cliente'}
+  {key:'posvenda',   n:3, titulo:'Pós-venda',                   sub:'Pós-venda dá o ok final'},
+  {key:'conclusao',  n:4, titulo:'Venda Concluída',             sub:'Processo 100% concluído'}
 ];
 function _fEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function _fData(iso){return iso?new Date(iso).toLocaleDateString('pt-BR')+' '+new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';}
@@ -6887,9 +6886,8 @@ function _vendaTimelineHtml(venda,etapas,comps){
   const done={
     registro:{em:venda.created_at,por:findUser(venda.vendedor_id)?.name},
     documentacao:etapas.documentacao?{em:etapas.documentacao.concluida_em,por:findUser(etapas.documentacao.concluida_por)?.name}:null,
-    pagamento:etapas.pagamento?{em:etapas.pagamento.concluida_em,por:findUser(etapas.pagamento.concluida_por)?.name}:null,
     posvenda:etapas.posvenda?{em:etapas.posvenda.concluida_em,por:findUser(etapas.posvenda.concluida_por)?.name}:null,
-    alocacao:etapas.alocacao?{em:etapas.alocacao.concluida_em,por:findUser(etapas.alocacao.concluida_por)?.name}:null
+    conclusao:etapas.posvenda?{em:etapas.posvenda.concluida_em,por:findUser(etapas.posvenda.concluida_por)?.name}:null
   };
   // Etapa atual = primeira não concluída (a venda cancelada para na conferência)
   const atual=ETAPAS_VENDA.find(s=>!done[s.key]);
@@ -6902,8 +6900,7 @@ function _vendaTimelineHtml(venda,etapas,comps){
     else if(isAtual&&cancelada){estado='bad';rot=venda.status_venda==='Cancelado'?'Reprovada':'Cancelada';}
     else if(isAtual){estado='cur';rot=s.key==='documentacao'?'Pendente':'Em andamento';}
     const quando=d?`<div class="fl-when">${_fData(d.em)}${d.por?'<br>'+_fEsc(d.por):''}</div>`:'';
-    const desfazer=(d&&pode&&['pagamento','posvenda','alocacao'].includes(s.key)&&(
-        (s.key==='pagamento'&&!done.posvenda)||(s.key==='posvenda'&&!done.alocacao)||s.key==='alocacao'))
+    const desfazer=(d&&pode&&s.key==='posvenda')
       ?`<button class="fl-undo" onclick="desfazerEtapaVenda('${venda.id}','${s.key}')" title="Desfazer esta etapa">desfazer</button>`:'';
     return `<div class="fl-step fl-${estado}">
       <div class="fl-dot">${estado==='ok'?'✓':estado==='bad'?'✕':s.n}</div>
@@ -6919,13 +6916,11 @@ function _vendaTimelineHtml(venda,etapas,comps){
     barCls='bad';
     barTxt=venda.status_venda==='Cancelado'?'Venda reprovada pelo pós-venda. Corrija a documentação e peça nova conferência.':'Venda marcada como Sem Retorno.';
   }else if(!atual){
-    barCls='ok';barTxt='Venda 100% concluída: aprovada pelo pós-venda, pronta para comissão.';
+    barCls='ok';barTxt='Venda 100% concluída: documentação conferida e ok do pós-venda. Pronta para comissão.';
   }else{
     const msgs={
-      documentacao:{txt:'Próximo passo: o pós-venda confere a documentação anexada e aprova a venda (ao aprovar, todas as etapas avançam sozinhas até 100%).',btn:pode?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar documentação</button>`:''},
-      pagamento:{txt:'Próximo passo: confirmar o pagamento da 1ª parcela.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','pagamento')">Confirmar pagamento</button>`:''},
-      posvenda:{txt:'Próximo passo: concluir o contato de pós-venda com o cliente.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','posvenda')">Concluir pós-venda</button>`:''},
-      alocacao:{txt:'Próximo passo: alocar a cota ao cliente.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','alocacao')">Registrar alocação</button>`:''}
+      documentacao:{txt:'Próximo passo: conferir a documentação anexada e dar o ok (a venda segue direto para o pós-venda).',btn:pode?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar documentação</button>`:''},
+      posvenda:{txt:'Próximo passo: o pós-venda dá o ok final para concluir a venda.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','posvenda')">Dar ok do pós-venda</button>`:''}
     };
     const m=msgs[atual.key];
     barTxt=m.txt+(pode?'':' (responsável: pós-venda)');
@@ -6943,10 +6938,10 @@ function _vendaTimelineHtml(venda,etapas,comps){
 async function avancarEtapaVenda(vendaId,etapa){
   if(!_podeConferirVenda()) return;
   const venda=allVendas.find(v=>v.id===vendaId);
-  if(!venda||venda.status_venda!=='Aprovado'){ toast('Aprove a documentação da venda antes de avançar.','err'); return; }
+  if(!venda||venda.status_venda!=='Aprovado'){ toast('Confira e aprove a documentação antes do ok do pós-venda.','err'); return; }
   const{error}=await sb.from('crm_venda_etapas').upsert({venda_id:vendaId,etapa,concluida_por:CU.id,concluida_em:new Date().toISOString()},{onConflict:'venda_id,etapa'});
   if(error){ toast('Erro ao avançar etapa: '+error.message,'err'); return; }
-  const rot={pagamento:'Pagamento confirmado',posvenda:'Pós-venda concluído',alocacao:'Alocação registrada'}[etapa]||etapa;
+  const rot={posvenda:'Pós-venda concluído'}[etapa]||etapa;
   if(venda.lead_id){
     sb.from('crm_historico').insert({lead_id:venda.lead_id,user_id:CU.id,tipo:'Venda '+rot,descricao:`${rot} por ${CUProfile?.name||CU.email}.`,created_at:new Date().toISOString()}).then(()=>{});
   }
