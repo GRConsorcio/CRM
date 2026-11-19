@@ -1,12 +1,14 @@
 -- Conferência de documentação: SÓ o login do Deivid (admin 8499c7b5...). Ok do pós-venda: SÓ o login da Lorraine (05d17aef...).
--- Sem bypass de admin. Não dá para pular etapa: o ok do pós-venda exige documentação conferida e venda Aprovada.
+-- (Thiago, admin, tambem tem os dois acessos.) Sem bypass de admin. Não dá para pular etapa: o ok do pós-venda exige documentação conferida e venda Aprovada.
 alter table public.crm_acessos_extra drop constraint if exists crm_acessos_extra_recurso_check;
 alter table public.crm_acessos_extra add constraint crm_acessos_extra_recurso_check
   check (recurso = any (array['campanhas','termo','conferir_documentacao','aprovar_posvenda']));
 
 insert into public.crm_acessos_extra (user_id, recurso) values
   ('8499c7b5-8e70-4fb8-8a36-ce7aa29aede6','conferir_documentacao'),
-  ('05d17aef-c94c-41ba-b337-378d9081809e','aprovar_posvenda')
+  ('05d17aef-c94c-41ba-b337-378d9081809e','aprovar_posvenda'),
+  ('3c6b237c-c777-42df-b4b0-6c0db2a3c866','conferir_documentacao'),
+  ('3c6b237c-c777-42df-b4b0-6c0db2a3c866','aprovar_posvenda')
 on conflict do nothing;
 
 create or replace function public.crm_tem_acesso_estrito(p_recurso text)
