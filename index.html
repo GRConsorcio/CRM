@@ -6919,10 +6919,10 @@ function _vendaTimelineHtml(venda,etapas,comps){
     barCls='bad';
     barTxt=venda.status_venda==='Cancelado'?'Venda reprovada pelo pós-venda. Corrija a documentação e peça nova conferência.':'Venda marcada como Sem Retorno.';
   }else if(!atual){
-    barCls='ok';barTxt='Venda concluída: documentação conferida, pagamento confirmado e cota alocada.';
+    barCls='ok';barTxt='Venda 100% concluída: aprovada pelo pós-venda, pronta para comissão.';
   }else{
     const msgs={
-      documentacao:{txt:'Próximo passo: o pós-venda confere a documentação anexada e aprova a venda.',btn:pode?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar documentação</button>`:''},
+      documentacao:{txt:'Próximo passo: o pós-venda confere a documentação anexada e aprova a venda (ao aprovar, todas as etapas avançam sozinhas até 100%).',btn:pode?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar documentação</button>`:''},
       pagamento:{txt:'Próximo passo: confirmar o pagamento da 1ª parcela.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','pagamento')">Confirmar pagamento</button>`:''},
       posvenda:{txt:'Próximo passo: concluir o contato de pós-venda com o cliente.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','posvenda')">Concluir pós-venda</button>`:''},
       alocacao:{txt:'Próximo passo: alocar a cota ao cliente.',btn:pode?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','alocacao')">Registrar alocação</button>`:''}
