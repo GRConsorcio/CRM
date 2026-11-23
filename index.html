@@ -380,6 +380,21 @@ tr:hover td{background:rgba(255,255,255,.015)}
 .cc-modal{position:fixed;inset:0;z-index:2147482000;background:rgba(0,0,0,.8);display:flex;align-items:flex-start;justify-content:center;padding:20px 12px;overflow:auto}
 .cc-modal-box{background:var(--surface);color:var(--text);border:1px solid var(--gold-dim);border-radius:14px;max-width:760px;width:100%;overflow:hidden}
 .cc-reg{white-space:pre-wrap;line-height:1.6;font-size:13px;max-height:300px;overflow:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px}
+
+/* ── Painel de Cobrança: Comprovantes do Dia (1ª a 6ª parcela) ── */
+.comp-live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;box-shadow:0 0 0 3px rgba(74,222,128,.18)}
+.comp-chart-bars{display:grid;grid-template-columns:repeat(6,minmax(64px,1fr));gap:12px;align-items:end;padding:10px 6px 4px}
+.comp-bar-col{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;padding:8px 6px;border-radius:10px;border:1px solid transparent;transition:all .15s;background:rgba(255,255,255,.01)}
+.comp-bar-col:hover{border-color:var(--gold-dim);background:var(--gold-glow)}
+.comp-bar-col.on{border-color:var(--gold);background:rgba(201,168,76,.12)}
+.comp-bar-num{font-size:16px;font-weight:900;color:var(--gold2);line-height:1}
+.comp-bar-pct{font-size:10px;color:var(--muted2)}
+.comp-bar-track{width:100%;max-width:44px;height:130px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:flex;align-items:flex-end;overflow:hidden;padding:2px}
+.comp-bar-fill{width:100%;border-radius:6px;background:linear-gradient(180deg,var(--gold2),var(--gold));transition:height .25s ease;min-height:0}
+.comp-bar-col.zero .comp-bar-num{color:var(--muted2)}
+.comp-bar-lbl{font-size:11.5px;font-weight:700;color:var(--text);text-align:center}
+.comp-chart-foot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted2)}
+@media(max-width:640px){.comp-chart-bars{grid-template-columns:repeat(3,minmax(70px,1fr));gap:8px}.comp-bar-track{height:90px}}
 </style>
 </head>
 <body>
@@ -1048,6 +1063,76 @@ document.addEventListener('DOMContentLoaded', function(){
           <th>Cliente (Lead)</th><th>Vendedor</th><th>Crédito</th><th>Parcela</th><th>Grupo / Cota</th><th>Status</th><th>Data</th><th></th>
         </tr></thead>
         <tbody id="vp-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPROVANTES DO DIA (Cobrança / Pós-venda / Coordenação / Admin) -->
+  <div class="page" id="page-comprovantes-dia">
+    <div class="filter-bar" style="flex-wrap:wrap;gap:8px;align-items:center">
+      <div style="display:flex;gap:4px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
+        <button id="cd-preset-hoje" class="tab on" onclick="setCompDiaPreset('hoje')">Hoje</button>
+        <button id="cd-preset-ontem" class="tab" onclick="setCompDiaPreset('ontem')">Ontem</button>
+        <button id="cd-preset-7d" class="tab" onclick="setCompDiaPreset('7d')">7 dias</button>
+        <button id="cd-preset-mes" class="tab" onclick="setCompDiaPreset('mes')">Mês atual</button>
+      </div>
+      <input type="date" id="cd-data" onchange="setCompDiaDataCustom(this.value)" title="Escolher dia específico" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+      <select id="cd-f-parcela" onchange="renderComprovantesDiaVisao()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+        <option value="">Todas as parcelas (1ª a 6ª)</option>
+        <option value="1">1ª parcela</option>
+        <option value="2">2ª parcela</option>
+        <option value="3">3ª parcela</option>
+        <option value="4">4ª parcela</option>
+        <option value="5">5ª parcela</option>
+        <option value="6">6ª parcela</option>
+      </select>
+      <select id="cd-f-status" onchange="renderComprovantesDiaVisao()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+        <option value="">Todos os status</option>
+        <option value="pendente">Aguardando conferência</option>
+        <option value="aprovado">Conferido / Paga</option>
+        <option value="recusado">Recusado</option>
+        <option value="inadimplencia">Inadimplência informada</option>
+      </select>
+      <select id="cd-f-vendedor" onchange="renderComprovantesDiaVisao()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none;min-width:150px">
+        <option value="">Todos os vendedores</option>
+      </select>
+      <input class="inp" id="cd-srch" placeholder="Buscar cliente, grupo/cota, arquivo..." oninput="renderComprovantesDiaVisao()" style="flex:1;min-width:160px;margin:0">
+      <button class="act" onclick="renderComprovantesDia(true)" title="Atualizar agora">↻ Atualizar</button>
+    </div>
+
+    <div class="kpi-grid" id="cd-kpis" style="margin-bottom:16px"></div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <div class="panel-title" id="cd-chart-title">Comprovantes por parcela (1ª a 6ª)</div>
+        <div style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:6px">
+          <span class="comp-live-dot" id="cd-live-dot"></span>
+          <span id="cd-live-label">Tempo real ativo</span>
+        </div>
+      </div>
+      <div class="panel-body" id="cd-chart-body"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title" id="cd-list-title">Comprovantes recebidos</div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Horário</th>
+              <th>Parcela</th>
+              <th>Cliente</th>
+              <th>Vendedor</th>
+              <th>Grupo / Cota</th>
+              <th>Arquivo / Obs.</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="cd-tbody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -3181,13 +3266,13 @@ async function _aplicarPerfilConfirmado(data){
   renderNav();
   populateSelects();
   renderDashboard().catch(()=>{});
-  const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor',vendedor_nvd:'Vendedor NVD',ceo:'CEO'};
+  const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor',vendedor_nvd:'Vendedor NVD',ceo:'CEO',posvenda:'Pós-venda / Cobrança'};
   toast('Perfil confirmado: '+(roleLabels[data.role]||data.role),'ok');
   return true;
 }
 
 function _setProfileUI(name,role){
-  const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor',vendedor_nvd:'Vendedor NVD',ceo:'CEO'};
+  const roleLabels={admin:'Admin',coordenador:'Coordenador',supervisor:'Supervisor',vendedor:'Vendedor',vendedor_nvd:'Vendedor NVD',ceo:'CEO',posvenda:'Pós-venda / Cobrança'};
   const initials=(name||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?';
   const el_sbname=document.getElementById('sb-name');
   const el_sbrole=document.getElementById('sb-role');
@@ -3302,7 +3387,7 @@ async function loadAll(){
   // política de segurança varrendo a tabela inteira. Sem isso, alguém com poucos
   // leads visíveis forçava o Postgres a avaliar a política nas 70mil+ linhas até
   // estourar o timeout — era o erro 500 que travava o carregamento pro vendedor.
-  const histQuery = (isAdmin()||isCEO()||isCoordenador())
+  const histQuery = (isAdmin()||isCEO()||isCoordenador()||isCobrancaPosvenda())
     ? sb.from('crm_historico').select('*')
     : sb.from('crm_historico').select('*, crm_leads!inner(responsavel_id)')
         .in('crm_leads.responsavel_id', isSupervisor()?getMeusMembroIds():[CU.id]);
@@ -3792,6 +3877,13 @@ let _acessosExtra=new Set(), _acessosExtraUid=null;
 /* Conferência de documentação e ok do pós-venda: só quem tem o acesso (sem bypass de admin). O banco repete a regra. */
 function podeConferirDoc(){ return _acessosExtra.has('conferir_documentacao'); }
 function podeAprovarPosvenda(){ return _acessosExtra.has('aprovar_posvenda'); }
+const COBRANCA_EMAILS=new Set(['posvenda@grconsorcio.com.br']);
+function isCobrancaPosvenda(){
+  const em=(CUProfile?.email||CU?.email||'').trim().toLowerCase();
+  const rl=String(CUProfile?.role||'').trim().toLowerCase();
+  return COBRANCA_EMAILS.has(em)||rl==='posvenda'||_acessosExtra.has('comprovantes_cobranca');
+}
+function podeVerComprovantesDia(){ return isAdmin()||isCoordenador()||isCobrancaPosvenda(); }
 function temAcesso(recurso){ return isAdmin()||_acessosExtra.has(recurso); }
 function podeGerirCampanha(c){ return isAdmin()||(_acessosExtra.has('campanhas')&&!!c&&c.criado_por===CU?.id); }
 async function carregarAcessosExtra(){
@@ -4138,6 +4230,7 @@ function renderNav(){
     <div class="nav-item on" onclick="nav('dashboard',this)" title="Dashboard"><span class="nav-icon">${IC.dashboard}</span><span class="nav-label">Dashboard</span></div>`;
 
   const IC_vendas='<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M6 8.5h4M8 7v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  const IC_comp='<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="2" width="11" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 5.5h6M5 8.5h6M5 11.5h3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
   const IC_clientes='<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M11 7.5l1.5 1.5L15 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   if(isAdm){
@@ -4190,10 +4283,18 @@ function renderNav(){
       <div class="nav-item" onclick="nav('equipes',this)" title="Equipes"><span class="nav-icon">${IC.equipes}</span><span class="nav-label">Equipes</span></div>
       <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Vendas</span></div>
       <div class="nav-item" onclick="nav('base-comissao',this);renderBaseComissao()" title="Base GR/GRO"><span class="nav-icon">📉</span><span class="nav-label">Base GR/GRO</span></div>`;
+    if(podeVerComprovantesDia()){
+      html+=`<div class="nav-item" id="nav-comprovantes-dia" onclick="nav('comprovantes-dia',this)" title="Comprovantes do Dia"><span class="nav-icon">${IC_comp}</span><span class="nav-label">Comprovantes do Dia</span><span class="nav-badge" id="nav-comp-badge" style="display:none">0</span></div>`;
+    }
   } else if(isSup){
     // Supervisor: seção Gestão com Vendas da equipe
     html+=`<div class="nav-sect">Gestão</div>
       <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas da Equipe"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Vendas da Equipe</span></div>`;
+  }
+  if(!admin&&podeVerComprovantesDia()){
+    html+=`<div class="nav-sect">Cobrança / Pós-venda</div>
+      <div class="nav-item" id="nav-comprovantes-dia" onclick="nav('comprovantes-dia',this)" title="Comprovantes do Dia"><span class="nav-icon">${IC_comp}</span><span class="nav-label">Comprovantes do Dia</span><span class="nav-badge" id="nav-comp-badge" style="display:none">0</span></div>
+      <div class="nav-item" onclick="openVendasPage('todos')" title="Vendas"><span class="nav-icon">${IC_vendas}</span><span class="nav-label">Vendas</span></div>`;
   }
   // Vendedor NÃO tem seção Gestão
 
@@ -4211,6 +4312,7 @@ function renderNav(){
       <div class="nav-item" onclick="nav('termo',this)" title="Termo de Aceite"><span class="nav-icon">${IC.quiz}</span><span class="nav-label">Termo de Aceite</span></div>`;
   }
   document.getElementById('nav-body').innerHTML=html;
+  atualizarBadgeComprovantesHoje();
   const flBtn=document.getElementById('sb-force-logout');
   if(flBtn) flBtn.style.display=isAdmin()?'':'none';
   updateTaskBadge();
@@ -4234,7 +4336,7 @@ function renderNav(){
   if(demBtn) demBtn.style.display=(isSupervisor()||isCoordenador()||isAdmin())?'flex':'none';
 }
 
-const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','base-comissao':'Base GR/GRO','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões','campanhas':'Campanhas','questionarios':'Questionários','nvd-funil':'Funil NVD','termo':'Termo de Aceite'};
+const PAGE_TITLES={'busca-base':'Buscar na Base Geral',solicitacoes:'Solicitações de Lead',dashboard:'Dashboard',leads:'Todos os Leads','meus-leads':'Meus Leads',funil:'Funil de Vendas',distribuicao:'Distribuição de Leads',tarefas:'Tarefas',equipe:'Usuários',equipes:'Equipes','base-comissao':'Base GR/GRO','equipe-detail':'Detalhe da Equipe','lead-detail':'Detalhe do Lead',importar:'Importar Leads','funil-vendedor':'Funil do Vendedor','funis-equipe':'Funis da Equipe','meu-funil':'Meu Funil',vendas:'Vendas & Cancelamentos','comprovantes-dia':'Comprovantes do Dia (Cobrança)','clientes-vendidos':'Clientes Vendidos',mesclar:'Mesclar Base por DDD','leads-por-dia':'Leads por Vendedor/Dia','funil-ceo':'Funil — Leads Anúncio GR','leads-ceo':'Todos os Leads','login-logs':'Histórico de Logins','transmissoes':'Transmissões','campanhas':'Campanhas','questionarios':'Questionários','nvd-funil':'Funil NVD','termo':'Termo de Aceite'};
 /* ═══ PERSISTÊNCIA DE PÁGINA ATUAL (item solicitado: não voltar sempre pro dashboard) ═══
    Salva a última página visitada por usuário (localStorage, sobrevive a refresh/F5 e a
    logins futuros no mesmo navegador). Páginas de "detalhe" (que dependem de um ID
@@ -4249,7 +4351,15 @@ function saveLastPage(page){
 function tryRestoreLastPage(){
   try{
     const saved=localStorage.getItem(_lastPageKey());
-    if(!saved||PAGES_NAO_RESTAURAVEIS.has(saved)) return false;
+    if(!saved){
+      if(isCobrancaPosvenda()&&document.getElementById('page-comprovantes-dia')){
+        const navEl=document.getElementById('nav-comprovantes-dia');
+        nav('comprovantes-dia',navEl||null);
+        return true;
+      }
+      return false;
+    }
+    if(PAGES_NAO_RESTAURAVEIS.has(saved)) return false;
     if(!document.getElementById('page-'+saved)) return false; // página não existe nessa sessão/perfil
     const navEl=document.querySelector(`.nav-item[onclick*="nav('${saved}'"]`)
       || document.querySelector(`.nav-item[onclick*='nav(\\'${saved}\\'']`);
@@ -4301,6 +4411,7 @@ function nav(page,el){
       if(podeAprovarBloqueio) renderBypassBloqueioLog();
     }
   }
+  if(page==='comprovantes-dia') renderComprovantesDia();
   if(page==='equipe'){ renderEquipe(); renderLixeira(); }
   if(page==='equipes') renderEquipes();
   if(page==='importar') renderImportar();
@@ -5102,8 +5213,8 @@ async function openDetail(id,from){
     // usa cache se falhar
   }
 
-  // Bloqueia vendedor que não é mais o responsável
-  if(CUProfile?.role==='vendedor' && lead.responsavel_id && lead.responsavel_id!==CU.id){
+  // Bloqueia vendedor que não é mais o responsável (exceto login de cobrança/pós-venda)
+  if(CUProfile?.role==='vendedor' && !isCobrancaPosvenda() && lead.responsavel_id && lead.responsavel_id!==CU.id){
     toast('Este lead foi redistribuído e não pertence mais a você.','err');
     renderMeusLeads();
     return;
@@ -6858,7 +6969,7 @@ const ETAPAS_VENDA=[
 ];
 function _fEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function _fData(iso){return iso?new Date(iso).toLocaleDateString('pt-BR')+' '+new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';}
-function _podeConferirVenda(){return isAdmin()||isCoordenador();}
+function _podeConferirVenda(){return isAdmin()||isCoordenador()||isCobrancaPosvenda();}
 
 async function renderVendaFluxo(vendaId){
   const venda=allVendas.find(v=>v.id===vendaId);
@@ -7069,9 +7180,440 @@ async function removerComprovante(id,vendaId,path){
   renderVendaFluxo(vendaId);
 }
 async function abrirComprovante(path){
-  const{data,error}=await sb.storage.from('crm-comprovantes').createSignedUrl(path,600);
+  return abrirComprovanteBucket('crm-comprovantes',path);
+}
+async function abrirComprovanteBucket(bucket,path){
+  if(!path){ toast('Arquivo sem caminho no storage.','err'); return; }
+  const{data,error}=await sb.storage.from(bucket||'crm-comprovantes').createSignedUrl(path,600);
   if(error||!data?.signedUrl){ toast('Não foi possível abrir o arquivo.','err'); return; }
   window.open(data.signedUrl,'_blank','noopener');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PAINEL DE COBRANÇA / PÓS-VENDA: COMPROVANTES DO DIA (1ª a 6ª parcela)
+   Une 1ª parcela (crm_documentos "[Comprovante de Pagamento]...") com 2ª a 6ª
+   (crm_venda_comprovantes) para posvenda@grconsorcio.com.br, coordenação e admin.
+   ═══════════════════════════════════════════════════════════ */
+function _brtDateStr(d){
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(d||new Date());
+}
+function _brtShiftDays(ymd,delta){
+  const [y,m,day]=ymd.split('-').map(Number);
+  return new Date(Date.UTC(y,m-1,day+delta)).toISOString().slice(0,10);
+}
+function _fmtHoraBRT(iso){
+  if(!iso) return '—';
+  const d=new Date(iso);
+  return d.toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'});
+}
+function _fmtDataCurtaBRT(iso){
+  if(!iso) return '';
+  return new Date(iso).toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'});
+}
+const _compDiaState={
+  preset:'hoje',
+  date:_brtDateStr(),
+  rows:[],
+  loading:false,
+  lastUpdated:null,
+  extraVendas:new Map(),
+  extraLeads:new Map()
+};
+let _compDiaPollInterval=null;
+let _compDiaBadgeLastAt=0;
+
+function getCompDiaRange(){
+  const hoje=_brtDateStr();
+  let fromDay=hoje, toDay=hoje, label='Hoje ('+hoje.split('-').reverse().join('/')+')';
+  if(_compDiaState.preset==='ontem'){
+    fromDay=toDay=_brtShiftDays(hoje,-1);
+    label='Ontem ('+fromDay.split('-').reverse().join('/')+')';
+  } else if(_compDiaState.preset==='7d'){
+    fromDay=_brtShiftDays(hoje,-6); toDay=hoje;
+    label='Últimos 7 dias';
+  } else if(_compDiaState.preset==='mes'){
+    fromDay=hoje.slice(0,8)+'01'; toDay=hoje;
+    label='Mês atual';
+  } else if(_compDiaState.preset==='custom'&&_compDiaState.date){
+    fromDay=toDay=_compDiaState.date;
+    label='Dia '+fromDay.split('-').reverse().join('/');
+  }
+  const startIso=new Date(fromDay+'T00:00:00-03:00').toISOString();
+  const endIso=new Date(toDay+'T23:59:59.999-03:00').toISOString();
+  return {fromDay,toDay,label,startIso,endIso,hoje};
+}
+
+function setCompDiaPreset(p){
+  _compDiaState.preset=p;
+  if(p==='hoje') _compDiaState.date=_brtDateStr();
+  else if(p==='ontem') _compDiaState.date=_brtShiftDays(_brtDateStr(),-1);
+  renderComprovantesDia();
+}
+function setCompDiaDataCustom(val){
+  if(!val) return;
+  _compDiaState.preset='custom';
+  _compDiaState.date=val;
+  renderComprovantesDia();
+}
+function toggleCompDiaParcela(n){
+  const sel=document.getElementById('cd-f-parcela');
+  if(!sel) return;
+  sel.value=(String(sel.value)===String(n))?'':String(n);
+  renderComprovantesDiaVisao();
+}
+function _isDocComprovante1a(d){
+  if(!d) return false;
+  const nome=String(d.nome||'');
+  const sp=String(d.storage_path||'');
+  return nome.startsWith('[Comprovante de Pagamento]')||sp.includes('/comprovante-');
+}
+function _compDiaFindVenda(vendaId){
+  return allVendas.find(v=>v.id===vendaId)||_compDiaState.extraVendas.get(vendaId)||null;
+}
+function _compDiaFindLeadName(leadId){
+  if(!leadId) return 'Cliente não identificado';
+  const l=findLead(leadId)||_compDiaState.extraLeads.get(leadId);
+  if(l?.nome) return l.nome;
+  if(_leadNomeCache[leadId]) return _leadNomeCache[leadId];
+  return 'Cliente';
+}
+
+async function atualizarBadgeComprovantesHoje(force){
+  if(!podeVerComprovantesDia()) return;
+  const now=Date.now();
+  if(!force && now-_compDiaBadgeLastAt<25000) return;
+  _compDiaBadgeLastAt=now;
+  try{
+    const hoje=_brtDateStr();
+    const startIso=new Date(hoje+'T00:00:00-03:00').toISOString();
+    const{count,error}=await sb.from('crm_venda_comprovantes')
+      .select('id',{count:'exact',head:true})
+      .eq('tipo','comprovante')
+      .eq('status','pendente')
+      .gte('enviado_em',startIso);
+    if(error) return;
+    _setCompDiaBadge(count||0);
+  }catch(_){}
+}
+function _setCompDiaBadge(n){
+  const b=document.getElementById('nav-comp-badge');
+  if(!b) return;
+  if(n>0){ b.textContent=n>99?'99+':String(n); b.style.display=''; }
+  else { b.style.display='none'; }
+}
+
+function _ensureCompDiaPoll(){
+  if(_compDiaPollInterval || !podeVerComprovantesDia()) return;
+  _compDiaPollInterval=setInterval(()=>{
+    if(document.getElementById('page-comprovantes-dia')?.classList.contains('on')){
+      renderComprovantesDia(false);
+    }
+  },45000);
+}
+
+async function renderComprovantesDia(showFeedback){
+  if(!podeVerComprovantesDia()) return;
+  _ensureCompDiaPoll();
+  ['hoje','ontem','7d','mes'].forEach(p=>{
+    document.getElementById('cd-preset-'+p)?.classList.toggle('on',_compDiaState.preset===p);
+  });
+  const dateInp=document.getElementById('cd-data');
+  const range=getCompDiaRange();
+  if(dateInp && (_compDiaState.preset==='hoje'||_compDiaState.preset==='ontem'||_compDiaState.preset==='custom')){
+    dateInp.value=range.fromDay;
+  }
+
+  const tbody=document.getElementById('cd-tbody');
+  if(_compDiaState.loading) return;
+  _compDiaState.loading=true;
+  if(!_compDiaState.lastUpdated && tbody){
+    tbody.innerHTML='<tr><td colspan="8"><div class="empty">Carregando comprovantes...</div></td></tr>';
+  }
+  try{
+    const [rComp,rDocs]=await Promise.all([
+      sb.from('crm_venda_comprovantes').select('*')
+        .gte('enviado_em',range.startIso).lte('enviado_em',range.endIso)
+        .order('enviado_em',{ascending:false}).limit(1000),
+      sb.from('crm_documentos').select('*')
+        .gte('created_at',range.startIso).lte('created_at',range.endIso)
+        .order('created_at',{ascending:false}).limit(1000)
+    ]);
+    if(rComp.error) throw rComp.error;
+    if(rDocs.error) throw rDocs.error;
+
+    const rawComps=rComp.data||[];
+    const rawDocs=(rDocs.data||[]).filter(_isDocComprovante1a);
+
+    // Resolve vendas faltantes (ex: se o perfil da cobrança não carregou tudo em allVendas ainda)
+    const missingVendaIds=[...new Set([...rawComps,...rawDocs].map(x=>x.venda_id).filter(id=>id&&!_compDiaFindVenda(id)))];
+    if(missingVendaIds.length){
+      const{data:extraV}=await sb.from('crm_vendas').select('*').in('id',missingVendaIds);
+      (extraV||[]).forEach(v=>{
+        _compDiaState.extraVendas.set(v.id,v);
+        if(!allVendas.find(a=>a.id===v.id)) allVendas.push(v);
+      });
+    }
+
+    // Resolve nomes de leads faltantes (ex: perfil posvenda/coordenador sem base completa em memória)
+    const allLeadIds=[...new Set([...rawComps,...rawDocs].map(x=>{
+      const v=x.venda_id?_compDiaFindVenda(x.venda_id):null;
+      return x.lead_id||v?.lead_id||null;
+    }).filter(Boolean))];
+    const missingLeadIds=allLeadIds.filter(id=>!findLead(id)&&!_compDiaState.extraLeads.has(id)&&!_leadNomeCache[id]);
+    if(missingLeadIds.length){
+      for(let i=0;i<missingLeadIds.length;i+=200){
+        const chunk=missingLeadIds.slice(i,i+200);
+        const{data:extraL}=await sb.from('crm_leads').select('id,nome,telefone').in('id',chunk);
+        (extraL||[]).forEach(l=>{
+          _compDiaState.extraLeads.set(l.id,l);
+          _leadNomeCache[l.id]=l.nome||l.telefone||'Cliente';
+        });
+      }
+    }
+
+    const unified=[
+      ...rawComps.map(c=>{
+        const v=c.venda_id?_compDiaFindVenda(c.venda_id):null;
+        return {
+          uid:'comp:'+c.id,
+          id:c.id,
+          fonte:'crm_venda_comprovantes',
+          bucket:'crm-comprovantes',
+          parcela:Number(c.numero_parcela)||2,
+          tipo:c.tipo||'comprovante',
+          status:c.tipo==='inadimplencia'?'inadimplencia':(c.status||'pendente'),
+          storage_path:c.storage_path||'',
+          nome_arquivo:c.nome_arquivo||'',
+          observacao:c.observacao||'',
+          motivo_recusa:c.motivo_recusa||'',
+          criado_em:c.enviado_em,
+          enviado_por:c.enviado_por,
+          conferido_por:c.conferido_por,
+          conferido_em:c.conferido_em,
+          venda_id:c.venda_id,
+          lead_id:c.lead_id||v?.lead_id||null
+        };
+      }),
+      ...rawDocs.map(d=>{
+        const v=d.venda_id?_compDiaFindVenda(d.venda_id):null;
+        const stVenda=v?.status_venda||'Pendente';
+        const status1a=stVenda==='Aprovado'?'aprovado':(stVenda==='Cancelado'||stVenda==='SemRetorno')?'recusado':'pendente';
+        return {
+          uid:'doc:'+d.id,
+          id:d.id,
+          fonte:'crm_documentos',
+          bucket:'crm-documentos',
+          parcela:1,
+          tipo:'comprovante',
+          status:status1a,
+          storage_path:d.storage_path||'',
+          nome_arquivo:String(d.nome||'').replace(/^\[Comprovante de Pagamento\]\s*/,''),
+          observacao:'Comprovante inicial anexado na venda (1ª parcela)',
+          motivo_recusa:'',
+          criado_em:d.created_at,
+          enviado_por:d.uploaded_by||(v?.vendedor_id)||null,
+          conferido_por:null,
+          conferido_em:null,
+          venda_id:d.venda_id,
+          lead_id:d.lead_id||v?.lead_id||null
+        };
+      })
+    ].sort((a,b)=>new Date(b.criado_em)-new Date(a.criado_em));
+
+    _compDiaState.rows=unified;
+    _compDiaState.lastUpdated=new Date();
+
+    // Popula filtro de vendedores preservando seleção atual
+    const vendSel=document.getElementById('cd-f-vendedor');
+    if(vendSel){
+      const cur=vendSel.value;
+      const vendIds=[...new Set(unified.map(r=>{
+        const v=r.venda_id?_compDiaFindVenda(r.venda_id):null;
+        return r.enviado_por||v?.vendedor_id||null;
+      }).filter(Boolean))];
+      const opts=vendIds
+        .map(id=>({id,name:findUser(id)?.name||'Usuário'}))
+        .sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'))
+        .map(u=>`<option value="${u.id}">${_fEsc(u.name)}</option>`).join('');
+      vendSel.innerHTML='<option value="">Todos os vendedores</option>'+opts;
+      if(cur&&vendIds.includes(cur)) vendSel.value=cur;
+    }
+
+    if(_compDiaState.preset==='hoje'){
+      const pendHoje=unified.filter(r=>r.fonte==='crm_venda_comprovantes'&&r.tipo==='comprovante'&&r.status==='pendente').length;
+      _setCompDiaBadge(pendHoje);
+      _compDiaBadgeLastAt=Date.now();
+    }
+
+    renderComprovantesDiaVisao();
+    if(showFeedback) toast('Comprovantes atualizados ('+unified.length+').','ok');
+  }catch(e){
+    console.error('[renderComprovantesDia]',e);
+    if(tbody) tbody.innerHTML=`<tr><td colspan="8"><div class="empty" style="color:var(--red)">Erro ao carregar comprovantes: ${_fEsc(e.message||'erro')}</div></td></tr>`;
+  }finally{
+    _compDiaState.loading=false;
+  }
+}
+
+function renderComprovantesDiaVisao(){
+  const range=getCompDiaRange();
+  const fParcela=document.getElementById('cd-f-parcela')?.value||'';
+  const fStatus=document.getElementById('cd-f-status')?.value||'';
+  const fVend=document.getElementById('cd-f-vendedor')?.value||'';
+  const q=(document.getElementById('cd-srch')?.value||'').trim().toLowerCase();
+
+  // Base sem filtro de parcela (mantém o gráfico comparável entre 1ª e 6ª mesmo quando uma barra é clicada)
+  const base=_compDiaState.rows.filter(r=>{
+    const v=r.venda_id?_compDiaFindVenda(r.venda_id):null;
+    const vendId=r.enviado_por||v?.vendedor_id||'';
+    if(fVend && vendId!==fVend) return false;
+    if(fStatus && r.status!==fStatus) return false;
+    if(q){
+      const cli=_compDiaFindLeadName(r.lead_id).toLowerCase();
+      const vend=(findUser(vendId)?.name||'').toLowerCase();
+      const grp=((v?.grupo||'')+' '+(v?.cota||'')).toLowerCase();
+      const arq=(r.nome_arquivo||'').toLowerCase();
+      if(!cli.includes(q)&&!vend.includes(q)&&!grp.includes(q)&&!arq.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const compsOnly=base.filter(r=>r.tipo==='comprovante');
+  const inadOnly=base.filter(r=>r.tipo==='inadimplencia');
+  const totalComps=compsOnly.length;
+  const pendentes=compsOnly.filter(r=>r.status==='pendente').length;
+  const aprovados=compsOnly.filter(r=>r.status==='aprovado').length;
+  const recusados=compsOnly.filter(r=>r.status==='recusado').length;
+
+  const kpisEl=document.getElementById('cd-kpis');
+  if(kpisEl){
+    kpisEl.innerHTML=`
+      <div class="kpi" style="border-color:rgba(201,168,76,.35);background:rgba(201,168,76,.05)">
+        <div class="kpi-label">Comprovantes (${_fEsc(range.label)})</div>
+        <div class="kpi-val" style="color:var(--gold2)">${totalComps}</div>
+      </div>
+      <div class="kpi" style="cursor:pointer" onclick="document.getElementById('cd-f-status').value='pendente';renderComprovantesDiaVisao()">
+        <div class="kpi-label">Aguardando conferência</div>
+        <div class="kpi-val" style="color:var(--orange)">${pendentes}</div>
+      </div>
+      <div class="kpi" style="cursor:pointer;border-color:rgba(74,222,128,.25)" onclick="document.getElementById('cd-f-status').value='aprovado';renderComprovantesDiaVisao()">
+        <div class="kpi-label">Conferidos / Aprovados</div>
+        <div class="kpi-val" style="color:var(--green)">${aprovados}</div>
+      </div>
+      <div class="kpi" style="cursor:pointer" onclick="document.getElementById('cd-f-status').value='recusado';renderComprovantesDiaVisao()">
+        <div class="kpi-label">Recusados</div>
+        <div class="kpi-val" style="color:var(--red)">${recusados}</div>
+      </div>
+      <div class="kpi" style="cursor:pointer" onclick="document.getElementById('cd-f-status').value='inadimplencia';renderComprovantesDiaVisao()">
+        <div class="kpi-label">Inadimplências informadas</div>
+        <div class="kpi-val" style="color:var(--muted2)">${inadOnly.length}</div>
+      </div>`;
+  }
+
+  // Gráfico por parcela (1ª a 6ª)
+  const counts=[1,2,3,4,5,6].map(n=>({
+    n,
+    count:compsOnly.filter(r=>r.parcela===n).length
+  }));
+  const maxCount=Math.max(1,...counts.map(c=>c.count));
+  const chartTitle=document.getElementById('cd-chart-title');
+  if(chartTitle) chartTitle.textContent=`Comprovantes por parcela (1ª a 6ª) — ${range.label}`;
+  const liveLbl=document.getElementById('cd-live-label');
+  if(liveLbl&&_compDiaState.lastUpdated){
+    liveLbl.textContent='Tempo real · atualizado às '+_fmtHoraBRT(_compDiaState.lastUpdated.toISOString());
+  }
+  const chartBody=document.getElementById('cd-chart-body');
+  if(chartBody){
+    const barsHtml=counts.map(c=>{
+      const pctBar=c.count?Math.max(8,Math.round((c.count/maxCount)*100)):0;
+      const share=totalComps?Math.round((c.count/totalComps)*100):0;
+      const active=String(fParcela)===String(c.n);
+      return `<div class="comp-bar-col${active?' on':''}${c.count===0?' zero':''}" onclick="toggleCompDiaParcela(${c.n})" title="Clique para filtrar ${c.n}ª parcela">
+        <div class="comp-bar-num">${c.count}</div>
+        <div class="comp-bar-pct">${share}%</div>
+        <div class="comp-bar-track"><div class="comp-bar-fill" style="height:${pctBar}%"></div></div>
+        <div class="comp-bar-lbl">${c.n}ª parcela</div>
+      </div>`;
+    }).join('');
+    const resumo=counts.map(c=>`<strong style="color:var(--text)">${c.n}ª:</strong> ${c.count}`).join(' &nbsp;·&nbsp; ');
+    chartBody.innerHTML=`<div class="comp-chart-bars">${barsHtml}</div>
+      <div class="comp-chart-foot">
+        <div>${resumo}</div>
+        <div>${fParcela?`<button class="act" onclick="document.getElementById('cd-f-parcela').value='';renderComprovantesDiaVisao()">Mostrar todas</button>`:'Clique em uma barra para filtrar a lista'}</div>
+      </div>`;
+  }
+
+  // Lista filtrada
+  const rows=fParcela?base.filter(r=>String(r.parcela)===String(fParcela)):base;
+  const listTitle=document.getElementById('cd-list-title');
+  if(listTitle){
+    listTitle.textContent=`Comprovantes recebidos (${rows.length})${fParcela?' — '+fParcela+'ª parcela':''}`;
+  }
+  const tbody=document.getElementById('cd-tbody');
+  if(!tbody) return;
+  if(!rows.length){
+    tbody.innerHTML='<tr><td colspan="8"><div class="empty"><div class="ei">🧾</div>Nenhum comprovante encontrado neste filtro</div></td></tr>';
+    return;
+  }
+
+  const pode=_podeConferirVenda();
+  tbody.innerHTML=rows.map(r=>{
+    const v=r.venda_id?_compDiaFindVenda(r.venda_id):null;
+    const vendId=r.enviado_por||v?.vendedor_id;
+    const vendNome=findUser(vendId)?.name||'—';
+    const cliNome=_compDiaFindLeadName(r.lead_id);
+    const hora=_fmtHoraBRT(r.criado_em);
+    const dia=range.fromDay!==range.toDay?`<div style="font-size:10px;color:var(--muted2)">${_fmtDataCurtaBRT(r.criado_em)}</div>`:'';
+    const grupoCota=v?(v.grupo||'—')+' / '+(v.cota||'—'):'—';
+    const parcelaVal=v?.parcela?`<div style="font-size:10px;color:var(--muted2)">${brl(v.parcela)}</div>`:'';
+
+    let stBadge='';
+    if(r.status==='inadimplencia') stBadge='<span class="badge b-canc">Inadimplência</span>';
+    else if(r.status==='aprovado') stBadge='<span class="badge b-aprov">'+(r.parcela===1?'Venda Aprovada':'Conferido')+'</span>';
+    else if(r.status==='recusado') stBadge='<span class="badge b-canc">Recusado</span>';
+    else stBadge='<span class="badge b-pend">Em conferência</span>';
+
+    const arqLink=r.storage_path
+      ?`<a href="#" class="cp-file" onclick="abrirComprovanteBucket('${escJs(r.bucket)}','${escJs(r.storage_path)}');return false">${_fEsc(r.nome_arquivo||'Abrir comprovante')}</a>`
+      :'<span style="color:var(--muted2)">Sem anexo</span>';
+    const obsHtml=r.observacao?`<div style="font-size:11px;color:var(--muted2);margin-top:2px">${_fEsc(r.observacao)}</div>`:'';
+    const motHtml=r.motivo_recusa?`<div style="font-size:11px;color:var(--red);margin-top:2px">Motivo: ${_fEsc(r.motivo_recusa)}</div>`:'';
+
+    const acoes=[];
+    if(r.storage_path) acoes.push(`<button class="act" onclick="abrirComprovanteBucket('${escJs(r.bucket)}','${escJs(r.storage_path)}')">Abrir</button>`);
+    if(pode&&r.fonte==='crm_venda_comprovantes'&&r.tipo==='comprovante'){
+      if(r.status!=='aprovado') acoes.push(`<button class="act green" onclick="conferirComprovanteDia('${r.id}','aprovado','${r.venda_id||''}')">Aprovar</button>`);
+      if(r.status!=='recusado') acoes.push(`<button class="act red" onclick="conferirComprovanteDia('${r.id}','recusado','${r.venda_id||''}')">Recusar</button>`);
+    }
+    if(r.lead_id) acoes.push(`<button class="act" onclick="openDetail('${r.lead_id}','comprovantes-dia')">Ver venda</button>`);
+
+    return `<tr>
+      <td style="white-space:nowrap;font-weight:700">${hora}${dia}</td>
+      <td><span class="badge" style="background:rgba(201,168,76,.14);color:var(--gold2);border:1px solid var(--gold-dim)">${r.parcela}ª parcela</span></td>
+      <td style="font-weight:700;color:var(--gold2);cursor:${r.lead_id?'pointer':'default'}" ${r.lead_id?`onclick="openDetail('${r.lead_id}','comprovantes-dia')"`:''}>${_fEsc(cliNome)}</td>
+      <td style="font-size:12px">${_fEsc(vendNome)}</td>
+      <td style="font-size:11.5px;color:var(--muted2)">${_fEsc(grupoCota)}${parcelaVal}</td>
+      <td style="max-width:260px">${arqLink}${obsHtml}${motHtml}</td>
+      <td>${stBadge}</td>
+      <td><div style="display:flex;gap:4px;flex-wrap:wrap">${acoes.join('')}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function conferirComprovanteDia(id,status,vendaId){
+  if(!_podeConferirVenda()) return;
+  let motivo=null;
+  if(status==='recusado'){
+    motivo=prompt('Motivo da recusa (o vendedor verá):');
+    if(motivo===null) return;
+    if(!motivo.trim()){ toast('Informe o motivo da recusa.','err'); return; }
+  }
+  const{error}=await sb.from('crm_venda_comprovantes')
+    .update({status,motivo_recusa:motivo?motivo.trim():null,conferido_por:CU.id,conferido_em:new Date().toISOString()})
+    .eq('id',id);
+  if(error){ toast('Erro: '+error.message,'err'); return; }
+  toast(status==='aprovado'?'Comprovante conferido.':'Comprovante recusado.','ok');
+  renderComprovantesDia();
 }
 
 
@@ -9562,8 +10104,8 @@ function setVendasFilter(status){
 
 function getVisibleVendas(){
   // Escopo por perfil
-  if(isAdmin()||isCoordenador()){
-    // Admin e Coordenador: veem TODAS as vendas de todos os vendedores
+  if(isAdmin()||isCoordenador()||isCobrancaPosvenda()){
+    // Admin, Coordenador e Cobrança/Pós-venda: veem TODAS as vendas de todos os vendedores
     return allVendas;
   } else if(isSupervisor()){
     // Supervisor: vendas de qualquer membro da sua equipe.
@@ -11840,6 +12382,35 @@ function setupRealtime(){
   ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_config',filter:'chave=eq.force_logout_at'},async(payload)=>{
     await _aplicarForceLogoutSeNecessario(payload.new?.valor,{reload:true});
   });
+
+  // ── crm_venda_comprovantes & crm_documentos (comprovantes de parcela em tempo real p/ Cobrança) ──
+  if(podeVerComprovantesDia()){
+    ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_venda_comprovantes'},async(payload)=>{
+      const row=payload.new||payload.old;
+      if(payload.eventType==='INSERT'&&row?.enviado_por!==CU.id){
+        const vend=findUser(row.enviado_por)?.name||'Vendedor';
+        const msg=row.tipo==='inadimplencia'
+          ?`Inadimplência (${row.numero_parcela}ª parcela) informada por ${vend}.`
+          :`Novo comprovante da ${row.numero_parcela}ª parcela enviado por ${vend}!`;
+        toast(msg,'ok');
+      }
+      atualizarBadgeComprovantesHoje(true);
+      if(document.getElementById('page-comprovantes-dia')?.classList.contains('on')){
+        renderComprovantesDia();
+      }
+    });
+    ch = ch.on('postgres_changes',{event:'*',schema:'public',table:'crm_documentos'},async(payload)=>{
+      const doc=payload.new||payload.old;
+      if(!_isDocComprovante1a(doc)) return;
+      if(payload.eventType==='INSERT'&&doc?.uploaded_by!==CU.id){
+        const vend=findUser(doc.uploaded_by)?.name||'Vendedor';
+        toast(`Novo comprovante da 1ª parcela anexado por ${vend}!`,'ok');
+      }
+      if(document.getElementById('page-comprovantes-dia')?.classList.contains('on')){
+        renderComprovantesDia();
+      }
+    });
+  }
 
   realtimeChannel = ch.subscribe((status)=>{
       if(status==='SUBSCRIBED'){
