@@ -1040,6 +1040,11 @@ document.addEventListener('DOMContentLoaded', function(){
         <button id="vp-btn-Cancelado" class="tab" onclick="setVendasFilter('Cancelado')">Reprovado Pós Vendas</button>
         <button id="vp-btn-SemRetorno" class="tab" onclick="setVendasFilter('SemRetorno')" style="display:none;color:var(--red)">Cancelados</button>
       </div>
+      <select id="vp-f-etapa" onchange="renderVendasPage()" title="Filtrar por etapa pendente" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+        <option value="">Todas as etapas</option>
+        <option value="aguard_doc">Aguardando Documentação</option>
+        <option value="doc_ok">Doc. OK · Aguard. Pós-venda</option>
+      </select>
       <select id="vp-f-tipo" onchange="renderVendasPage()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
         <option value="">Novo + Remalho</option>
         <option value="Novo">Só Novos</option>
@@ -5334,11 +5339,13 @@ async function openDetail(id,from){
         </label>`:''}
       </div>
       <div id="venda-comprovantes" data-venda="${venda.id}" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div class="empty" style="padding:10px">Carregando comprovantes...</div></div>
-      ${(isAdmin()||isCoordenador())?`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-        ${!podeConferirDoc()?'<span style="font-size:11px;color:var(--muted2)">Só o responsável pela conferência aprova ou reprova a documentação.</span>':''}
-        ${podeConferirDoc()&&venda.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar documentação</button>`:'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">Aprovado</span>'}
-        ${!podeConferirDoc()?'':venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">Reprovar</button>`:'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">Reprovado</span>'}
-        ${podeConferirDoc()&&venda.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${venda.id}','Pendente')">Voltar para Pendente</button>`:''}
+      ${(isAdmin()||isCoordenador()||podeConferirDoc()||podeAprovarPosvenda())?`<div id="venda-acao-bar-${venda.id}" style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center">
+        ${podeConferirDoc()&&venda.status_venda==='Pendente'?`<button class="act green" id="btn-aprovar-doc-${venda.id}" onclick="aprovarDocumentacaoVenda('${venda.id}')">Aprovar documentação</button>`:''}
+        ${podeAprovarPosvenda()&&venda.status_venda!=='Aprovado'?`<button class="act green" onclick="aprovarPosvendaVenda('${venda.id}')">Aprovar venda (Pós-venda OK)</button>`:''}
+        ${venda.status_venda==='Aprovado'?'<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">Venda Aprovada</span>':''}
+        ${(podeConferirDoc()||podeAprovarPosvenda())&&venda.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">Reprovar venda</button>`:''}
+        ${venda.status_venda==='Cancelado'?'<span style="font-size:11px;color:var(--red);padding:4px 9px;border:1px solid rgba(229,85,85,0.3);border-radius:5px">Reprovado</span>':''}
+        ${(podeConferirDoc()||podeAprovarPosvenda())&&venda.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${venda.id}','Pendente')">Voltar para Pendente</button>`:''}
         ${isAdmin()?`<button class="act" onclick="revertVenda('${venda.id}','${id}')" style="border-color:var(--orange);color:var(--orange)">Reverter para Lead</button>`:''}
         ${venda.status_venda!=='SemRetorno'?`<button class="act red" onclick="marcarVendaSemRetorno('${venda.id}')">Venda Sem Retorno</button>`:''}
       </div>`:''}
@@ -6962,11 +6969,12 @@ function fecharQuestionarioPopup(){
    ═══════════════════════════════════════════════════════════ */
 const PRAZO_COMPROVANTE_DIA=20;
 const ETAPAS_VENDA=[
-  {key:'registro',   n:1, titulo:'Venda Registrada',            sub:'Vendedor registrou a venda e anexou os documentos'},
-  {key:'documentacao',n:2,titulo:'Conferência de Documentação', sub:'Pós-venda confere os documentos e aprova a venda'},
-  {key:'posvenda',   n:3, titulo:'Pós-venda',                   sub:'Pós-venda dá o ok final'},
-  {key:'conclusao',  n:4, titulo:'Venda Concluída',             sub:'Processo 100% concluído'}
+  {key:'registro',    n:1, titulo:'Venda Registrada',            sub:'Vendedor registrou a venda e anexou os documentos'},
+  {key:'documentacao',n:2, titulo:'Conferência de Documentação', sub:'Documentação conferida (venda segue pendente para o pós-venda)'},
+  {key:'posvenda',    n:3, titulo:'Pós-venda',                   sub:'Pós-venda atende e aprova ou reprova a venda'},
+  {key:'conclusao',   n:4, titulo:'Venda Concluída',             sub:'Venda aprovada pelo pós-venda'}
 ];
+let _vendaEtapasMap={};
 function _fEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function _fData(iso){return iso?new Date(iso).toLocaleDateString('pt-BR')+' '+new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';}
 function _podeConferirVenda(){return isAdmin()||isCoordenador()||isCobrancaPosvenda();}
@@ -6984,8 +6992,13 @@ async function renderVendaFluxo(vendaId){
     if(r1.error) throw r1.error;
     if(r2.error) throw r2.error;
     (r1.data||[]).forEach(e=>{etapas[e.etapa]=e;});
+    _vendaEtapasMap[vendaId]=etapas;
     comps=r2.data||[];
   }catch(e){ erro=e; console.warn('[fluxo venda]',e.message); }
+  const btnDoc=document.getElementById('btn-aprovar-doc-'+vendaId);
+  if(btnDoc&&etapas.documentacao){
+    btnDoc.outerHTML='<span style="font-size:11px;color:var(--green);padding:4px 9px;border:1px solid rgba(74,222,128,0.3);border-radius:5px">Documentação OK</span>';
+  }
   const boxA=document.getElementById('venda-acompanhamento');
   const boxC=document.getElementById('venda-comprovantes');
   if(!boxA||boxA.dataset.venda!==vendaId) return;
@@ -7002,10 +7015,10 @@ function _vendaTimelineHtml(venda,etapas,comps){
   const done={
     registro:{em:venda.created_at,por:findUser(venda.vendedor_id)?.name},
     documentacao:etapas.documentacao?{em:etapas.documentacao.concluida_em,por:findUser(etapas.documentacao.concluida_por)?.name}:null,
-    posvenda:etapas.posvenda?{em:etapas.posvenda.concluida_em,por:findUser(etapas.posvenda.concluida_por)?.name}:null,
-    conclusao:etapas.posvenda?{em:etapas.posvenda.concluida_em,por:findUser(etapas.posvenda.concluida_por)?.name}:null
+    posvenda:(etapas.posvenda&&venda.status_venda==='Aprovado')?{em:etapas.posvenda.concluida_em,por:findUser(etapas.posvenda.concluida_por)?.name}:null,
+    conclusao:(etapas.posvenda&&venda.status_venda==='Aprovado')?{em:etapas.posvenda.concluida_em,por:findUser(etapas.posvenda.concluida_por)?.name}:null
   };
-  // Etapa atual = primeira não concluída (a venda cancelada para na conferência)
+  // Etapa atual = primeira não concluída (a venda reprovada/cancelada para na etapa onde estava)
   const atual=ETAPAS_VENDA.find(s=>!done[s.key]);
   const podeDoc=podeConferirDoc(), podePos=podeAprovarPosvenda();
   const stepHtml=ETAPAS_VENDA.map((s,i)=>{
@@ -7014,9 +7027,9 @@ function _vendaTimelineHtml(venda,etapas,comps){
     let estado='fut',rot='Aguardando';
     if(d){estado='ok';rot='Concluída';}
     else if(isAtual&&cancelada){estado='bad';rot=venda.status_venda==='Cancelado'?'Reprovada':'Cancelada';}
-    else if(isAtual){estado='cur';rot=s.key==='documentacao'?'Pendente':'Em andamento';}
+    else if(isAtual){estado='cur';rot=s.key==='documentacao'?'Pendente':'Aguardando Pós-venda';}
     const quando=d?`<div class="fl-when">${_fData(d.em)}${d.por?'<br>'+_fEsc(d.por):''}</div>`:'';
-    const desfazer=(d&&podePos&&s.key==='posvenda')
+    const desfazer=(d&&s.key==='posvenda'&&podePos) || (d&&s.key==='documentacao'&&podeDoc&&!done.posvenda&&venda.status_venda==='Pendente')
       ?`<button class="fl-undo" onclick="desfazerEtapaVenda('${venda.id}','${s.key}')" title="Desfazer esta etapa">desfazer</button>`:'';
     return `<div class="fl-step fl-${estado}">
       <div class="fl-dot">${estado==='ok'?'✓':estado==='bad'?'✕':s.n}</div>
@@ -7030,17 +7043,17 @@ function _vendaTimelineHtml(venda,etapas,comps){
   let barTxt='',barBtn='',barCls='';
   if(cancelada){
     barCls='bad';
-    barTxt=venda.status_venda==='Cancelado'?'Venda reprovada pelo pós-venda. Corrija a documentação e peça nova conferência.':'Venda marcada como Sem Retorno.';
+    barTxt=venda.status_venda==='Cancelado'?'Venda reprovada. Corrija a documentação/pendência e reabra para nova conferência.':'Venda marcada como Sem Retorno.';
   }else if(!atual){
-    barCls='ok';barTxt='Venda 100% concluída: documentação conferida e ok do pós-venda. Pronta para comissão.';
+    barCls='ok';barTxt='Venda 100% concluída: documentação conferida e venda aprovada pelo pós-venda. Pronta para comissão.';
   }else{
     const msgs={
-      documentacao:{txt:'Próximo passo: conferir a documentação anexada e dar o ok (a venda segue direto para o pós-venda).',btn:podeDoc?`<button class="act green" onclick="updateVendaStatus('${venda.id}','Aprovado')">Aprovar documentação</button>`:'',resp:'conferência de documentação'},
-      posvenda:{txt:'Próximo passo: o pós-venda dá o ok final para concluir a venda.',btn:podePos?`<button class="act green" onclick="avancarEtapaVenda('${venda.id}','posvenda')">Dar ok do pós-venda</button>`:'',resp:'pós-venda'}
+      documentacao:{txt:'Próximo passo: conferir a documentação anexada (a venda continua pendente até o pós-venda aprovar).',btn:podeDoc?`<button class="act green" onclick="aprovarDocumentacaoVenda('${venda.id}')">Aprovar documentação</button>`:'',resp:'conferência de documentação'},
+      posvenda:{txt:'Documentação OK! Próximo passo: o pós-venda atende o cliente e aprova ou reprova a venda.',btn:podePos?`<button class="act green" onclick="aprovarPosvendaVenda('${venda.id}')">Aprovar venda (Pós-venda OK)</button> <button class="act red" onclick="updateVendaStatus('${venda.id}','Cancelado')">Reprovar venda</button>`:'',resp:'pós-venda'}
     };
     const m=msgs[atual.key];
     const ehResp=atual.key==='documentacao'?podeDoc:podePos;
-    barTxt=m.txt+(ehResp?'':' (responsável: '+m.resp+')')+(atual.key==='posvenda'?'':'');
+    barTxt=m.txt+(ehResp?'':' (responsável: '+m.resp+')');
     barBtn=m.btn;
   }
   const pendComp=comps.filter(c=>c.status==='pendente'&&c.tipo==='comprovante').length;
@@ -7052,25 +7065,55 @@ function _vendaTimelineHtml(venda,etapas,comps){
   </div>`;
 }
 
-async function avancarEtapaVenda(vendaId,etapa){
+async function aprovarDocumentacaoVenda(vendaId){
   await carregarAcessosExtra();
-  if(etapa!=='posvenda'||!podeAprovarPosvenda()){ toast('Só o responsável pelo pós-venda pode dar este ok.','err'); return; }
+  if(!podeConferirDoc()){ toast('Só o responsável pela conferência de documentação pode aprovar a documentação.','err'); return; }
   const venda=allVendas.find(v=>v.id===vendaId);
-  if(!venda||venda.status_venda!=='Aprovado'){ toast('Confira e aprove a documentação antes do ok do pós-venda.','err'); return; }
-  const{error}=await sb.from('crm_venda_etapas').upsert({venda_id:vendaId,etapa,concluida_por:CU.id,concluida_em:new Date().toISOString()},{onConflict:'venda_id,etapa'});
-  if(error){ toast('Erro ao avançar etapa: '+error.message,'err'); return; }
-  const rot={posvenda:'Pós-venda concluído'}[etapa]||etapa;
+  if(!venda){ toast('Venda não encontrada.','err'); return; }
+  const nowIso=new Date().toISOString();
+  const{error}=await sb.from('crm_venda_etapas').upsert({venda_id:vendaId,etapa:'documentacao',concluida_por:CU.id,concluida_em:nowIso},{onConflict:'venda_id,etapa'});
+  if(error){ toast('Erro ao aprovar documentação: '+error.message,'err'); return; }
+  _vendaEtapasMap[vendaId]={...(_vendaEtapasMap[vendaId]||{}),documentacao:{venda_id:vendaId,etapa:'documentacao',concluida_por:CU.id,concluida_em:nowIso}};
   if(venda.lead_id){
-    sb.from('crm_historico').insert({lead_id:venda.lead_id,user_id:CU.id,tipo:'Venda '+rot,descricao:`${rot} por ${CUProfile?.name||CU.email}.`,created_at:new Date().toISOString()}).then(()=>{});
+    sb.from('crm_historico').insert({lead_id:venda.lead_id,user_id:CU.id,tipo:'Documentação conferida',descricao:`Documentação aprovada por ${CUProfile?.name||CU.email}. Venda permanece pendente aguardando o pós-venda.`,created_at:nowIso}).then(()=>{});
   }
-  toast(rot+'.','ok');
-  renderVendaFluxo(vendaId);
+  toast('Documentação aprovada! Venda liberada para o pós-venda (ainda pendente).','ok');
+  if(document.getElementById('page-vendas')?.classList.contains('on')) renderVendasPage();
+  if(document.getElementById('venda-acompanhamento')?.dataset.venda===vendaId) renderVendaFluxo(vendaId);
+  else if(detailLeadId) openDetail(detailLeadId,fromPage);
+}
+
+async function aprovarPosvendaVenda(vendaId){
+  await carregarAcessosExtra();
+  if(!podeAprovarPosvenda()){ toast('Só o responsável pelo pós-venda pode aprovar a venda.','err'); return; }
+  // Garante que a documentação já foi aprovada antes de o pós-venda aprovar a venda
+  let docOk=!!_vendaEtapasMap[vendaId]?.documentacao;
+  if(!docOk){
+    const{data:etDoc}=await sb.from('crm_venda_etapas').select('etapa').eq('venda_id',vendaId).eq('etapa','documentacao').maybeSingle();
+    docOk=!!etDoc;
+  }
+  if(!docOk){ toast('Confira e aprove a documentação antes de aprovar a venda no pós-venda.','err'); return; }
+  await updateVendaStatus(vendaId,'Aprovado');
+}
+
+async function avancarEtapaVenda(vendaId,etapa){
+  if(etapa==='documentacao') return aprovarDocumentacaoVenda(vendaId);
+  if(etapa==='posvenda') return aprovarPosvendaVenda(vendaId);
 }
 async function desfazerEtapaVenda(vendaId,etapa){
-  if(etapa!=='posvenda'||!podeAprovarPosvenda()) return;
+  await carregarAcessosExtra();
+  if(etapa==='documentacao'&&!podeConferirDoc()) return;
+  if(etapa==='posvenda'&&!podeAprovarPosvenda()) return;
+  if(!['documentacao','posvenda'].includes(etapa)) return;
   if(!confirm('Desfazer esta etapa?')) return;
   const{error}=await sb.from('crm_venda_etapas').delete().eq('venda_id',vendaId).eq('etapa',etapa);
   if(error){ toast('Erro: '+error.message,'err'); return; }
+  if(_vendaEtapasMap[vendaId]) delete _vendaEtapasMap[vendaId][etapa];
+  if(etapa==='posvenda'){
+    const v=allVendas.find(x=>x.id===vendaId);
+    if(v&&v.status_venda==='Aprovado') await updateVendaStatus(vendaId,'Pendente');
+  }
+  if(document.getElementById('page-vendas')?.classList.contains('on')) renderVendasPage();
   renderVendaFluxo(vendaId);
 }
 
@@ -8955,7 +8998,16 @@ async function saveVendaNotas(vendaId, notas){
 }
 async function updateVendaStatus(id,status){
   await carregarAcessosExtra();
-  if(['Aprovado','Cancelado','Pendente'].includes(status)&&!podeConferirDoc()){ toast('Só o responsável pela conferência de documentação pode aprovar ou reprovar a venda.','err'); return; }
+  if(status==='Aprovado'){
+    if(!podeAprovarPosvenda()){ toast('Só o responsável pelo pós-venda pode aprovar a venda após a conferência de documentação.','err'); return; }
+    let docOk=!!_vendaEtapasMap[id]?.documentacao;
+    if(!docOk){
+      const{data:etDoc}=await sb.from('crm_venda_etapas').select('etapa').eq('venda_id',id).eq('etapa','documentacao').maybeSingle();
+      docOk=!!etDoc;
+    }
+    if(!docOk){ toast('Confira e aprove a documentação antes de aprovar a venda no pós-venda.','err'); return; }
+  }
+  if(['Cancelado','Pendente'].includes(status)&&!(podeConferirDoc()||podeAprovarPosvenda())){ toast('Só conferência de documentação ou pós-venda pode reprovar ou reabrir a venda.','err'); return; }
   // Busca status ATUAL do banco antes de qualquer coisa
   // Evita usar cache desatualizado que causaria delta errado no Firebase
   let statusAnterior = null;
@@ -10132,11 +10184,33 @@ function getVisibleVendas(){
 }
 
 async function renderVendasPage(){
+  await carregarAcessosExtra();
   const q=(document.getElementById('vp-srch')?.value||'').toLowerCase();
   let vendas=getVisibleVendas();
 
+  // Carrega as etapas de documentação para distinguir "Aguardando Documentação" vs "Doc. OK · Aguardando Pós-venda"
+  try{
+    const{data:etapasRows}=await sb.from('crm_venda_etapas').select('venda_id,etapa,concluida_em,concluida_por').eq('etapa','documentacao').limit(5000);
+    if(etapasRows){
+      const nextMap={};
+      etapasRows.forEach(e=>{
+        if(!nextMap[e.venda_id]) nextMap[e.venda_id]={};
+        nextMap[e.venda_id][e.etapa]=e;
+      });
+      _vendaEtapasMap=nextMap;
+    }
+  }catch(e){ console.warn('[renderVendasPage] erro ao buscar crm_venda_etapas:',e.message); }
+
   // Filter by status tab
   if(_vendasFilter!=='todos') vendas=vendas.filter(v=>v.status_venda===_vendasFilter);
+
+  // Filter by etapa pendente (aguard_doc vs doc_ok)
+  const fEtapa=document.getElementById('vp-f-etapa')?.value||'';
+  if(fEtapa==='aguard_doc'){
+    vendas=vendas.filter(v=>v.status_venda==='Pendente'&&!_vendaEtapasMap[v.id]?.documentacao);
+  } else if(fEtapa==='doc_ok'){
+    vendas=vendas.filter(v=>v.status_venda==='Pendente'&&!!_vendaEtapasMap[v.id]?.documentacao);
+  }
 
   // Filter by tipo de lead (Novo / Remalho) — olha o lead de origem da venda.
   // IMPORTANTE: pra supervisor (e outros com escopo parcial), leads já Fechados
@@ -10245,7 +10319,8 @@ async function renderVendasPage(){
       ?`<span title="Este cliente tem ${nCotas} cotas vendidas" style="margin-left:8px;font-size:10px;font-weight:800;padding:2px 7px;border-radius:10px;background:rgba(255,80,80,.15);color:#ff5c5c;border:1px solid rgba(255,80,80,.4);white-space:nowrap">${nCotas} cotas</span>`
       :`<span title="Cliente com apenas 1 cota" style="margin-left:8px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(255,255,255,.05);color:var(--muted2);border:1px solid var(--border,rgba(255,255,255,.12));white-space:nowrap">1 cota</span>`;
     const badgeCls=v.status_venda==='Aprovado'?'b-aprov':v.status_venda==='Cancelado'?'b-canc':v.status_venda==='SemRetorno'?'b-semret':'b-pend';
-    const canManage=isAdmin()||isCoordenador();
+    const docOk=!!_vendaEtapasMap[v.id]?.documentacao;
+    const canManage=isAdmin()||isCoordenador()||podeConferirDoc()||podeAprovarPosvenda();
     // Se o lead não está em allLeads (ex: coordenador vendo venda de lead fora do escopo carregado em memória),
     // NÃO mostramos o CPF como nome — buscamos o nome real on-demand (1x, com cache) e atualizamos a célula.
     let leadNome;
@@ -10257,19 +10332,25 @@ async function renderVendasPage(){
       leadNome=`<span id="vp-nome-${v.id}" style="color:var(--muted2)">Carregando nome...</span>`;
       buscarNomeLeadOnDemand(v.lead_id, v.id);
     }
+    const statusLabel=v.status_venda==='SemRetorno'?'Cancelados'
+      :v.status_venda==='Cancelado'?'Reprovado'
+      :v.status_venda==='Aprovado'?'Aprovado'
+      :docOk?'Doc. OK · Aguard. Pós-venda':'Aguard. Documentação';
+    const statusStyle=v.status_venda==='Pendente'&&docOk?'background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.35)':'';
     return`<tr>
       <td style="font-weight:700;cursor:pointer;color:var(--gold2)" onclick="openDetail('${v.lead_id}','vendas')">${leadNome}${cotasBadge}</td>
       <td style="font-size:11.5px">${vendedor?.name||'—'}</td>
       <td style="color:var(--gold2);font-weight:700">${v.valor_credito?brl(v.valor_credito):'—'}</td>
       <td style="font-size:11.5px">${v.parcela?brl(v.parcela):'—'}</td>
       <td style="color:var(--muted2);font-size:11px">${v.grupo||'—'} / ${v.cota||'—'}</td>
-      <td><span class="badge ${badgeCls}">${v.status_venda==='SemRetorno'?'Cancelados':v.status_venda==='Cancelado'?'Reprovado':(v.status_venda||'Pendente')}</span></td>
+      <td><span class="badge ${badgeCls}" ${statusStyle?`style="${statusStyle}"`:''}>${statusLabel}</span></td>
       <td style="color:var(--muted2);font-size:11px">${fmtDt(v.created_at)}</td>
       <td>
         ${canManage?`<div style="display:flex;gap:4px">
-          ${podeConferirDoc()&&v.status_venda!=='Aprovado'?`<button class="act green" onclick="updateVendaStatus('${v.id}','Aprovado')">✅</button>`:''}
-          ${podeConferirDoc()&&v.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${v.id}','Cancelado')" title="Reprovar">❌</button>`:''}
-          ${podeConferirDoc()&&v.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${v.id}','Pendente')" title="Voltar para Pendente">⏳</button>`:''}
+          ${podeConferirDoc()&&v.status_venda==='Pendente'&&!docOk?`<button class="act green" onclick="aprovarDocumentacaoVenda('${v.id}')" title="Aprovar documentação (mantém venda pendente para o pós-venda)">📄 OK</button>`:''}
+          ${podeAprovarPosvenda()&&v.status_venda!=='Aprovado'&&docOk?`<button class="act green" onclick="aprovarPosvendaVenda('${v.id}')" title="Aprovar venda (Pós-venda OK)">✅</button>`:''}
+          ${(podeConferirDoc()||podeAprovarPosvenda())&&v.status_venda!=='Cancelado'?`<button class="act red" onclick="updateVendaStatus('${v.id}','Cancelado')" title="Reprovar venda">❌</button>`:''}
+          ${(podeConferirDoc()||podeAprovarPosvenda())&&v.status_venda!=='Pendente'?`<button class="act" style="border-color:var(--orange);color:var(--orange)" onclick="updateVendaStatus('${v.id}','Pendente')" title="Voltar para Pendente">⏳</button>`:''}
           ${isAdmin()?`<button class="act" onclick="revertVenda('${v.id}','${v.lead_id}')" style="border-color:var(--orange);color:var(--orange)" title="Reverter">↩</button>`:''}
         </div>`:'<button class="act" onclick="openDetail(\''+v.lead_id+'\',\'vendas\')">Ver →</button>'}
       </td>
