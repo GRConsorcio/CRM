@@ -8968,19 +8968,22 @@ async function _saveVendaInner(){
   closeModal('venda');
   toast(existingV?'Venda atualizada com sucesso!':'Venda registrada com sucesso!','ok');
 
-  // ── Sincroniza com Firebase dos Rankings ao criar (Pendente = +qtdCotas) ──
-  if(!existingV && typeof sincronizarVendaFirebase === 'function'){
-    const leadFb = allLeads.find(l=>l.id===vendaLeadId);
-    // Usa vendedorId buscado do banco (não CU.id que seria o admin)
-    const vendedor = allUsers.find(u=>u.user_id===vendedorId);
+  // ── Sincroniza com Firebase dos Rankings ao criar (Pendente = +qtdCotas) ou ajustar cotas na edição ──
+  const _qtdAntesEdit = existingV ? (existingV.qtd_cotas || 1) : 0;
+  const _deltaFb = !existingV
+    ? +qtdCotas
+    : (!['Cancelado','SemRetorno'].includes(existingV.status_venda) ? (qtdCotas - _qtdAntesEdit) : 0);
+  if(_deltaFb !== 0 && typeof sincronizarVendaFirebase === 'function'){
+    const {lead:leadFb, vendedor} = await _resolverLeadEVendedorParaFb(vendaLeadId, vendedorId);
     if(vendedor){
       const equipe = await resolverEquipeParaVenda(leadFb, vendedor);
-      console.log(`[FB Ranking] Nova venda — vendedor="${vendedor.name}" equipe="${equipe?.nome}" +${qtdCotas}`);
-      sincronizarVendaFirebase(leadFb, vd, vendedor, equipe, +qtdCotas).catch(e=>
+      console.log(`[FB Ranking] ${existingV?'Edição cotas':'Nova venda'} — vendedor="${vendedor.name}" equipe="${equipe?.nome}" ${_deltaFb>0?'+'+_deltaFb:_deltaFb}`);
+      sincronizarVendaFirebase(leadFb, vd, vendedor, equipe, _deltaFb).catch(e=>
         console.warn('Firebase ranking sync error:',e.message)
       );
     } else {
-      console.warn('[FB Ranking] Vendedor não encontrado em allUsers para id:',vendedorId,'— sync ignorado');
+      console.warn('[FB Ranking] Vendedor não encontrado em allUsers/DB para id:',vendedorId,'— sync ignorado');
+      toast('Ranking não sincronizado: vendedor não encontrado. Avise o admin.','err');
     }
   }
 
@@ -9086,8 +9089,7 @@ async function updateVendaStatus(id,status){
   // statusAnterior vem SEMPRE do banco (fetch acima) — se null, não faz nada no Firebase
   console.log(`[FB Ranking] statusAnterior="${statusAnterior}" → novoStatus="${status}"`);
   if(typeof sincronizarVendaFirebase==='function' && vendaAntes && statusAnterior!==null){
-    const lead=allLeads.find(l=>l.id===vendaAntes.lead_id);
-    const vendedor=allUsers.find(u=>u.user_id===vendaAntes.vendedor_id);
+    const {lead, vendedor}=await _resolverLeadEVendedorParaFb(vendaAntes.lead_id, vendaAntes.vendedor_id);
     const equipe=await resolverEquipeParaVenda(lead,vendedor);
     let delta=0;
     if(status==='Cancelado' && statusAnterior!=='Cancelado'){
@@ -9997,6 +9999,24 @@ async function togglePropostaQuente(leadId,ativo,el){
       estão em equipes diferentes.
    Retorna o objeto equipe (já atualizado) ou null. É async porque pode persistir no banco.
 */
+async function _resolverLeadEVendedorParaFb(leadId, vendedorId){
+  let lead = leadId ? (allLeads.find(l=>l.id===leadId) || null) : null;
+  if(!lead && leadId){
+    try{
+      const{data:lDb}=await sb.from('crm_leads').select('id,equipe_id,responsavel_id,nome').eq('id',leadId).maybeSingle();
+      if(lDb){ lead=lDb; if(!allLeads.some(x=>x.id===lDb.id)) allLeads.push(lDb); }
+    }catch(e){ console.warn('[FB Ranking] Erro ao buscar lead no banco:',e.message); }
+  }
+  let vendedor = vendedorId ? (allUsers.find(u=>u.user_id===vendedorId) || null) : null;
+  if(!vendedor && vendedorId){
+    try{
+      const{data:uDb}=await sb.from('crm_users').select('user_id,name').eq('user_id',vendedorId).maybeSingle();
+      if(uDb){ vendedor=uDb; if(!allUsers.some(x=>x.user_id===uDb.user_id)) allUsers.push(uDb); }
+    }catch(e){ console.warn('[FB Ranking] Erro ao buscar vendedor no banco:',e.message); }
+  }
+  return {lead, vendedor};
+}
+
 async function resolverEquipeParaVenda(lead, vendedor){
   const equipeAtual = lead?.equipe_id ? (allEquipes.find(e=>e.id===lead.equipe_id)||null) : null;
 
@@ -16558,71 +16578,52 @@ async function incrementarCotaFirebase(fbKey, raiz, nomeVendedorCRM, semanaIdx, 
     console.warn(`[Firebase Ranking ${fbKey}] Nome "${nomeVendedorCRM}" empatou entre ${empatados.length} vendedores do ranking (${empatados.join(', ')}) — usando "${vendData?.nome}". Renomeie no ranking para evitar ambiguidade.`);
   }
   if(!vendKey){
-    console.warn(`[Firebase Ranking ${fbKey}] Vendedor "${nomeVendedorCRM}" não encontrado. Disponíveis:`, Object.values(dadosVal).map(v=>v.nome));
-    return false;
+    const novoNome = (nomeVendedorCRM || '').trim();
+    if(!novoNome){
+      console.warn(`[Firebase Ranking ${fbKey}] Vendedor vazio — sync abortado.`);
+      return false;
+    }
+    vendKey = nomeKey(novoNome);
+    vendData = { nome: novoNome, s: [0,0,0,0,0] };
+    await set(ref(db, `${raiz}/dados/${vendKey}`), vendData);
+    console.log(`[Firebase Ranking ${fbKey}] Vendedor "${novoNome}" criado automaticamente em ${raiz}/dados/${vendKey}.`);
   }
 
   // ── PROTEGE O SNAPDIA ANTES DE INCREMENTAR ──
   // O ranking calcula "vendas do dia" como: totalAtual - snapBase
-  // Se snapBase não existir quando s[] muda, o ranking recria snapBase com o
-  // novo total — zerando as vendas do dia. Gravamos o snapBase com o valor
-  // ATUAL (pré-incremento) antes de modificar s[].
-  //
-  // USA FUSO BRT (America/Sao_Paulo) — não UTC.
-  // Se usar UTC, vendas entre 21h-23h59 BRT (00h-02h59 UTC) entram no dia
-  // seguinte do UTC, causando snapDia errado e ranking mostrando dia anterior.
+  // Usamos runTransaction no snapDia ANTES de mexer em s[] para garantir atomicidade
+  // mesmo com abas da TV abertas ao mesmo tempo.
   const hoje = new Date();
   const dataStr = hoje.toLocaleDateString('pt-BR',{
     timeZone:'America/Sao_Paulo',
     year:'numeric',month:'2-digit',day:'2-digit'
   }).split('/').reverse().join('-'); // "DD/MM/YYYY" → "YYYY-MM-DD"
+  const hojeUTC = new Date().toISOString().slice(0,10);
 
   const snapDiaRef = ref(db, `${raiz}/snapDia/${vendKey}`);
-  const snapDiaAtual = await get(snapDiaRef);
-  const snapDiaVal = snapDiaAtual.val();
+  const preTotal = Array.isArray(vendData.s) ? vendData.s.reduce((a,b)=>a+b,0) : 0;
 
-  // Aceita tanto a data BRT quanto a data UTC como válidas para HOJE
-  // (período de transição: snapDias antigos foram gravados em UTC)
-  const hojeUTC = new Date().toISOString().slice(0,10);
-  const snapExisteHoje = snapDiaVal && (
-    snapDiaVal.data === dataStr ||   // data BRT (correto)
-    snapDiaVal.data === hojeUTC      // data UTC (legado — aceita para não zerar)
-  );
-
-  let base;
-  if(!snapExisteHoje){
-    // Snap não existe OU é de dia anterior — grava novo com base no total pré-incremento
-    // ATENÇÃO: o total pré-incremento DEVE ser calculado ANTES de qualquer runTransaction
-    // Se o snap de ontem (UTC) ainda está ativo, significa que o ranking não zerou ainda —
-    // preservamos a base do snap antigo para não perder vendas do dia.
-    if(snapDiaVal && snapDiaVal.data === hojeUTC && snapDiaVal.data !== dataStr){
-      // Era UTC de hoje mas BRT mudou — migra o snap preservando a base existente
-      base = snapDiaVal.base;
-      console.log(`[Firebase Ranking ${fbKey}] Migrando snapDia UTC→BRT para "${vendData.nome}": base preservada=${base}`);
-    } else {
-      // Snap de dia anterior — calcula base atual
-      base = Array.isArray(vendData.s) ? vendData.s.reduce((a,b)=>a+b,0) : 0;
-    }
-  } else {
-    base = snapDiaVal.base;
-  }
-
-  // ── COMPENSA O SNAPBASE QUANDO A VENDA NÃO É DE HOJE ──
-  // Reprovar ou devolver pra Pendente uma venda de outro dia não pode mexer
-  // no indicador "vendas do dia" (totalAtual - snapBase) — só no total geral.
-  // Somamos o mesmo delta na base pra que essa diferença fique intacta.
   if(opts.compensarSnapBase){
-    base += delta;
-    console.log(`[Firebase Ranking ${fbKey}] snapBase compensado (${delta>0?'+'+delta:delta}) para "${vendData.nome}" — venda não é do dia, "vendas do dia" preservado.`);
-  }
-
-  if(!snapExisteHoje || opts.compensarSnapBase){
-    await set(snapDiaRef, {
-      data: dataStr,       // sempre grava com data BRT
-      base,
-      nome: vendData.nome
+    await runTransaction(snapDiaRef, current => {
+      const ehHoje = current && (current.data === dataStr || current.data === hojeUTC);
+      const baseAtual = ehHoje ? (Number(current.base)||0) : preTotal;
+      return {
+        data: dataStr,
+        base: Math.max(0, baseAtual + delta),
+        nome: vendData.nome
+      };
     });
-    if(!snapExisteHoje) console.log(`[Firebase Ranking ${fbKey}] SnapDia gravado para "${vendData.nome}": base=${base}`);
+    console.log(`[Firebase Ranking ${fbKey}] snapBase compensado (${delta>0?'+'+delta:delta}) para "${vendData.nome}" — venda não é do dia, "vendas do dia" preservado.`);
+  } else {
+    await runTransaction(snapDiaRef, current => {
+      if(current && current.data === dataStr){
+        return; // já existe snapshot BRT válido de hoje — preserva a base original
+      }
+      if(current && current.data === hojeUTC && current.data !== dataStr){
+        return { data: dataStr, base: current.base, nome: vendData.nome };
+      }
+      return { data: dataStr, base: preTotal, nome: vendData.nome };
+    });
   }
 
   // Agora incrementa o s[] com segurança
