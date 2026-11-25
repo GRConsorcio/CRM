@@ -8390,7 +8390,8 @@ async function saveLead(){
     nome,telefone,email:v('ld-email'),interesse:v('ld-int'),
     status:statusVal,origem:canEditAll?v('ld-origem'):undefined,
     responsavel_id:canEditAll?(v('ld-resp')||null):undefined,
-    observacoes:v('ld-obs')||null,criado_por:CU.id,
+    observacoes:v('ld-obs')||null,
+    ...(editLeadId?{}:{criado_por:CU.id}),
     ...(tipoLead!==undefined?{tipo_lead:tipoLead}:{}),
   };
   // updated_at marca o lead como "tocado agora" — usado pelo Funil para
@@ -11368,6 +11369,20 @@ async function runInChunks(items, worker, conc=6, delayMs=150){
   return resultados;
 }
 
+// Origens geradas por importação/pool da empresa; fora delas, lead criado por
+// vendedor para si mesmo (sem retornos) não deve voltar à carteira geral.
+const ORIGENS_POOL_AUTO = new Set(['csv','anuncio gr','anúncio gr','leads gr','leads chis','lead chis','remalho','remalho gr','remalho chis','remalho luiz','cancelado','lista']);
+function isLeadManualVendedor(l){
+  if(!l||!l.criado_por||!l.responsavel_id) return false;
+  if(l.criado_por!==l.responsavel_id) return false;
+  const criador=allUsers.find(u=>u.user_id===l.criado_por);
+  if(!criador||criador.role!=='vendedor') return false;
+  if((l.retornos_count||0)>0) return false;
+  const orig=String(l.origem||'').trim().toLowerCase();
+  if(!orig||ORIGENS_POOL_AUTO.has(orig)) return false;
+  return true;
+}
+
 async function reciclarLeadParaPool(lead, opts={}){
   const equipeDestino = opts.equipeDestino ?? null;
   const retornosAtual = (lead.retornos_count||0) + 1;
@@ -11435,7 +11450,7 @@ async function runAutoReturnRules(){
   // Leads com vendedor mas sem atribuido_em (base antiga ou leads que chegaram antes da
   // coluna existir) — reseta atribuido_em para AGORA para que a contagem comece hoje.
   // Faz isso em lote uma única vez por execução, sem bloquear a checagem principal.
-  const semData=allLeads.filter(l=>l.responsavel_id&&!l.atribuido_em&&!l.distribuido_em&&l.status!=='Fechado');
+  const semData=allLeads.filter(l=>l.responsavel_id&&!l.atribuido_em&&!l.distribuido_em&&l.status!=='Fechado'&&!isLeadManualVendedor(l));
   if(semData.length){
     const semDataIds=semData.map(l=>l.id);
     const nowIso=now.toISOString();
@@ -11460,6 +11475,7 @@ async function runAutoReturnRules(){
 
   for(const l of allLeads){
     if(!l.responsavel_id) continue;
+    if(isLeadManualVendedor(l)) continue;
     // BUGFIX (visto em produção — leads Glauciane Ferreira Caetano e Rogério
     // Pedro sumiram da base do vendedor): antes exigia l.status==='Fechado' E
     // venda aprovada ao mesmo tempo pra pular a reciclagem. Um lead pode ter
@@ -11771,6 +11787,10 @@ async function openAvaliarPerdidos(){
   const listaComComentario = [];  // {lead, comentario} — tem comentário real (nunca reciclado sozinho, só se o admin escolher)
 
   for(const l of perdidos){
+    if(isLeadManualVendedor(l)){
+      listaBloqueados.push({lead:l, label:'Lead manual do vendedor'});
+      continue;
+    }
     if(!leadTemComentarioReal(l.id)){
       const label = getLabelBloqueioPorLead(l);
       if(label) listaBloqueados.push({lead:l, label});
@@ -11881,6 +11901,7 @@ async function confirmarAvaliarPerdidos(){
     const paraReciclar = [];              // sem comentário, sem palavra bloqueada
     const paraReciclarComComentario = [];  // tem comentário — só entra se o admin marcou o checkbox
     for(const l of perdidos){
+      if(isLeadManualVendedor(l)) continue;
       if(!leadTemComentarioReal(l.id)){
         if(temPalavraBloqueiaNaObs(l)){
           // NÃO recicla — registra histórico de bloqueio
@@ -14628,6 +14649,26 @@ function setRtOpcao(opcao){
   updateRtPreview();
 }
 
+function ehElegivelRecolher(l){
+  return l.status!=='Fechado'&&!isLeadManualVendedor(l);
+}
+
+function getLeadsParaRecolherTudo(opcao, eqId, vdId){
+  if(opcao==='todos') return {leads:allLeads.filter(ehElegivelRecolher), descricao:'todos os leads ativos'};
+  if(opcao==='equipe'&&eqId){
+    const eq=allEquipes.find(e=>e.id===eqId);
+    return {leads:allLeads.filter(l=>l.equipe_id===eqId&&ehElegivelRecolher(l)), descricao:`leads da equipe ${eq?.nome||''}`, eq};
+  }
+  if(opcao==='vendedor'&&vdId){
+    const vd=allUsers.find(u=>u.user_id===vdId);
+    return {leads:allLeads.filter(l=>l.responsavel_id===vdId&&ehElegivelRecolher(l)), descricao:`leads de ${vd?.name||''}`, vd};
+  }
+  if(opcao==='sem-vendedor'){
+    return {leads:allLeads.filter(l=>!l.responsavel_id&&l.equipe_id&&ehElegivelRecolher(l)), descricao:'leads sem vendedor'};
+  }
+  return {leads:[], descricao:''};
+}
+
 function updateRtPreview(){
   const opcao=_rtOpcao;
   const eqId =document.getElementById('rt-sel-equipe').value;
@@ -14635,29 +14676,20 @@ function updateRtPreview(){
   const prev =document.getElementById('rt-preview');
   const btn  =document.getElementById('rt-btn-confirmar');
 
-  let leads=[];
+  const res=getLeadsParaRecolherTudo(opcao,eqId,vdId);
+  const leads=res.leads;
   let msg='';
   let valid=true;
 
   if(opcao==='todos'){
-    leads=allLeads.filter(l=>l.status!=='Fechado');
-    msg=`Todos os leads ativos: <strong>${leads.length} lead${leads.length!==1?'s':''}</strong> serão recolhidos.`;
+    msg=`Todos os leads ativos: <strong>${leads.length} lead${leads.length!==1?'s':''}</strong> serão recolhidos (leads manuais do vendedor ficam protegidos).`;
   } else if(opcao==='equipe'){
     if(!eqId){msg='Selecione uma equipe acima.';valid=false;}
-    else{
-      const eq=allEquipes.find(e=>e.id===eqId);
-      leads=allLeads.filter(l=>l.equipe_id===eqId&&l.status!=='Fechado');
-      msg=`Equipe <strong>${eq?.nome||''}</strong>: <strong>${leads.length} lead${leads.length!==1?'s':''}</strong> serão recolhidos.`;
-    }
+    else msg=`Equipe <strong>${res.eq?.nome||''}</strong>: <strong>${leads.length} lead${leads.length!==1?'s':''}</strong> serão recolhidos.`;
   } else if(opcao==='vendedor'){
     if(!vdId){msg='Selecione um vendedor acima.';valid=false;}
-    else{
-      const vd=allUsers.find(u=>u.user_id===vdId);
-      leads=allLeads.filter(l=>l.responsavel_id===vdId&&l.status!=='Fechado');
-      msg=`Vendedor <strong>${vd?.name||''}</strong>: <strong>${leads.length} lead${leads.length!==1?'s':''}</strong> serão recolhidos.`;
-    }
+    else msg=`Vendedor <strong>${res.vd?.name||''}</strong>: <strong>${leads.length} lead${leads.length!==1?'s':''}</strong> serão recolhidos.`;
   } else if(opcao==='sem-vendedor'){
-    leads=allLeads.filter(l=>!l.responsavel_id&&l.equipe_id&&l.status!=='Fechado');
     msg=`Leads sem vendedor (com equipe): <strong>${leads.length} lead${leads.length!==1?'s':''}</strong> serão recolhidos.`;
   }
 
@@ -14691,24 +14723,7 @@ async function confirmarRecolherTudo(){
   const eqId =document.getElementById('rt-sel-equipe').value;
   const vdId =document.getElementById('rt-sel-vendedor').value;
 
-  let leads=[];
-  let descricao='';
-
-  if(opcao==='todos'){
-    leads=allLeads.filter(l=>l.status!=='Fechado');
-    descricao='todos os leads ativos';
-  } else if(opcao==='equipe'&&eqId){
-    leads=allLeads.filter(l=>l.equipe_id===eqId&&l.status!=='Fechado');
-    const eq=allEquipes.find(e=>e.id===eqId);
-    descricao=`leads da equipe ${eq?.nome||''}`;
-  } else if(opcao==='vendedor'&&vdId){
-    leads=allLeads.filter(l=>l.responsavel_id===vdId&&l.status!=='Fechado');
-    const vd=allUsers.find(u=>u.user_id===vdId);
-    descricao=`leads de ${vd?.name||''}`;
-  } else if(opcao==='sem-vendedor'){
-    leads=allLeads.filter(l=>!l.responsavel_id&&l.equipe_id&&l.status!=='Fechado');
-    descricao='leads sem vendedor';
-  }
+  const {leads, descricao}=getLeadsParaRecolherTudo(opcao,eqId,vdId);
 
   if(!leads.length){toast('Nenhum lead encontrado com esses filtros.','err');return;}
   if(!confirm(`Recolher ${leads.length} lead${leads.length!==1?'s':''} (${descricao})?\nEles ficarão sem equipe/vendedor e voltarão para a fila de Distribuição.`))return;
@@ -14736,6 +14751,7 @@ function recolherTudoParaMim(){ openRecolherTudo(); }
 async function recolherLead(leadId){
   const lead=allLeads.find(l=>l.id===leadId);
   if(lead?.status==='Fechado'){toast('Lead fechado não pode ser recolhido','err');return;}
+  if(isLeadManualVendedor(lead)){toast('Lead registrado manualmente pelo vendedor não volta para a carteira','err');return;}
   const{error}=await sb.from('crm_leads').update({equipe_id:null,responsavel_id:null,distribuido_em:null}).eq('id',leadId);
   if(error){toast('Erro: '+error.message,'err');return;}
   const i=allLeads.findIndex(l=>l.id===leadId);
@@ -14784,8 +14800,8 @@ function renderRecolherList(){
   const fVd   = document.getElementById('rec-f-vendedor')?.value || '';
   const fSrch = (document.getElementById('rec-srch')?.value||'').toLowerCase().trim();
 
-  // Leads elegíveis: não Fechados, com equipe ou vendedor atribuído
-  let leads = allLeads.filter(l=>l.status!=='Fechado' && (l.equipe_id || l.responsavel_id));
+  // Leads elegíveis: não Fechados, não manuais do vendedor, com equipe ou vendedor atribuído
+  let leads = allLeads.filter(l=>ehElegivelRecolher(l) && (l.equipe_id || l.responsavel_id));
 
   if(fEq)   leads=leads.filter(l=>l.equipe_id===fEq);
   if(fVd)   leads=leads.filter(l=>l.responsavel_id===fVd);
